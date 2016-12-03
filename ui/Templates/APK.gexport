@@ -1,0 +1,109 @@
+<export name="APK" 
+	description="Export as an Android APK file">
+	<property name="packageName" type="string" title="Package name" description="" default="com.yourdomain.yourapp" />
+	<property name="androidPath" type="dir" title="Android SDK Directory" description="Directory of your Android SDK" default="" />
+	<property name="javaPath" type="dir" title="JDK Directory" description="Directory of your JDK installation" default="" />
+	<property name="androidTarget" type="string" title="Android Target Version" description="The android SDK version you wish to compile with" default="19" />
+	<property name="androidSdk" type="string" title="Android SDK Version" description="The android SDK version to be used for compiling" default="23" />
+	<property name="androidTools" type="string" title="Android Tools Version" description="The android tools version to be used for compiling" default="23.0.2" />
+	<property name="keyStore" type="file" title="Key store" description="Path to keystore for signing" default="" />
+	<property name="keyAlias" type="string" title="Key alias" description="Alias of the key to use" default="" />
+	<rules>
+		<ask key="local.keyStorePass" type="string" title="Key store password" question="Enter your key store password:" default="" />
+		<set key="local.noSigning" value="//"/>
+		<set key="local.isUnsigned" value="-unsigned"/>
+		<if condition="[[[neq:[[[local.keyStorePass]]]:]]]">
+			<ask key="local.keyAliasPass" type="string" title="Key alias password" question="Enter your key alias password:" default="[[[local.keyStorePass]]]" />
+			<set key="local.noSigning" value=""/>
+			<set key="local.isUnsigned" value=""/>
+		</if>
+		<mkdir>tmp</mkdir>
+		<cd>tmp</cd>
+		<if condition="[[[project.autorotation]]]">
+			<set key="local.orientation" value="sensorPortrait"/>
+			<if condition="[[[band:[[[project.orientation]]]:1]]]">
+				<set key="local.orientation" value="sensorLandscape"/>
+			</if>
+		</if>
+		<if condition="[[[not:[[[project.autorotation]]]]]]">
+			<set key="local.orientation" value="portrait"/>
+			<if condition="[[[eq:[[[project.orientation]]]:1]]]">
+				<set key="local.orientation" value="landscape"/>
+			</if>
+			<if condition="[[[eq:[[[project.orientation]]]:2]]]">
+				<set key="local.orientation" value="reversePortrait"/>
+			</if>
+			<if condition="[[[eq:[[[project.orientation]]]:3]]]">
+				<set key="local.orientation" value="reverseLandscape"/>
+			</if>
+		</if>		
+		<set key="local.showSplash" value="true"/>
+		<if condition="[[[eq:[[[project.disableSplash]]]:1]]]">
+			<set key="local.showSplash" value="false"/>
+		</if>
+		<template name="Android Template" path="[[[sys.giderosDir]]]/Templates/AndroidStudio/Android Template">
+			<replacelist wildcards="*.xml;*.java;*.gradle">
+				<replace orig="AndroidTemplate" by="[[[project.namews]]]"/>
+				<replace orig="Android Template" by="[[[project.name]]]"/>
+				<replace orig="com.giderosmobile.androidtemplate" by="[[[export.packageName]]]"/>
+        		<replace orig="android:targetSdkVersion=&quot;19&quot;" by="android:targetSdkVersion=&quot;[[[export.androidTarget]]]&quot;"/>
+        		<replace orig="android:versionCode=&quot;1&quot;" by="android:versionCode=&quot;[[[project.version_code]]]&quot;"/>
+        		<replace orig="android:versionName=&quot;1.0&quot;" by="android:versionName=&quot;[[[project.version]]]&quot;"/>
+        		<replace orig="android:screenOrientation=&quot;portrait&quot;" by="android:screenOrientation=&quot;[[[local.orientation]]]&quot;"/>
+        		<replace orig="boolean showSplash = true;" by="boolean showSplash = [[[local.showSplash]]];"/>
+        		<replace orig="Color.parseColor(&quot;#ffffff&quot;)" by="Color.parseColor(&quot;[[[project.backgroundColor]]]&quot;)"/>
+        		<replace orig="compileSdkVersion 23" by="compileSdkVersion [[[export.androidSdk]]]" />
+        		<replace orig="buildToolsVersion &quot;23.0.2&quot;" by="buildToolsVersion &quot;[[[export.androidTools]]]&quot;" />
+				<replace orig="targetSdkVersion 19" by="targetSdkVersion [[[export.androidTarget]]]"/>
+				<replace orig="jksgid_StoreFile" by="[[[export.keyStore]]]"/>
+				<replace orig="jksgid_KeyAlias" by="[[[export.keyAlias]]]"/>
+				<replace orig="jksgid_StorePass" by="[[[local.keyStorePass]]]"/>
+				<replace orig="jksgid_KeyPass" by="[[[local.keyAliasPass]]]"/>
+				<replace orig="//signingConfig" by="[[[local.noSigning]]]signingConfig"/>
+				<replace orig="//storeFile" by="[[[local.noSigning]]]storeFile"/>
+        	</replacelist>		
+		</template>
+		<mkdir>app/src/main/assets/assets</mkdir>
+		<cd>app/src/main/assets/assets</cd>
+		<exportAssets jet="mp3;mp4;png;jpg;jpeg;wav" compile="1" />
+		<exportAllfilesTxt/>
+		<exportLuafilesTxt/>
+		<exportPropertiesBin/>
+		<cd>../../../../..</cd>
+		<appIcon width="36" height="36" dest="app/src/main/res/drawable-ldpi/icon.png"/>
+		<appIcon width="48" height="48" dest="app/src/main/res/drawable-mdpi/icon.png"/>
+		<appIcon width="72" height="72" dest="app/src/main/res/drawable-hdpi/icon.png"/>
+		<appIcon width="96" height="96" dest="app/src/main/res/drawable-xhdpi/icon.png"/>
+		<appIcon width="144" height="144" dest="app/src/main/res/drawable-xxhdpi/icon.png"/>
+		<appIcon width="192" height="192" dest="app/src/main/res/drawable-xxxhdpi/icon.png"/>
+		<if condition="[[[not:[[[band:[[[project.orientation]]]:1]]]]]]">
+			<splashVertical width="200" height="320" dest="app/src/main/res/drawable-ldpi/splash.png"/>
+			<splashVertical width="320" height="480" dest="app/src/main/res/drawable-mdpi/splash.png"/>
+			<splashVertical width="480" height="800" dest="app/src/main/res/drawable-hdpi/splash.png"/>
+			<splashVertical width="720" height="1280" dest="app/src/main/res/drawable-xhdpi/splash.png"/>
+			<splashVertical width="960" height="1600" dest="app/src/main/res/drawable-xxhdpi/splash.png"/>
+			<splashVertical width="1280" height="1920" dest="app/src/main/res/drawable-xxxhdpi/splash.png"/>
+		</if>
+		<if condition="[[[band:[[[project.orientation]]]:1]]]">
+			<splashHorizontal width="320" height="200" dest="app/src/main/res/drawable-ldpi/splash.png"/>
+			<splashHorizontal width="480" height="320" dest="app/src/main/res/drawable-mdpi/splash.png"/>
+			<splashHorizontal width="800" height="480" dest="app/src/main/res/drawable-hdpi/splash.png"/>
+			<splashHorizontal width="1280" height="720" dest="app/src/main/res/drawable-xhdpi/splash.png"/>
+			<splashHorizontal width="1600" height="960" dest="app/src/main/res/drawable-xxhdpi/splash.png"/>
+			<splashHorizontal width="1920" height="1280" dest="app/src/main/res/drawable-xxxhdpi/splash.png"/>
+		</if>
+		<applyPlugins/>
+		<set key="local.gradleCmd" value="gradlew"/>
+		<if condition="[[[eq:[[[sys.exeExtension]]]:.exe]]]">
+			<set key="local.gradleCmd" value="&quot;cmd.exe&quot; /c gradlew.bat"/>
+		</if>
+		<exec>
+			<env key="JAVA_HOME" value="[[[export.javaPath]]]"/>
+			<env key="ANDROID_HOME" value="[[[export.androidPath]]]"/>
+			[[[local.gradleCmd]]] assembleRelease
+		</exec>
+		<cp src="app/build/outputs/apk/app-release[[[local.isUnsigned]]].apk" dst="../[[[project.namews]]][[[local.isUnsigned]]].apk"/>
+		<cd>..</cd>
+		<rmdir>tmp</rmdir>
+	</rules>
+</export>

@@ -1,12 +1,16 @@
+#include <stdio.h>
 #include <windows.h>
 #include <vector>
 #include <string>
-
 #include <stdlib.h>
+
+#include "luaapplication.h"
+#include <application.h>
 
 extern HWND hwndcopy;
 extern char commandLine[];
-extern int dxChrome,dyChrome;
+// extern int dxChrome,dyChrome;
+extern LuaApplication *application_;
 
 static RECT winRect;
 static bool isFullScreen=false;
@@ -46,17 +50,60 @@ bool canOpenUrl(const char *url)
 
 std::string getLocale()
 {
-  return "placeholder";
+  TCHAR szBuff1[10], szBuff2[10]; 
+
+  LCID lcid = GetUserDefaultLCID(); 
+
+  GetLocaleInfo(lcid, LOCALE_SISO639LANGNAME, szBuff1, 10); 
+  GetLocaleInfo(lcid, LOCALE_SISO3166CTRYNAME, szBuff2, 10); 
+
+  strcat(szBuff1,"_");
+  strcat(szBuff1,szBuff2);
+
+  return szBuff1;
 }
 
 std::string getLanguage()
 {
-  return "placeholder";
+  TCHAR szBuff[10]; 
+  LCID lcid = GetUserDefaultLCID(); 
+  GetLocaleInfo(lcid, LOCALE_SISO639LANGNAME, szBuff, 10); 
+  return szBuff;
 }
 
 void setWindowSize(int width, int height)
 {
-  SetWindowPos(hwndcopy,HWND_TOP,0,0,width+dxChrome,height+dyChrome,SWP_NOMOVE);
+  printf("setWindowSize: %d x %d. hwndcopy=%p\n",width,height,hwndcopy);
+
+  Orientation app_orient=application_->orientation();
+
+  if (app_orient==ePortrait || app_orient==ePortraitUpsideDown){
+    RECT rect;
+    rect.left=0;
+    rect.top=0;
+    rect.right=width;
+    rect.bottom=height;
+
+    AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
+
+    SetWindowPos(hwndcopy,HWND_TOP,0,0,rect.right-rect.left, rect.bottom-rect.top, SWP_NOMOVE);
+    printf("SetWindowPos: %d %d\n",rect.right-rect.left, rect.bottom-rect.top);
+  }
+  else {
+    RECT rect;
+    rect.left=0;
+    rect.top=0;
+    rect.right=height;
+    rect.bottom=width;
+
+    AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
+
+    SetWindowPos(hwndcopy,HWND_TOP,0,0,rect.right-rect.left, rect.bottom-rect.top, SWP_NOMOVE);
+    printf("SetWindowPos: %d %d\n",rect.right-rect.left, rect.bottom-rect.top);
+  }
+
+  application_->setHardwareOrientation(app_orient);   // previously eFixed
+  application_->getApplication()->setDeviceOrientation(app_orient);
 }
 
 void setFullScreen(bool fullScreen)
@@ -65,7 +112,7 @@ void setFullScreen(bool fullScreen)
   if (fullScreen==isFullScreen) return;
 
   if (fullScreen){
-    GetWindowRect(hwndcopy,&winRect);
+    GetWindowRect(hwndcopy,&winRect);    // store the current windows rectangle
 
     int horizontal,vertical;
     GetDesktopResolution(horizontal,vertical);
@@ -83,6 +130,10 @@ void vibrate(int ms)
 
 void setKeepAwake(bool awake)
 {
+}
+
+bool setKeyboardVisibility(bool visible){
+	return false;
 }
 
 static int s_fps = 60;

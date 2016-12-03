@@ -39,6 +39,7 @@ static jobjectArray toJava(JNIEnv *env, const ghttp_Header *headers)
 class HTTPManager
 {
 public:
+	static HTTPManager* s_manager;
 	HTTPManager()
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -56,6 +57,7 @@ public:
 		closeId_ = env->GetStaticMethodID(javaNativeBridge_, "ghttp_Close", "(J)V");
 		closeAllId_ = env->GetStaticMethodID(javaNativeBridge_, "ghttp_CloseAll", "()V");
 		ignoreSslErrorsId_ = env->GetStaticMethodID(javaNativeBridge_, "ghttp_IgnoreSslErrors", "()V");
+		setProxyId_ = env->GetStaticMethodID(javaNativeBridge_, "ghttp_SetProxy", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
 
 		env->CallStaticVoidMethod(javaNativeBridge_, initId_);
 	}
@@ -71,6 +73,21 @@ public:
 	{
 		JNIEnv *env = g_getJNIEnv();
 		env->CallStaticVoidMethod(javaNativeBridge_, ignoreSslErrorsId_);
+	}
+
+	void SetProxy(const char *host,int port,const char *user,const char *pass)
+	{
+		JNIEnv *env = g_getJNIEnv();
+
+		jstring jhost = env->NewStringUTF(host);
+		jstring juser = env->NewStringUTF(user);
+		jstring jpass = env->NewStringUTF(pass);
+
+		env->CallStaticVoidMethod(javaNativeBridge_, setProxyId_, jhost, (jint)port, juser, jpass);
+
+		env->DeleteLocalRef(jhost);
+		env->DeleteLocalRef(juser);
+		env->DeleteLocalRef(jpass);
 	}
 
 	g_id Get(const char *url, const ghttp_Header *headers, gevent_Callback callback, void *udata)
@@ -215,6 +232,22 @@ public:
 		void *udata;	
 	};
 	
+	// This callback intercept HTTP finish events, calls real handler, then remove this request from the map
+	void callback(int type, void *event, void *udata)
+	{
+		g_id id=(g_id)udata;
+		CallbackElement &element = map_[id];
+		if (element.callback)
+			element.callback(type,event,element.udata);
+		map_.erase(id);
+	}
+
+	static void callback_s(int type, void *event, void *udata)
+	{
+		if (s_manager)
+			s_manager->callback(type,event,udata);
+	}
+
 	void ghttp_responseCallback(JNIEnv *env, jlong id, jbyteArray jdata, jint size, jint statusCode, jint hdrCount, jint hdrSize)
 	{
 		if (map_.find(id) == map_.end())
@@ -244,11 +277,9 @@ public:
 		event->headers[hdrn].name=NULL;
 		event->headers[hdrn].value=NULL;
 
-		gevent_EnqueueEvent(id, element.callback, GHTTP_RESPONSE_EVENT, event, 1, element.udata);
+		gevent_EnqueueEvent(id, callback_s, GHTTP_RESPONSE_EVENT, event, 1, (void *)id);
 
 		env->ReleasePrimitiveArrayCritical(jdata, data, 0);
-			
-		map_.erase(id);
 	}
 	
 	void ghttp_errorCallback(JNIEnv *env, jlong id)
@@ -260,9 +291,7 @@ public:
 
         ghttp_ErrorEvent *event = (ghttp_ErrorEvent*)malloc(sizeof(ghttp_ErrorEvent));
 
-        gevent_EnqueueEvent(id, element.callback, GHTTP_ERROR_EVENT, event, 1, element.udata);
-
-		map_.erase(id);
+        gevent_EnqueueEvent(id, callback_s, GHTTP_ERROR_EVENT, event, 1, (void *)id);
 	}
 	
 	void ghttp_progressCallback(JNIEnv *env, jlong id, jint bytesLoaded, jint bytesTotal)
@@ -291,6 +320,7 @@ private:
 	jmethodID closeId_;
 	jmethodID closeAllId_;
 	jmethodID ignoreSslErrorsId_;
+	jmethodID setProxyId_;
 
 	std::map<g_id, CallbackElement> map_;
 };
@@ -317,53 +347,58 @@ void Java_com_giderosmobile_android_player_HTTPManager_nativeghttpProgressCallba
 
 }
 
-static HTTPManager* s_manager = NULL;
+HTTPManager* HTTPManager::s_manager = NULL;
 
 extern "C" {
 void ghttp_IgnoreSSLErrors()
 {
-	s_manager->IgnoreSslErrors();
+	HTTPManager::s_manager->IgnoreSslErrors();
+}
+
+void ghttp_SetProxy(const char *host, int port, const char *user, const char *pass)
+{
+	HTTPManager::s_manager->SetProxy(host, port, user, pass);
 }
 
 void ghttp_Init()
 {
-	s_manager = new HTTPManager();
+	HTTPManager::s_manager = new HTTPManager();
 }
 
 void ghttp_Cleanup()
 {
-	delete s_manager;
-	s_manager = NULL;
+	delete HTTPManager::s_manager;
+	HTTPManager::s_manager = NULL;
 }
 
 g_id ghttp_Get(const char* url, const ghttp_Header *header, gevent_Callback callback, void* udata)
 {
-	return s_manager->Get(url, header, callback, udata);
+	return HTTPManager::s_manager->Get(url, header, callback, udata);
 }
 
 g_id ghttp_Post(const char* url, const ghttp_Header *header, const void* data, size_t size, gevent_Callback callback, void* udata)
 {
-	return s_manager->Post(url, header, data, size, callback, udata);
+	return HTTPManager::s_manager->Post(url, header, data, size, callback, udata);
 }
 
 g_id ghttp_Delete(const char* url, const ghttp_Header *header, gevent_Callback callback, void* udata)
 {
-	return s_manager->Delete(url, header, callback, udata);
+	return HTTPManager::s_manager->Delete(url, header, callback, udata);
 }
 
 g_id ghttp_Put(const char* url, const ghttp_Header *header, const void* data, size_t size, gevent_Callback callback, void* udata)
 {
-	return s_manager->Put(url, header, data, size, callback, udata);
+	return HTTPManager::s_manager->Put(url, header, data, size, callback, udata);
 }
 
 void ghttp_Close(g_id id)
 {
-	s_manager->Close(id);
+	HTTPManager::s_manager->Close(id);
 }
 
 void ghttp_CloseAll()
 {
-	s_manager->CloseAll();
+	HTTPManager::s_manager->CloseAll();
 }
 
 }

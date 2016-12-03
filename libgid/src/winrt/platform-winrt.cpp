@@ -113,6 +113,10 @@ void setKeepAwake(bool awake)
 	}
 }
 
+bool setKeyboardVisibility(bool visible){
+	return false;
+}
+
 static int s_fps = 60;
 
 extern "C" {

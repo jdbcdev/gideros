@@ -2,12 +2,14 @@
 #include "application.h"
 #include "sprite.h"
 #include "ogl.h"
+#include <gimage.h>
 
-GRenderTarget::GRenderTarget(Application *application, int width, int height, Filter filter) :
+GRenderTarget::GRenderTarget(Application *application, int width, int height, Filter filter, Wrap wrap) :
     TextureBase(application)
 {
     TextureParameters parameters;
     parameters.filter = filter;
+    parameters.wrap = wrap;
     data = application->getTextureManager()->createRenderTarget(width, height, parameters);
 
     sizescalex = 1;
@@ -20,20 +22,7 @@ GRenderTarget::~GRenderTarget()
 {
 }
 
-void GRenderTarget::clear(unsigned int color, float a)
-{
-	ShaderBuffer *fbo=gtexture_BindRenderTarget(gtexture_RenderTargetGetFBO(data->gid));
-	ShaderEngine::Engine->setViewport(0, 0, data->width, data->height);
-
-    float r = ((color >> 16) & 0xff) / 255.f;
-    float g = ((color >> 8) & 0xff) / 255.f;
-    float b = (color & 0xff) / 255.f;
-	ShaderEngine::Engine->clearColor(r * a, g * a, b * a, a);
-
-    gtexture_BindRenderTarget(fbo);
-}
-
-void GRenderTarget::draw(const Sprite *sprite)
+ShaderBuffer *GRenderTarget::prepareForDraw()
 {
     ShaderEngine::Engine->reset();
     ShaderBuffer *fbo=gtexture_RenderTargetGetFBO(data->gid);
@@ -53,8 +42,54 @@ void GRenderTarget::draw(const Sprite *sprite)
 
 	ShaderEngine::Engine->setProjection(projection);
 
-    CurrentTransform currentTransform;
-    ((Sprite*)sprite)->draw(currentTransform, 0, 0, data->width, data->height);
+	return oldfbo;
+}
+
+void GRenderTarget::clear(unsigned int color, float a, int x, int y, int w, int h)
+{
+	ShaderBuffer *oldfbo=NULL;
+
+	if ((w>=0)&&(h>=0))
+	{
+		oldfbo=prepareForDraw();
+		ShaderEngine::Engine->pushClip(x,y,w,h);
+	}
+	else
+	{
+		oldfbo=gtexture_BindRenderTarget(gtexture_RenderTargetGetFBO(data->gid));
+		ShaderEngine::Engine->setViewport(0, 0, data->width, data->height);
+	}
+
+    float r = ((color >> 16) & 0xff) / 255.f;
+    float g = ((color >> 8) & 0xff) / 255.f;
+    float b = (color & 0xff) / 255.f;
+	ShaderEngine::Engine->clearColor(r * a, g * a, b * a, a);
+	if ((w>=0)&&(h>=0))
+		ShaderEngine::Engine->popClip();
 
     gtexture_BindRenderTarget(oldfbo);
+}
+
+void GRenderTarget::draw(const Sprite *sprite, const Matrix transform)
+{
+	ShaderBuffer *oldfbo=prepareForDraw();
+
+    ((Sprite*)sprite)->draw(transform, 0, 0, data->width, data->height);
+
+    gtexture_BindRenderTarget(oldfbo);
+}
+
+void GRenderTarget::getPixels(int x,int y,int w,int h,void *buffer)
+{
+    ShaderBuffer *fbo=gtexture_RenderTargetGetFBO(data->gid);
+    fbo->readPixels(x,y,w,h, ShaderTexture::FMT_RGBA, ShaderTexture::PK_UBYTE, buffer);
+}
+
+int GRenderTarget::save(const char *filename,int x,int y,int w,int h)
+{
+	unsigned char *buffer=(unsigned char *) malloc(w*h*4);
+	getPixels(x,y,w,h,buffer);
+	int ret=gimage_saveImage(filename,w,h,buffer);
+	free(buffer);
+	return ret;
 }

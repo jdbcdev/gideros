@@ -43,16 +43,20 @@
 extern "C" {
   void g_setFps(int);
   int g_getFps();
+  void setWin32Stuff(HINSTANCE hInst, HWND hwnd);
 }
 
 #define ID_TIMER   1
 
-char commandLine[256];
-int dxChrome,dyChrome;
 HWND hwndcopy;
 
-static LuaApplication *application_;
-static int g_windowWidth;    // width if window was in portrait mode
+char commandLine[256];
+// int dxChrome,dyChrome;
+PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
+PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT;
+LuaApplication *application_;
+
+static int g_windowWidth;    // width if window was in portrait mode [used only to communicate between loadProperties and WM_CREATE]
 static int g_windowHeight;   // height if window was in portrait mode > windowWidth
 static bool g_portrait, drawok;
 static bool use_timer=false;
@@ -212,7 +216,7 @@ void EnableOpenGL(HWND hWnd, HDC *hDC, HGLRC *hRC)
   *hRC = wglCreateContext( *hDC );
   wglMakeCurrent( *hDC, *hRC );
 
-  if (not use_timer) {
+  if (! use_timer) {
     PFNWGLGETEXTENSIONSSTRINGEXTPROC _wglGetExtensionsStringEXT = NULL;
 
     _wglGetExtensionsStringEXT = (PFNWGLGETEXTENSIONSSTRINGEXTPROC) wglGetProcAddress("wglGetExtensionsStringEXT");
@@ -221,24 +225,23 @@ void EnableOpenGL(HWND hWnd, HDC *hDC, HGLRC *hRC)
     if (strstr(_wglGetExtensionsStringEXT(), "WGL_EXT_swap_control") == NULL)
     {
       printf("Extension not found WGL_EXT_swap_control\n");
-      exit(1);
     }
 
-    PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT"); 
+    wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT"); 
     
     if (wglSwapIntervalEXT == NULL){
-      printf("Error, no wglSwapIntervalEXT\n");
-      exit(1);
+      printf("No wglSwapIntervalEXT, reverting to timer events\n");
+      use_timer=true;
+      return;
     }
-    wglSwapIntervalEXT(vsyncVal);
+    //    wglSwapIntervalEXT(vsyncVal);
 
-    PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = (PFNWGLGETSWAPINTERVALEXTPROC) wglGetProcAddress("wglGetSwapIntervalEXT");
+    wglGetSwapIntervalEXT = (PFNWGLGETSWAPINTERVALEXTPROC) wglGetProcAddress("wglGetSwapIntervalEXT");
 
     if (wglGetSwapIntervalEXT == NULL){
-      printf("Error, no wglGetSwapIntervalEXT\n");
-      exit(1);
+      printf("No wglGetSwapIntervalEXT\n");
     }
-    printf("wglGetSwapIntervalEXT=%d\n",wglGetSwapIntervalEXT());
+    //    printf("wglGetSwapIntervalEXT=%d\n",wglGetSwapIntervalEXT());
 
   }
 
@@ -336,6 +339,8 @@ void loadProperties()
   buffer >> properties.touchToMouse;
   buffer >> properties.mouseTouchOrder;
 
+  //  properties.scaleMode=3; (letterbox) for testing
+
   printf("properties components\n");
   printf("logicalWidth, logicalHeight, orientation, scaleMode=%d %d %d %d\n",
 	 properties.logicalWidth, properties.logicalHeight, 
@@ -373,8 +378,8 @@ void loadProperties()
   application_->setResolution(g_windowWidth * contentScaleFactor, 
 			      g_windowHeight * contentScaleFactor);
 
-  application_->setHardwareOrientation(hardwareOrientation);
-  application_->getApplication()->setDeviceOrientation(deviceOrientation);
+  application_->setHardwareOrientation(hardwareOrientation);                     // previously eFixed
+  application_->getApplication()->setDeviceOrientation(deviceOrientation);     // previously eFixed
   application_->setOrientation((Orientation)properties.orientation);
   application_->setLogicalDimensions(properties.logicalWidth, properties.logicalHeight);
   application_->setLogicalScaleMode((LogicalScaleMode)properties.scaleMode);
@@ -405,6 +410,8 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
       printf("glewInit failed to initialise!\n");
       exit(1);
     }
+
+    hwndcopy=hwnd;                  // for platform-win32
 
     // gpath & gvfs
     gpath_init();
@@ -470,18 +477,44 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
     application_->setPrintFunc(printFunc);
     
     loadProperties();
+
+    //    GetClientRect(hwnd,&clientRect);
+    //    GetWindowRect(hwnd,&winRect);
+
+    //    dxChrome=winRect.right-winRect.left-(clientRect.right-clientRect.left);
+    //    dyChrome=winRect.bottom-winRect.top-(clientRect.bottom-clientRect.top);
+
+    if (g_portrait){
+      RECT rect;
+      rect.top=0;
+      rect.left=0;
+      rect.right=g_windowWidth;
+      rect.bottom=g_windowHeight;
+
+      printf("WM_CREATE: portrait input rect = %d %d\n",rect.right,rect.bottom);
+      AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
+      printf("adjusted rect = %d %d %d %d\n",rect.left,rect.top,rect.right,rect.bottom);
+
+      //      SetWindowPos(hwnd,HWND_TOP,0,0,g_windowWidth+dxChrome+13,g_windowHeight+dyChrome+13,SWP_NOMOVE);
+      SetWindowPos(hwnd,HWND_TOP,0,0, rect.right-rect.left, rect.bottom-rect.top, SWP_NOMOVE);
+    }
+    else {
+      RECT rect;
+      rect.left=0;
+      rect.top=0;
+      rect.right=g_windowHeight;
+      rect.bottom=g_windowWidth;
+
+      printf("WM_CREATE landscape input rect = %d %d\n",rect.right,rect.bottom);
+      AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
+      printf("adjusted rect = %d %d %d %d\n",rect.left,rect.top,rect.right,rect.bottom);
+
+//      SetWindowPos(hwnd,HWND_TOP,0,0,g_windowHeight+dxChrome+14,g_windowWidth+dyChrome+14,SWP_NOMOVE);
+      SetWindowPos(hwnd,HWND_TOP,0,0, rect.right-rect.left, rect.bottom-rect.top, SWP_NOMOVE);
+    }
+
     loadLuaFiles();
-
-    GetClientRect(hwnd,&clientRect);
-    GetWindowRect(hwnd,&winRect);
-
-    dxChrome=winRect.right-winRect.left-(clientRect.right-clientRect.left);
-    dyChrome=winRect.bottom-winRect.top-(clientRect.bottom-clientRect.top);
-
-    if (g_portrait)
-      SetWindowPos(hwnd,HWND_TOP,0,0,g_windowWidth+dxChrome,g_windowHeight+dyChrome,SWP_NOMOVE);
-    else
-      SetWindowPos(hwnd,HWND_TOP,0,0,g_windowHeight+dxChrome,g_windowWidth+dyChrome,SWP_NOMOVE);
+    printf("Loaded Lua files\n");
 
     return 0;
   }
@@ -490,28 +523,22 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
     int width=LOWORD(lParam);
     int height=HIWORD(lParam);
 
-    Orientation hardwareOrientation;
-    Orientation deviceOrientation;
+    //    printf("WM_SIZE: %d x %d\n",width,height);
 
-    if (width<height){
-      g_windowWidth=width;
-      g_windowHeight=height;
-      hardwareOrientation = ePortrait;
-      deviceOrientation = ePortrait;
+    int windowWidth, windowHeight;
+
+    if (application_->orientation()==ePortrait || application_->orientation()==ePortraitUpsideDown){              // previously width < height
+      windowWidth=width;
+      windowHeight=height;
     }
     else {
-      g_windowWidth=height;
-      g_windowHeight=width;
-      hardwareOrientation = eLandscapeLeft;
-      deviceOrientation = eLandscapeLeft;
+      windowWidth=height;
+      windowHeight=width;
     }
 
     float contentScaleFactor = 1;
-    application_->setResolution(g_windowWidth  * contentScaleFactor, 
-				g_windowHeight * contentScaleFactor);
-
-    application_->setHardwareOrientation(hardwareOrientation);
-    application_->getApplication()->setDeviceOrientation(deviceOrientation);
+    application_->setResolution(windowWidth  * contentScaleFactor, 
+				windowHeight * contentScaleFactor);
     
     return 0;
   }
@@ -666,19 +693,18 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
   HWND        hwnd ;
   MSG         msg ;
   WNDCLASSEX  wndclass ;
-
-  strncpy(commandLine,szCmdLine,255);
+  int ret;
 
   printf("szCmdLine=%s\n",szCmdLine);
-  printf("commandLine=%s\n",commandLine);
 
-  sscanf(szCmdLine,"%d",&vsyncVal);
-  printf("vsyncVal=%d\n",vsyncVal);
-
-  if (vsyncVal==0)
+  if (strcmp(szCmdLine,"timer")==0){
+    printf("Using timer as requested\n");
     use_timer=true;
-  else
+  }
+  else {
+    printf("Will use VSYNC if available\n");
     use_timer=false;
+  }
 
   wndclass.cbSize        = sizeof (wndclass) ;
   wndclass.style         = CS_HREDRAW | CS_VREDRAW ;
@@ -707,7 +733,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		       hInstance,               // program instance handle
 		       NULL) ;		             // creation parameters
 
-  hwndcopy=hwnd;
+  setWin32Stuff(hInstance,hwnd);
 
   // ----------------------------------------------------------------------
   // Create window
@@ -716,20 +742,49 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
   ShowWindow (hwnd, iCmdShow) ;
   //  UpdateWindow (hwnd) ;
 
+  int fps;
   if (use_timer){
 
-    SetTimer(hwnd, ID_TIMER, 0, NULL);
+    fps=-1;
 
     while (GetMessage (&msg, NULL, 0, 0)) {
+
+      if (g_getFps() != fps){
+	fps=g_getFps();
+	if (fps==30)
+	  SetTimer(hwnd, ID_TIMER, 30, NULL);
+	else if (fps==60)
+	  SetTimer(hwnd, ID_TIMER, 10, NULL);   // 10 is the minimum, actually more like 16 ms.
+	else {
+	  printf("Illegal FPS (timer): %d\n",fps);
+	  exit(1);
+	}
+      }
+
       TranslateMessage (&msg) ;
       DispatchMessage (&msg) ;
     }
   }
   else {
 
+    fps=-1;
+
     drawok=true;
 
     while (TRUE) {
+
+      if (g_getFps() != fps){
+	fps=g_getFps();
+	if (fps==30)
+	  wglSwapIntervalEXT(2);
+	else if (fps==60)
+	  wglSwapIntervalEXT(1);
+	else {
+	  printf("Illegal FPS (VSYNC): %d\n",fps);
+	  exit(1);
+	}
+      }
+
       if (PeekMessage (&msg, NULL, 0, 0, PM_REMOVE)) {
 	if (msg.message == WM_QUIT){
 	  printf("WM_QUIT message received\n");

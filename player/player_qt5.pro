@@ -14,7 +14,7 @@ win32{
     LIBS += -lopengl32 \
         -L"../libgid/external/zlib-1.2.8/build/mingw48_32" -lzlibx\
         -L"../libgid/external/glew-1.10.0/lib/mingw48_32" -lglew32\
-        -lwsock32\
+        -lws2_32\
         -liphlpapi\
         -L"../libgid/release" -lgid\
         -L"../libgvfs/release" -lgvfs\
@@ -32,6 +32,7 @@ macx {
         -framework OpenAL\
         -framework OpenGL\
         -framework CoreFoundation\
+        -framework IOKit\
         -L"../libgid" -lgid\
         -L"../libgvfs" -lgvfs\
         -L"../lua" -llua\
@@ -45,7 +46,7 @@ macx {
     QMAKE_CXXFLAGS_RELEASE = $$QMAKE_CXXFLAGS_RELEASE_WITH_DEBUGINFO
     QMAKE_OBJECTIVE_CFLAGS_RELEASE =  $$QMAKE_OBJECTIVE_CFLAGS_RELEASE_WITH_DEBUGINFO
     QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
-} else {
+} 
 
 unix:!macx {
     TARGET = GiderosPlayer
@@ -64,7 +65,6 @@ unix:!macx {
     QMAKE_CXXFLAGS += -std=gnu++11
 }
 
-}
 
 TEMPLATE = app
 
@@ -75,6 +75,7 @@ INCLUDEPATH += \
     ../2dsg \
     ../2dsg/gfxbackends \
     ../2dsg/gfxbackends/gl2 \
+    ../2dsg/paths \
     ../libsound \
     ../libnetwork \
     ../luabinding \
@@ -107,6 +108,7 @@ SOURCES += \
     $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/*.cpp) \
     $$files(../luabinding/*.cpp)	../luabinding/tlsf.c \
     $$files(../libnetwork/*.cpp) \
+    ../libgid/src/aes.c \
     ../libgid/src/md5.c \
     ../libgid/src/platformutil.cpp \
     ../libgid/src/utf8.c \
@@ -116,6 +118,7 @@ SOURCES += \
     $$files(../2dsg/*.cpp) \
     $$files(../2dsg/gfxbackends/*.cpp) \
     $$files(../2dsg/gfxbackends/gl2/*.cpp) \
+    $$files(../2dsg/paths/*.cpp) ../2dsg/paths/ft-path.c ../2dsg/paths/svg-path.c \
     $$files(../libpvrt/*.cpp) \
     $$files(../external/glu/libtess/*.c) \
     "../external/minizip-1.1/source/ioapi.c" \

@@ -33,6 +33,9 @@ static void loadPlugins(){
     #if defined(Q_OS_MAC)
         dir.cd("../../Plugins");
         QStringList files = dir.entryList(QStringList() << "*.dylib");
+    #elif defined(Q_OS_LINUX)
+        dir.cd("Plugins");
+        QStringList files = dir.entryList(QStringList() << "*.so");
     #else
         dir.cd("Plugins");
         QStringList files = dir.entryList(QStringList() << "*.dll");
@@ -55,6 +58,7 @@ int main(int argc, char *argv[]){
     QCoreApplication::setOrganizationName(Constants::ORGANIZATION_NAME);
     QCoreApplication::setOrganizationDomain(Constants::ORGANIZATION_DOMAIN);
     QCoreApplication::setApplicationName(Constants::PLAYER_APPLICATION_NAME);
+    QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
 
 	QSettings::setDefaultFormat(QSettings::IniFormat);
 

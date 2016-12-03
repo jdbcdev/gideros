@@ -44,6 +44,10 @@
 #include "rendertargetbinder.h"
 #include "stageorientationevent.h"
 #include "shaderbinder.h"
+#include "path2dbinder.h"
+#include "viewportbinder.h"
+#include "pixelbinder.h"
+#include "particlesbinder.h"
 
 #include "keys.h"
 
@@ -65,6 +69,8 @@
 #include <gapplication.h>
 
 #include "tlsf.h"
+
+std::deque<LuaApplication::AsyncLuaTask> LuaApplication::tasks_;
 
 const char* LuaApplication::fileNameFunc_s(const char* filename, void* data)
 {
@@ -219,6 +225,72 @@ static int get_base(lua_State* L){
 
 void registerModules(lua_State* L);
 
+double LuaApplication::meanFrameTime_; //Average frame duration
+double LuaApplication::meanFreeTime_; //Average time available for async tasks
+unsigned long LuaApplication::frameCounter_; //Global frame counter
+
+int LuaApplication::Core_frameStatistics(lua_State* L)
+{
+	lua_newtable(L);
+	lua_pushnumber(L,meanFrameTime_);
+	lua_setfield(L,-2,"meanFrameTime");
+	lua_pushnumber(L,meanFreeTime_);
+	lua_setfield(L,-2,"meanFreeTime");
+	lua_pushinteger(L,frameCounter_);
+	lua_setfield(L,-2,"frameCounter");
+	return 1;
+}
+
+int LuaApplication::Core_yield(lua_State* L)
+{
+	for (std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();it!=LuaApplication::tasks_.end();++it)
+		if ((*it).L==L)
+		{
+			if (lua_isboolean(L,1))
+			{
+				if (lua_toboolean(L,1))
+				{
+					(*it).skipFrame=true;
+					(*it).autoYield=false;
+				}
+				else
+				{
+					(*it).autoYield=true;
+				}
+			}
+			else
+			{
+				double sleep=luaL_optnumber(L,1,0);
+				(*it).sleepTime=iclock()+sleep;
+			}
+		}
+	return lua_yield(L,0);
+}
+
+
+int LuaApplication::Core_asyncCall(lua_State* L)
+{
+	LuaApplication::AsyncLuaTask t;
+	lua_State *T=lua_newthread(L);
+	lua_pushvalue(L,-1);
+	t.taskRef=luaL_ref(L,LUA_REGISTRYINDEX);
+	t.L=T;
+	t.sleepTime=0;
+	t.autoYield=true;
+	int nargs=lua_gettop(L);
+	luaL_loadstring(T,"local function _start_(fn,...) coroutine.yield() fn(...) end return _start_(...)");
+	lua_xmove(L,T,nargs);
+	if (lua_resume(T,nargs)!=LUA_YIELD)
+	{
+		lua_xmove(T,L,1);
+		lua_error(L);
+	}
+	else
+		LuaApplication::tasks_.push_back(t);
+	return 1;
+}
+
+
 static int bindAll(lua_State* L)
 {
 	Application* application = static_cast<Application*>(lua_touserdata(L, 1));
@@ -271,7 +343,7 @@ static int bindAll(lua_State* L)
 	FontBinder fontBinder(L);
 	TTFontBinder ttfontBinder(L);
 	TextFieldBinder textFieldBinder(L);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     AccelerometerBinder accelerometerBinder(L);
 #endif
 	Box2DBinder2 box2DBinder2(L);
@@ -281,7 +353,7 @@ static int bindAll(lua_State* L)
 	ShapeBinder shapeBinder(L);
 	MovieClipBinder movieClipBinder(L);
     UrlLoaderBinder urlLoaderBinder(L);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	GeolocationBinder geolocationBinder(L);
 	GyroscopeBinder gyroscopeBinder(L);
 #endif
@@ -291,6 +363,10 @@ static int bindAll(lua_State* L)
     AudioBinder audioBinder(L);
     RenderTargetBinder renderTargetBinder(L);
     ShaderBinder shaderBinder(L);
+    Path2DBinder path2DBinder(L);
+    ViewportBinder viewportBinder(L);
+    PixelBinder pixelbinder(L);
+    ParticlesBinder particlesbinder(L);
 
 	PluginManager& pluginManager = PluginManager::instance();
 	for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
@@ -348,7 +424,6 @@ static int bindAll(lua_State* L)
 
 #include "property.c.in"
 #include "texturepack.c.in"
-#include "sprite.c.in"
 #include "compatibility.c.in"
 
 	lua_newtable(L);
@@ -486,6 +561,16 @@ static int bindAll(lua_State* L)
 	lua_setfield(L, -2, "timer");
 	lua_pop(L, 1);
 
+	//coroutines helpers
+	lua_getglobal(L, "Core");
+	lua_pushcfunction(L, LuaApplication::Core_asyncCall);
+	lua_setfield(L, -2, "asyncCall");
+	lua_pushcfunction(L, LuaApplication::Core_yield);
+	lua_setfield(L, -2, "yield");
+	lua_pushcfunction(L, LuaApplication::Core_frameStatistics);
+	lua_setfield(L, -2, "frameStatistics");
+	lua_pop(L, 1);
+
 	// register collectgarbagelater
 //	lua_pushcfunction(L, ::collectgarbagelater);
 //	lua_setglobal(L, "collectgarbagelater");
@@ -515,7 +600,7 @@ LuaApplication::LuaApplication(void)
 	height_ = 480;
 	scale_ = 1;
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     ginput_addCallback(callback_s, this);
 #endif
     gapplication_addCallback(callback_s, this);
@@ -563,6 +648,11 @@ void LuaApplication::callback(int type, void *event)
         ginput_KeyEvent *event2 = (ginput_KeyEvent*)event;
         application_->keyUp(event2->keyCode, event2->realCode);
     }
+    else if (type == GINPUT_KEY_CHAR_EVENT)
+    {
+        ginput_KeyEvent *event2 = (ginput_KeyEvent*)event;
+        application_->keyChar(event2->charCode);
+    }
     else if (type == GINPUT_TOUCH_BEGIN_EVENT)
     {
         ginput_TouchEvent *event2 = (ginput_TouchEvent*)event;
@@ -590,11 +680,18 @@ void LuaApplication::callback(int type, void *event)
             if (pluginManager.plugins[i].foreground)
                 pluginManager.plugins[i].suspend(L);
 
+        TimerContainer *timerContainer = application_->getTimerContainer();
+        timerContainer->suspend();
+
         Event event(Event::APPLICATION_SUSPEND);
         application_->broadcastEvent(&event);
     }
     else if (type == GAPPLICATION_RESUME_EVENT)
     {
+
+        TimerContainer *timerContainer = application_->getTimerContainer();
+        timerContainer->resume();
+
         PluginManager& pluginManager = PluginManager::instance();
         for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
             if (pluginManager.plugins[i].foreground)
@@ -747,7 +844,7 @@ static void *g_realloc(void *ptr, size_t osize, size_t size)
     return p;
 }
 
-#if 0
+#if EMSCRIPTEN //TLSF has issues with emscripten, disable til I know more...
 static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
     (void)ud;
@@ -845,7 +942,7 @@ void LuaApplication::loadFile(const char* filename, GStatus *status)
 LuaApplication::~LuaApplication(void)
 {
 //	Referenced::emptyPool();
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     ginput_removeCallback(callback_s, this);
 #endif
     gapplication_removeCallback(callback_s, this);
@@ -869,6 +966,11 @@ void LuaApplication::deinitialize()
 //	SoundContainer::instance().stopAllSounds();
 
 	application_->releaseView();
+
+	//Release all async tasks
+	for (std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();it!=LuaApplication::tasks_.end();++it)
+		luaL_unref(L,LUA_REGISTRYINDEX,(*it).taskRef);
+	tasks_.clear();
 
 	PluginManager& pluginManager = PluginManager::instance();
 	for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
@@ -944,8 +1046,35 @@ void LuaApplication::tick(GStatus *status)
     application_->deleteAutounrefPool(pool);
 }
 
+static double yieldHookLimit;
+
+static void yieldHook(lua_State *L,lua_Debug *ar)
+{
+	//glog_i("YieldHook:%f %f\n",iclock(),yieldHookLimit);
+	if (ar->event == LUA_HOOKRET)
+	{
+		if (iclock() >= yieldHookLimit)
+			lua_sethook(L, yieldHook, LUA_MASKCOUNT, 1);
+	}
+	else if (ar->event == LUA_HOOKCOUNT)
+	{
+		if (iclock() >= yieldHookLimit)
+		{
+			if (lua_canyield(L))
+				lua_yield(L, 0);
+			else
+				lua_sethook(L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT, 1000);
+		}
+	}
+}
+
 void LuaApplication::enterFrame(GStatus *status)
 {
+	if (!frameStartTime_)
+	    frameStartTime_=iclock();
+
+	frameCounter_++;
+
     void *pool = application_->createAutounrefPool();
 
 	StackChecker checker(L, "enterFrame", 0);
@@ -963,17 +1092,94 @@ void LuaApplication::enterFrame(GStatus *status)
         lua_pop(L, 1);
     }
 
+    //Schedule Tasks, at least one task should be runn no matter if there is enough time or not
+	if ((meanFrameTime_ >= 0.01)&&(meanFrameTime_<=0.1)) //If frame rate is between 10Hz and 100Hz
+	{
+		double taskStart = iclock();
+		double timeLimit = taskStart + meanFreeTime_*0.9; //Limit ourselves t 90% of free time
+		yieldHookLimit = timeLimit;
+		int loops = 0;
+		while (!tasks_.empty())
+		{
+			AsyncLuaTask t = tasks_.front();
+			tasks_.pop_front();
+			tasks_.push_back(t);
+			if ((t.sleepTime > iclock()) || (t.skipFrame))
+			{
+				loops++;
+				if (loops > tasks_.size())
+					break;
+				continue;
+			}
+			loops = 0;
+			int res = 0;
+			if (t.autoYield)
+			{
+				lua_sethook(t.L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT, 1000);
+				res = lua_resume(t.L, 0);
+				lua_sethook(t.L, yieldHook, 0, 1000);
+			}
+			else
+				res = lua_resume(t.L, 0);
+			if (res == LUA_YIELD)
+			{ /* Yielded: Do nothing */
+			}
+			else if (res != 0)
+			{
+				tasks_.pop_back(); //Error: Dequeue
+				if (exceptionsEnabled_ == true)
+				{
+					if (status)
+						*status = GStatus(1, lua_tostring(t.L, -1));
+				}
+				lua_pop(t.L, 1);
+				luaL_unref(L, LUA_REGISTRYINDEX, t.taskRef);
+				break;
+			}
+			else
+			{
+				tasks_.pop_back(); //Ended: Dequeue
+				//Drop any return args
+				lua_settop(t.L, 0);
+				luaL_unref(L, LUA_REGISTRYINDEX, t.taskRef);
+			}
+			if (iclock() > timeLimit)
+				break;
+		}
+
+		for (std::deque<LuaApplication::AsyncLuaTask>::iterator it = LuaApplication::tasks_.begin(); it != LuaApplication::tasks_.end(); ++it)
+			(*it).skipFrame = false;
+		taskFrameTime_ = iclock() - taskStart;
+	}
+	else
+		taskFrameTime_ = 0;
     application_->deleteAutounrefPool(pool);
 }
 
 void LuaApplication::clearBuffers()
 {
+	if (!frameStartTime_)
+	    frameStartTime_=iclock();
 	application_->clearBuffers();
 }
 
 void LuaApplication::renderScene(int deltaFrameCount)
 {
 	application_->renderScene();
+
+	//Compute frame timings
+    double frmEnd=iclock();
+    double frmLasted=frmEnd-lastFrameTime_;
+    if ((frmLasted>=0.01)&&(frmLasted<0.1)) //If frame rate is between 10Hz and 100Hz
+    	meanFrameTime_=meanFrameTime_*0.8+frmLasted*0.2; //Average on 5 frames
+    lastFrameTime_=frmEnd;
+
+    double freeTime=meanFrameTime_-(frmEnd-frameStartTime_-taskFrameTime_);
+    if (freeTime>=0)
+    	meanFreeTime_=meanFreeTime_*0.8+freeTime*0.2; //Average on 5 frames
+	//glog_i("FrameTimes:last:%f mean:%f task:%f free:%f\n",frmLasted,meanFrameTime_,taskFrameTime_,meanFreeTime_);
+
+	frameStartTime_=0;
 }
 
 void LuaApplication::setPlayerMode(bool isPlayer)
@@ -1145,6 +1351,9 @@ void LuaApplication::initialize()
 	application_->setHardwareOrientation(orientation_);
 	application_->setResolution(width_, height_);
 	application_->setScale(scale_);
+	meanFrameTime_=0;
+	meanFreeTime_=0;
+	frameCounter_=0;
 
 #if defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
 #define ARCH_X64 1

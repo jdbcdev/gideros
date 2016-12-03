@@ -26,6 +26,8 @@ private:
 	static int removeFromParent(lua_State* L);
 	
 	static int setClip(lua_State* L);
+    static int getClip(lua_State* L);
+
 	static int getX(lua_State* L);
 	static int getY(lua_State* L);
 	static int getZ(lua_State* L);
@@ -35,6 +37,8 @@ private:
 	static int getScaleX(lua_State* L);
 	static int getScaleY(lua_State* L);
 	static int getScaleZ(lua_State* L);
+    static int getSkewX(lua_State* L);
+    static int getSkewY(lua_State* L);
 
 	static int setX(lua_State* L);
 	static int setY(lua_State* L);
@@ -45,6 +49,8 @@ private:
 	static int setScaleX(lua_State* L);
 	static int setScaleY(lua_State* L);
 	static int setScaleZ(lua_State* L);
+    static int setSkewX(lua_State* L);
+    static int setSkewY(lua_State* L);
 
 	static int setPosition(lua_State* L);
 	static int getPosition(lua_State* L);
@@ -52,8 +58,14 @@ private:
     static int setAnchorPosition(lua_State* L);
     static int getAnchorPosition(lua_State* L);
 	
+    static int setAnchorPoint(lua_State* L);
+    static int getAnchorPoint(lua_State* L);
+
 	static int setScale(lua_State* L);
 	static int getScale(lua_State* L);
+
+    static int setSkew(lua_State* L);
+    static int getSkew(lua_State* L);
 
 	static int set(lua_State* L);
 	static int get(lua_State* L);
@@ -80,10 +92,11 @@ private:
 
 	static int getBounds(lua_State* L);
 
-	static int setBlendFunc(lua_State* L);
-	static int clearBlendFunc(lua_State* L);
+    static int setBlendMode(lua_State* L);
+    static int clearBlendMode(lua_State* L);
 
 	static int setShader(lua_State* L);
+	static int setShaderConstant(lua_State* L);
 };
 
 #endif

@@ -13,6 +13,7 @@ ShaderBinder::ShaderBinder(lua_State* L)
 	        {"setConstant", setConstant},
 	        {"isValid", isValid},
 	    	{"getEngineVersion",getEngineVersion},
+	    	{"getShaderLanguage",getShaderLanguage},
         {NULL, NULL},
 	};
 
@@ -58,15 +59,21 @@ ShaderBinder::ShaderBinder(lua_State* L)
 	lua_setfield(L, -2, "SYS_WORLD");
 	lua_pushinteger(L, ShaderProgram::SysConst_WorldInverseTransposeMatrix);
 	lua_setfield(L, -2, "SYS_WIT");
+	lua_pushinteger(L, ShaderProgram::SysConst_WorldInverseTransposeMatrix3);
+	lua_setfield(L, -2, "SYS_WIT3");
 	lua_pushinteger(L, ShaderProgram::SysConst_TextureInfo);
 	lua_setfield(L, -2, "SYS_TEXTUREINFO");
 	lua_pushinteger(L, ShaderProgram::SysConst_ParticleSize);
 	lua_setfield(L, -2, "SYS_PARTICLESIZE");
+	lua_pushinteger(L, ShaderProgram::SysConst_Timer);
+	lua_setfield(L, -2, "SYS_TIMER");
 
 	lua_pushinteger(L, ShaderProgram::Flag_None);
 	lua_setfield(L, -2, "FLAG_NONE");
 	lua_pushinteger(L, ShaderProgram::Flag_NoDefaultHeader);
 	lua_setfield(L, -2, "FLAG_NO_DEFAULT_HEADER");
+	lua_pushinteger(L, ShaderProgram::Flag_FromCode);
+	lua_setfield(L, -2, "FLAG_FROM_CODE");
 
 	lua_pop(L, 1);
 
@@ -153,6 +160,13 @@ int ShaderBinder::getEngineVersion(lua_State* L)
 {
 	StackChecker checker(L, "ShaderBinder::getEngineVersion", 1);
 	lua_pushstring(L,ShaderEngine::Engine->getVersion());
+	return 1;
+}
+
+int ShaderBinder::getShaderLanguage(lua_State* L)
+{
+	StackChecker checker(L, "ShaderBinder::getShaderLanguage", 1);
+	lua_pushstring(L,ShaderEngine::Engine->getShaderLanguage());
 	return 1;
 }
 

@@ -38,6 +38,13 @@ std::vector<std::string> getDeviceInfo()
 		env->ReleaseStringUTFChars(jstr, str);
 		env->DeleteLocalRef(jstr);
 	}
+    {
+		jstring jstr = (jstring)env->CallStaticObjectMethod(localRefCls, env->GetStaticMethodID(localRefCls, "getDeviceType", "()Ljava/lang/String;"));
+		const char *str = env->GetStringUTFChars(jstr, NULL);
+		result.push_back(str);
+		env->ReleaseStringUTFChars(jstr, str);
+		env->DeleteLocalRef(jstr);
+	}
 
 	env->DeleteLocalRef(localRefCls);
 
@@ -52,6 +59,17 @@ void setKeepAwake(bool awake)
 	jmethodID setKeepAwakeID = env->GetStaticMethodID(localRefCls, "setKeepAwake", "(Z)V");
 	env->CallStaticVoidMethod(localRefCls, setKeepAwakeID, (jboolean)awake);
 	env->DeleteLocalRef(localRefCls);
+}
+
+bool setKeyboardVisibility(bool visible)
+{
+	JNIEnv *env = g_getJNIEnv();
+
+	jclass localRefCls = env->FindClass("com/giderosmobile/android/player/GiderosApplication");
+	jmethodID setKeepAwakeID = env->GetStaticMethodID(localRefCls, "setKeyboardVisibility", "(Z)Z");
+	jboolean ret=env->CallStaticBooleanMethod(localRefCls, setKeepAwakeID, (jboolean)visible);
+	env->DeleteLocalRef(localRefCls);
+	return ret;
 }
 
 

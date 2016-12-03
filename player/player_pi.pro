@@ -29,6 +29,7 @@ INCLUDEPATH += \
     Sources \
     Forms \
     ../2dsg \
+    ../2dsg/paths \
     ../2dsg/gfxbackends \
     ../2dsg/gfxbackends/gl2 \
     ../libsound \
@@ -63,6 +64,7 @@ SOURCES += \
     $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/*.cpp) \
     $$files(../luabinding/*.cpp)	../luabinding/tlsf.c \
     $$files(../libnetwork/*.cpp) \
+    ../libgid/src/aes.c \
     ../libgid/src/md5.c \
     ../libgid/src/platformutil.cpp \
     ../libgid/src/utf8.c \
@@ -72,6 +74,7 @@ SOURCES += \
     $$files(../2dsg/*.cpp) \
     $$files(../2dsg/gfxbackends/*.cpp) \
     $$files(../2dsg/gfxbackends/gl2/*.cpp) \
+    $$files(../2dsg/paths/*.cpp) ../2dsg/paths/ft-path.c ../2dsg/paths/svg-path.c \
     $$files(../libpvrt/*.cpp) \
     $$files(../external/glu/libtess/*.c) \
     "../external/minizip-1.1/source/ioapi.c" \

@@ -233,6 +233,7 @@
 
 -(void)itemDidFinishPlaying:(NSNotification *) notification {
     [self stop];
+    gmedia_onMediaCompleted();
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
@@ -250,8 +251,8 @@
     if(self.Alayer != nil)
     {
         [self.Alayer removeFromSuperlayer];
-        [self.Alayer release];
         self.Alayer = nil;
+        [self.Alayer release];
     }
     if(self.player != nil){
         [self.player pause];

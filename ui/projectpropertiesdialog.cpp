@@ -2,15 +2,20 @@
 #include "ui_projectpropertiesdialog.h"
 #include <QDebug>
 #include <QIntValidator>
+#include <QFileDialog>
+#include <QPixmap>
+#include <QColorDialog>
 #include "projectpropertiesdialog.h"
 #include "projectproperties.h"
 #include <algorithm>
 
-ProjectPropertiesDialog::ProjectPropertiesDialog(ProjectProperties* properties, QWidget *parent) :
+ProjectPropertiesDialog::ProjectPropertiesDialog(QString projectFileName,ProjectProperties* properties, QWidget *parent) :
     QDialog(parent),
 	ui(new Ui::ProjectPropertiesDialog),
 	properties_(properties)
 {
+	projectFileName_=projectFileName;
+
     ui->setupUi(this);
 
 	ui->scaleMode->setCurrentIndex(properties_->scaleMode);
@@ -57,11 +62,28 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(ProjectProperties* properties, 
 
     ui->version->setText(properties_->version);
     ui->version_code->setText(QString::number(properties_->version_code));
+    ui->disableSplash->setChecked(properties_->disableSplash);
+    this->backgroundColor = properties_->backgroundColor;
+    QPalette p;
+    p.setColor(QPalette::Button, QColor(properties_->backgroundColor));
+    ui->backgroundColor->setPalette(p);
+    ui->backgroundColor->setAutoFillBackground(true);
+    ui->backgroundColor->setFlat(true);
 
     connect(ui->add, SIGNAL(clicked()), this, SLOT(add()));
 	connect(ui->remove, SIGNAL(clicked()), this, SLOT(remove()));
 
+    connect(ui->appIcon, SIGNAL(clicked()), this, SLOT(addAppIcon()));
+    connect(ui->tvIcon, SIGNAL(clicked()), this, SLOT(addTvIcon()));
+    connect(ui->splashHImage, SIGNAL(clicked()), this, SLOT(addSplashHImage()));
+    connect(ui->splashVImage, SIGNAL(clicked()), this, SLOT(addSplashVImage()));
+
+    connect(ui->backgroundColor, SIGNAL(clicked()), this, SLOT(chooseColor()));
+
 	connect(this, SIGNAL(accepted()), this, SLOT(onAccepted()));
+    connect(ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(loadImages()));
+
+    loadImages();
 }
 
 ProjectPropertiesDialog::~ProjectPropertiesDialog()
@@ -121,6 +143,29 @@ void ProjectPropertiesDialog::onAccepted()
 
     properties_->version = ui->version->text();
     properties_->version_code = ui->version_code->text().toInt();
+
+	QDir path(QFileInfo(projectFileName_).path());
+    if(!this->app_icon.isNull())
+        properties_->app_icon = path.relativeFilePath(this->app_icon);
+    if(!this->tv_icon.isNull())
+        properties_->tv_icon = path.relativeFilePath(this->tv_icon);
+    if(!this->splash_h_image.isNull())
+        properties_->splash_h_image = path.relativeFilePath(this->splash_h_image);
+    if(!this->splash_v_image.isNull())
+        properties_->splash_v_image = path.relativeFilePath(this->splash_v_image);
+
+    properties_->disableSplash = ui->disableSplash->isChecked();
+    properties_->backgroundColor = this->backgroundColor.name();
+
+}
+
+void ProjectPropertiesDialog::loadImages()
+{
+    this->showImage(properties_->app_icon, ui->appIconLabel);
+    this->showImage(properties_->tv_icon, ui->tvIconLabel);
+    this->showImage(properties_->splash_h_image, ui->splashHImageLabel);
+    this->showImage(properties_->splash_v_image, ui->splashVImageLabel);
+
 }
 
 void ProjectPropertiesDialog::add()
@@ -138,4 +183,52 @@ void ProjectPropertiesDialog::remove()
 
 	for (int i = 0; i < items.size(); ++i)
 		delete items[i];
+}
+
+void ProjectPropertiesDialog::showImage(QString fileName, QLabel* label)
+{
+    if(!fileName.isNull()){
+		QDir path(QFileInfo(projectFileName_).path());
+		QString src = path.absoluteFilePath(fileName);
+		int w = label->width();
+        int h = label->height();
+        QPixmap p = QPixmap(src);
+        label->setPixmap(p.scaled(w,h,Qt::KeepAspectRatio));
+        label->update();
+    }
+}
+
+void ProjectPropertiesDialog::addAppIcon()
+{
+    this->app_icon = QFileDialog::getOpenFileName(0, QObject::tr("Select app icon"),"",QObject::tr("Images (*.png *.jpeg *.jpg)"));
+    this->showImage(this->app_icon, ui->appIconLabel);
+}
+
+void ProjectPropertiesDialog::addTvIcon()
+{
+    this->tv_icon = QFileDialog::getOpenFileName(0, QObject::tr("Select TV icon"),"",QObject::tr("Images (*.png *.jpeg *.jpg)"));
+    this->showImage(this->tv_icon, ui->tvIconLabel);
+}
+
+void ProjectPropertiesDialog::addSplashHImage()
+{
+    this->splash_h_image = QFileDialog::getOpenFileName(0, QObject::tr("Select horizontal splash image"),"",QObject::tr("Images (*.png *.jpeg *.jpg)"));
+    this->showImage(this->splash_h_image, ui->splashHImageLabel);
+}
+
+void ProjectPropertiesDialog::addSplashVImage()
+{
+    this->splash_v_image = QFileDialog::getOpenFileName(0, QObject::tr("Select vertical splash image"),"",QObject::tr("Images (*.png *.jpeg *.jpg)"));
+    this->showImage(this->splash_v_image, ui->splashVImageLabel);
+}
+
+void ProjectPropertiesDialog::chooseColor()
+{
+    QColor color = QColorDialog::getColor(this->backgroundColor, 0, QObject::tr("Choose Splash Background Color"));
+    if(color.isValid()){
+        this->backgroundColor = color;
+        QPalette p;
+        p.setColor(QPalette::Button, this->backgroundColor);
+        ui->backgroundColor->setPalette(p);
+    }
 }

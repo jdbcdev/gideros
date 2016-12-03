@@ -79,6 +79,11 @@ git archive -o $BUILD_DIR/tmp.tar HEAD:ui/Templates/Xcode4
 mkdir $BUILD_DIR/win/Templates/Xcode4
 tar xf $BUILD_DIR/tmp.tar -C $BUILD_DIR/win/Templates/Xcode4
 
+git archive -o $BUILD_DIR/tmp.tar HEAD:ui/Templates/APK
+mkdir $BUILD_DIR/win/Templates/APK
+tar xf $BUILD_DIR/tmp.tar -C $BUILD_DIR/win/Templates/APK
+cp $BUILD_DIR/../ui/Templates/APK.gexport $BUILD_DIR/win/Templates
+
 mkdir $BUILD_DIR/win/Templates/Eclipse/Android\ Template/assets
 mkdir $BUILD_DIR/win/Templates/Eclipse/Android\ Template/gen
 mkdir $BUILD_DIR/win/Templates/Eclipse/Android\ Template/res/layout
@@ -167,6 +172,7 @@ mkdir $BUILD_DIR/win/Templates/Xcode4/iOS\ Template/iOS\ Template/Plugins
 cp $BUILD_DIR/win/GiderosiOSPlayer/GiderosiOSPlayer/Plugins/* $BUILD_DIR/win/Templates/Xcode4/iOS\ Template/iOS\ Template/Plugins
 mkdir $BUILD_DIR/win/Templates/Xcode4/iOS\ Template/AppleTV/Plugins
 cp $BUILD_DIR/win/GiderosiOSPlayer/GiderosiOSPlayer/Plugins/* $BUILD_DIR/win/Templates/Xcode4/iOS\ Template/AppleTV/Plugins
+cp ui/Templates/Xcode4/iOS\ Template/AppleTV/Plugins/libluasocket.a $BUILD_DIR/win/Templates/Xcode4/iOS\ Template/AppleTV/Plugins
 
 
 cp android/GiderosAndroidPlayer/gideros.jar $BUILD_DIR/win/Templates/Eclipse/Android\ Template

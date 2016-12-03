@@ -10,10 +10,14 @@ import android.content.Intent;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnTouchListener;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 
 public class GiderosAndroidPlayerActivity extends Activity implements OnTouchListener
 {
@@ -27,7 +31,7 @@ public class GiderosAndroidPlayerActivity extends Activity implements OnTouchLis
 		System.loadLibrary("lfs");
 		System.loadLibrary("lsqlite3");
 		System.loadLibrary("json");
-		System.loadLibrary("bitop");
+		System.loadLibrary("bitop");		
 	}
 
 	static private String[] externalClasses = {
@@ -49,12 +53,13 @@ public class GiderosAndroidPlayerActivity extends Activity implements OnTouchLis
 		
 		WeakActivityHolder.set(this);
 
-		GiderosApplication.onCreate(externalClasses);
+		GiderosApplication.onCreate(externalClasses,mGLView);
 	}
 
 	int[] id = new int[256];
 	int[] x = new int[256];
 	int[] y = new int[256];
+	float[] pressure = new float[256];
 
 	@Override
 	public void onStart()
@@ -166,6 +171,7 @@ public class GiderosAndroidPlayerActivity extends Activity implements OnTouchLis
 			id[i] = event.getPointerId(i);
 			x[i] = (int) event.getX(i);
 			y[i] = (int) event.getY(i);
+			pressure[i] = (float) event.getPressure(i);
 		}
 
 		int actionMasked = event.getActionMasked();
@@ -174,16 +180,16 @@ public class GiderosAndroidPlayerActivity extends Activity implements OnTouchLis
 				
 		if (actionMasked == MotionEvent.ACTION_DOWN || actionMasked == MotionEvent.ACTION_POINTER_DOWN)
 		{
-			app.onTouchesBegin(size, id, x, y, actionIndex);
+			app.onTouchesBegin(size, id, x, y, pressure, actionIndex);
 		} else if (actionMasked == MotionEvent.ACTION_MOVE)
 		{
-			app.onTouchesMove(size, id, x, y);
+			app.onTouchesMove(size, id, x, y, pressure);
 		} else if (actionMasked == MotionEvent.ACTION_UP || actionMasked == MotionEvent.ACTION_POINTER_UP)
 		{
-			app.onTouchesEnd(size, id, x, y, actionIndex);
+			app.onTouchesEnd(size, id, x, y, pressure, actionIndex);
 		} else if (actionMasked == MotionEvent.ACTION_CANCEL)
 		{
-			app.onTouchesCancel(size, id, x, y);
+			app.onTouchesCancel(size, id, x, y, pressure);
 		}
 
 		return true;
@@ -209,6 +215,19 @@ public class GiderosAndroidPlayerActivity extends Activity implements OnTouchLis
 		
 		return super.onKeyUp(keyCode, event);
     }
+	
+	@Override
+    public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		GiderosApplication app = GiderosApplication.getInstance();
+		if (app != null && app.onKeyMultiple(keyCode, repeatCount, event) == true)
+			return true;
+		
+		return super.onKeyMultiple(keyCode, repeatCount, event);
+    }	
+	
+	public void onRequestPermissionsResult(int requestCode,
+			String permissions[], int[] grantResults) {
+	}
 }
 
 class GiderosGLSurfaceView extends GLSurfaceView
@@ -217,6 +236,7 @@ class GiderosGLSurfaceView extends GLSurfaceView
 	{
 		super(context);
 		setEGLContextClientVersion(2);
+		setEGLConfigChooser(8,8,8,0,16,8);
 		mRenderer = new GiderosRenderer();
 		setRenderer(mRenderer);
 		if (android.os.Build.VERSION.SDK_INT >= 11)
@@ -236,6 +256,28 @@ class GiderosGLSurfaceView extends GLSurfaceView
 			{
 			}
 		}
+		setFocusable(true);
+		setFocusableInTouchMode(true);
+	}
+	
+	@Override
+	public InputConnection onCreateInputConnection(EditorInfo outAttrs)
+	{
+	    outAttrs.actionLabel = "";
+	    outAttrs.hintText = "";
+	    outAttrs.initialCapsMode = 0;
+	    outAttrs.initialSelEnd = outAttrs.initialSelStart = -1;
+	    outAttrs.label = "";
+	    outAttrs.imeOptions = EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI;        
+	    outAttrs.inputType = InputType.TYPE_NULL;        
+
+	    return  new BaseInputConnection(this, false);       
+	}     
+
+	@Override
+	public boolean onCheckIsTextEditor ()
+	{
+	    return true;
 	}
 
 	GiderosRenderer mRenderer;

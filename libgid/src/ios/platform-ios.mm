@@ -30,7 +30,7 @@ std::vector<std::string> getDeviceInfo()
 	std::vector<std::string> result;
 
 	UIDevice* device = [UIDevice currentDevice];
-		
+
 	result.push_back("iOS");
 	result.push_back([[device systemVersion] UTF8String]);
 	result.push_back([[device model] UTF8String]);
@@ -42,6 +42,11 @@ std::vector<std::string> getDeviceInfo()
 		case UIUserInterfaceIdiomPad:
 			result.push_back("iPad");
 			break;
+#if TARGET_OS_TV == 1
+		case UIUserInterfaceIdiomTV:
+			result.push_back("AppleTV");
+			break;
+#endif
 		default:
 			result.push_back("");
 	}	
@@ -132,7 +137,7 @@ void g_setFps(int fps)
 
 void g_exit()
 {
-	
+    exit(0);
 }
 
 bool g_checkStringProperty(bool isSet, const char* what){

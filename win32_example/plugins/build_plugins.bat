@@ -1,0 +1,10 @@
+call build_bitop.bat
+call build_json.bat
+call build_lfs.bat
+call build_sqlite.bat
+call build_luasocket.bat
+call build_clipper.bat
+call build_controller.bat
+call build_struct.bat
+call build_lpeg.bat
+call build_microphone.bat

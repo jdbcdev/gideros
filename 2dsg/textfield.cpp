@@ -1,5 +1,7 @@
 #include "textfield.h"
 #include "color.h"
+#include <utf8.h>
+#include <application.h>
 
 TextField::TextField(Application *application) : TextFieldBase(application)
 {
@@ -8,6 +10,8 @@ TextField::TextField(Application *application) : TextFieldBase(application)
 	setTextColor(0x000000);
 
 	letterSpacing_ = 0;
+
+    sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
 
 	createGraphics();
 }
@@ -22,10 +26,30 @@ TextField::TextField(Application *application, BMFontBase* font) : TextFieldBase
 
 	letterSpacing_ = 0;
 
+    sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
+
 	createGraphics();
 }
 
 TextField::TextField(Application *application, BMFontBase* font, const char* text) : TextFieldBase(application)
+{
+    text_ = text;
+    updateWide();
+
+    font_ = font;
+    if (font_ != 0)
+        font_->ref();
+
+    setTextColor(0x000000);
+
+    letterSpacing_ = 0;
+
+    sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
+
+    createGraphics();
+}
+
+TextField::TextField(Application *application, BMFontBase* font, const char* text, const char* sample) : TextFieldBase(application)
 {
 	text_ = text;
 	updateWide();
@@ -38,19 +62,27 @@ TextField::TextField(Application *application, BMFontBase* font, const char* tex
 
 	letterSpacing_ = 0;
 
-	createGraphics();
+    setSample(sample);
 }
 
-void TextField::setFont(Font* font)
+/*
+Font* TextField::font()
 {
-	if (font_ == font)
-		return;
+    return font_;
+}
+*/
+
+void TextField::setFont(FontBase *font)
+{
+    if (font->getType() == FontBase::eTTFont) return;
+
+    if (font_ == font) return;
 
 	if (font != 0)
 		font->ref();
 	if (font_ != 0)
 		font_->unref();
-	font_ = font;
+    font_ = static_cast<BMFontBase*>(font);
 
 	createGraphics();
 }
@@ -118,12 +150,50 @@ float TextField::letterSpacing() const
 	return letterSpacing_;
 }
 
+float TextField::lineHeight() const
+{
+    return smaxy - sminy;
+}
+
+void TextField::setSample(const char* sample)
+{
+    sample_ = sample;
+
+    if (sample_.empty()) {
+        sminx = sminy = smaxx = smaxy = 0;
+        createGraphics();
+        return;
+    }
+
+    graphicsBase_.clear();
+
+    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
+    wsample_.resize(wsize);
+    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
+
+    font_->drawText(&graphicsBase_, wsample_.c_str(), r_, g_, b_, letterSpacing_, false, 0, 0);
+    float minx, miny, maxx, maxy;
+    graphicsBase_.getBounds(&minx, &miny, &maxx, &maxy);
+
+    sminx = (int) minx;
+    sminy = (int) miny;
+    smaxx = (int) maxx;
+    smaxy = (int) maxy;
+
+    createGraphics();
+}
+
+const char* TextField::sample() const
+{
+    return sample_.c_str();
+}
+
 void TextField::createGraphics()
 {
     if (font_ == NULL)
         graphicsBase_.clear();
     else
-        font_->drawText(&graphicsBase_, wtext_.c_str(), r_, g_, b_, letterSpacing_);
+        font_->drawText(&graphicsBase_, wtext_.c_str(), r_, g_, b_, letterSpacing_, !sample_.empty(), sminx, sminy);
 
     graphicsBase_.getBounds(&minx_, &miny_, &maxx_, &maxy_);
 }

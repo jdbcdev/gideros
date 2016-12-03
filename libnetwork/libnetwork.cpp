@@ -7,6 +7,8 @@
 #include <time.h>
 #include <stdint.h>
 
+#define ADVERTISE_PERIOD	5	//Advertise every 5 seconds
+//#define IPV6 //enable this when IPv6 support is working
 /*
 BSD behavior
  
@@ -67,7 +69,7 @@ typedef int socklen_t;
 #include <fcntl.h>
 #include <unistd.h>
 
-#define BACKLOG 5
+#define BACKLOG 1 //One connection allowed
 #define INVALID_SOCKET (-1)
 static int closesocket(SOCKET s)
 {
@@ -94,14 +96,14 @@ static int getError()
 
 static int initialize(void)
 {
-	WORD versionRequested = MAKEWORD (1, 1);
+	WORD versionRequested = MAKEWORD (2, 2);
 	WSADATA wsaData;
 
 	if (WSAStartup (versionRequested, & wsaData))
 		return -1;
 
-	if (LOBYTE (wsaData.wVersion) != 1||
-		HIBYTE (wsaData.wVersion) != 1)
+	if (LOBYTE (wsaData.wVersion) != 2||
+		HIBYTE (wsaData.wVersion) != 2)
 	{
 		WSACleanup ();
 
@@ -418,10 +420,14 @@ void NetworkBase::tickRecv(NetworkEvent* event)
 	}
 }
 
-int NetworkBase::sendData(const void* data, unsigned int size)
+int NetworkBase::sendData(const void* data, unsigned int size, bool noCheck)
 {
-	if (isConnected() == false)
-		return -1;
+    if (!noCheck) {
+        if (isConnected() == false)
+            return -1;
+    } else
+        if (sendQueue_.size() > 1024) //Avoid queue size beginning too big in forced mode (print mainly)
+            return -1;
 
 	QueueElement* queueElement = new QueueElement(data, size, 0);
 	sendQueue_.push_back(queueElement);
@@ -457,14 +463,19 @@ void NetworkBase::sendAck(unsigned int id)
 
 SOCKET makeBroadcastSocket()
 {
+#ifdef IPV6
+    SOCKET sock= socket(PF_INET6, SOCK_DGRAM,0);
+	setsockopt(sock, SOL_SOCKET, IPV6_V6ONLY, 0, sizeof(int)); //I change the socket option IPV6_V6ONLY to false, so it should be compatible with IPv4
+#else
     SOCKET sock= socket(PF_INET, SOCK_DGRAM,0);
+#endif	
     int bcast=1;
-    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *) (&bcast),  sizeof(bcast));
+	setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *) (&bcast),  sizeof(bcast));
 #ifdef TARGET_OS_IPHONE
     int set = 1;
     setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
 #endif
-	return sock;
+ 	return sock;
 }
 
 Server::Server(unsigned short port,const char *name)
@@ -484,6 +495,54 @@ Server::~Server()
 	cleanup();
 }
 
+static const uint8_t llbcast[16] = { 0xFF,0x02,0,0,0,0,0,0,0,0,0,0,0,0,0,1 };
+void Server::advertise()
+{
+    time_t ctime=time(NULL);
+    if ((broadcastSock_ != INVALID_SOCKET)&&
+    		((lastBcastTime_<=(ctime-ADVERTISE_PERIOD))||
+    				(lastBcastTime_>ctime)))
+    {
+        lastBcastTime_=ctime;
+        struct adv_ {
+            uint8_t signature[8]; // 'Gideros0'
+            uint32_t ip; //INADDR_ANY for same as UDP peer
+            uint16_t port;
+            uint16_t flags;
+            char devName[32];
+        } advPacket;
+        memcpy(advPacket.signature,"Gideros0",8);
+        advPacket.ip=htonl(INADDR_ANY);
+        advPacket.port=htons(port_);
+        advPacket.flags=0; // May be used to differentiate player platform/type
+        memcpy(advPacket.devName,deviceName_,32);
+
+        int error=1;
+
+		#ifdef IPV6
+        	sockaddr_in6 ai_addr;
+        	memset(&ai_addr, 0, sizeof(ai_addr));
+        	ai_addr.sin6_family = AF_INET6;
+        	memcpy(&ai_addr.sin6_addr, llbcast, 16);
+        	ai_addr.sin6_port = htons(GIDEROS_DEFAULT_PORT);
+		#else
+        	sockaddr_in ai_addr;
+        	memset(&ai_addr, 0, sizeof(ai_addr));
+        	ai_addr.sin_family = AF_INET;
+        	ai_addr.sin_addr.s_addr=htonl(INADDR_BROADCAST);
+        	ai_addr.sin_port = htons(GIDEROS_DEFAULT_PORT);
+        #endif
+       	if (sendto(broadcastSock_,(char *) &advPacket,sizeof(advPacket),0,(sockaddr *)&ai_addr,sizeof(ai_addr))>0)
+       		error=0;
+        if (error)
+        {
+          //Recreate broadcast socket
+            closesocket(broadcastSock_);
+            broadcastSock_=makeBroadcastSocket();
+        }
+    }
+}
+
 void Server::tick(NetworkEvent* event)
 {
 	event->eventCode = eNone;
@@ -491,7 +550,12 @@ void Server::tick(NetworkEvent* event)
 	// try to initialize	
 	if (serverSock_ == INVALID_SOCKET && clientSock_ == INVALID_SOCKET)
 	{
+#ifdef IPV6	
+        serverSock_ = socket(PF_INET6, SOCK_STREAM, 0);
+    	setsockopt(serverSock_, SOL_SOCKET, IPV6_V6ONLY, 0, sizeof(int)); //I change the socket option IPV6_V6ONLY to false, so it should be compatible with IPv4
+#else
         serverSock_ = socket(PF_INET, SOCK_STREAM, 0);
+#endif    	
 		if (serverSock_ == INVALID_SOCKET)
 		{
 			cleanup();
@@ -499,24 +563,74 @@ void Server::tick(NetworkEvent* event)
 			return;
 		}
 
-		int yes = 1;
-		if (setsockopt(serverSock_, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(int)) == -1)
+		if (port_)
 		{
-			cleanup();
-			event->eventCode = eSetReuseAddrError;
-			return;
+			int yes = 1;
+			if (setsockopt(serverSock_, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(int)) == -1)
+			{
+				cleanup();
+				event->eventCode = eSetReuseAddrError;
+				return;
+			}
 		}
 
+#ifdef IPV6
+		sockaddr_in6 ai_addr;
+		memset(&ai_addr, 0, sizeof(ai_addr));
+		ai_addr.sin6_family = AF_INET6;
+		memcpy(&ai_addr.sin6_addr, &in6addr_any, 16);
+		ai_addr.sin6_port = htons(port_?port_:GIDEROS_DEFAULT_PORT);
+#else
 		sockaddr_in ai_addr;
 		memset(&ai_addr, 0, sizeof(ai_addr));
 		ai_addr.sin_family = AF_INET;
 		ai_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-		ai_addr.sin_port = htons(port_);
+		ai_addr.sin_port = htons(port_?port_:GIDEROS_DEFAULT_PORT);
+#endif		
 		if (bind(serverSock_, (sockaddr *)&ai_addr, sizeof(ai_addr)) == -1)
 		{
-			cleanup();
-			event->eventCode = eBindError;
-			return;
+			if (port_)
+			{
+				cleanup();
+				event->eventCode = eBindError;
+				return;
+			}
+			else
+			{
+				//No specific port requested, so try again letting the system choose a port
+				memset(&ai_addr, 0, sizeof(ai_addr));
+#ifdef IPV6
+				ai_addr.sin6_family = AF_INET6;
+				memcpy(&ai_addr.sin6_addr, &in6addr_any, 16);
+				ai_addr.sin6_port = 0;
+#else
+				ai_addr.sin_family = AF_INET;
+				ai_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+				ai_addr.sin_port = 0;
+#endif				
+				if (bind(serverSock_, (sockaddr *)&ai_addr, sizeof(ai_addr)) == -1)
+				{
+					cleanup();
+					event->eventCode = eBindError;
+				}
+				//Retrieve the choosen port
+				socklen_t ai_len=sizeof(ai_addr);
+				if (getsockname(serverSock_, (sockaddr *)&ai_addr, &ai_len) == -1)
+				{
+					cleanup();
+					event->eventCode = eBindError;
+				}
+#ifdef IPV6				
+				port_=ntohs(ai_addr.sin6_port);
+#else
+				port_=ntohs(ai_addr.sin_port);
+#endif				
+			}
+		}
+		else
+		{
+			if (port_==0)
+				port_=GIDEROS_DEFAULT_PORT;
 		}
 
 		if (listen(serverSock_, BACKLOG) == -1)
@@ -532,44 +646,19 @@ void Server::tick(NetworkEvent* event)
 	// try to accept
 	if (serverSock_ != INVALID_SOCKET && clientSock_ == INVALID_SOCKET)
 	{
+#ifdef IPV6
+		sockaddr_in6 client_addr;
+#else
 		sockaddr_in client_addr;
+#endif		
 		socklen_t sizeof_client_addr = sizeof(client_addr);
 		clientSock_ = accept(serverSock_, (sockaddr *)&client_addr, &sizeof_client_addr);
 		if (clientSock_ == INVALID_SOCKET)
 		{
 			if (getError() == EWOULDBLOCK2)
 			{
-				// no connections are present to be accepted, everything is ok,send UDP advertiseent and return
-                time_t ctime=time(NULL);
-                if ((broadcastSock_ != INVALID_SOCKET)&&(lastBcastTime_!=ctime))
-                {
-                    lastBcastTime_=ctime;
-                    struct adv_ {
-                        uint8_t signature[8]; // 'Gideros0'
-                        uint32_t ip; //INADDR_ANY for same as UDP peer
-                        uint16_t port;
-                        uint16_t flags;
-                        char devName[32];
-                    } advPacket;
-                    memcpy(advPacket.signature,"Gideros0",8);
-                    advPacket.ip=htonl(INADDR_ANY);
-                    advPacket.port=htons(port_);
-                    advPacket.flags=0; // May be used to differentiate player platform/type
-                    memcpy(advPacket.devName,deviceName_,32);
-                    
-                    sockaddr_in ai_addr;
-                    memset(&ai_addr, 0, sizeof(ai_addr));
-                    ai_addr.sin_family = AF_INET;
-                    ai_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-                    ai_addr.sin_port = htons(port_); //Should we hardcode to 15000 ?
-                    
-                    if (sendto(broadcastSock_,(char *) &advPacket,sizeof(advPacket),0,(sockaddr *)&ai_addr,sizeof(ai_addr))<=0)
-                    {
-                      //Recreate broadcast socket
-                        closesocket(broadcastSock_);
-                        broadcastSock_=makeBroadcastSocket();
-                    }
-                }
+				// no connections are present to be accepted, everything is ok, return
+				advertise();
 				return;
 			}
 			else
@@ -583,11 +672,12 @@ void Server::tick(NetworkEvent* event)
 
 		setNonBlocking(clientSock_, true);
 
+#if 0 //No let the socket open to prevent reuse of the port
 		// we close the listening serverSock_ in order to prevent more incoming connections on the same port
 		setNonBlocking(serverSock_, false);
 		closesocket(serverSock_);
 		serverSock_ = INVALID_SOCKET;
-
+#endif
 		event->eventCode = eOtherSideConnected;
 		return;
 	}
@@ -595,6 +685,7 @@ void Server::tick(NetworkEvent* event)
 	// send and recv
 	if (clientSock_ != INVALID_SOCKET)
 	{
+		advertise(); //Advertise even when connected, to let studios know we are alive
 		tickRecv(event);
 		if (eFirstError < event->eventCode && event->eventCode < eLastError)
 		{

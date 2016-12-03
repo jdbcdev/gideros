@@ -44,6 +44,30 @@ private:
     std::map<g_id, id> map_;
 };
 
+#if TARGET_OS_TV == 1
+/* We override presses to handle Cancel button when MENU button is pressed on Apple TV */
+@interface UIAlertController (pressesOverride)
+@end
+
+@implementation UIAlertController (pressesOverride)
+-(void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
+{
+    if (presses.anyObject.type == UIPressTypeMenu) {
+        [self dismissViewControllerAnimated:YES completion:^{
+            [[NSNotificationCenter defaultCenter]
+             postNotificationName:@"UIAlertControllerPressMenuButton"
+             object:self];
+        }];
+        return;
+    }
+    
+    [super pressesBegan:presses withEvent:event];
+
+    return;
+}
+
+@end
+#endif
 
 @interface GGAlertDialog : UIViewController
 {
@@ -58,6 +82,13 @@ private:
 
 @implementation GGAlertDialog
 
+- (void) forceCancel {
+	[[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:@"UIAlertControllerPressMenuButton"
+                                                  object:nil];
+        [self buttonPressed:@"" withIndex:0];
+}
+
 - (id)initWithTitle:(NSString *)title
 			message:(NSString *)message
 	   cancelButton:(NSString *)cancelButton 
@@ -69,6 +100,10 @@ private:
 {
     if (self = [super init])
     {
+	[[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(forceCancel)
+                                               name:@"UIAlertControllerPressMenuButton"
+                                             object:nil];
 	if ([[UIDevice currentDevice].systemVersion floatValue] >= 8) {
 		alertView_ = [UIAlertController alertControllerWithTitle:title
                                message:message
@@ -103,7 +138,7 @@ private:
 		udata_ = udata;
 		gid_ = gid;
 	}
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	else
 	{
                 alertView_ = [[UIAlertView alloc] initWithTitle:title
@@ -129,11 +164,14 @@ private:
 
 - (void)dealloc
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 		((UIAlertView *)alertView_).delegate = nil;
 	        [alertView_ dismissWithClickedButtonIndex:-1 animated:NO];
+#else
+	if ([alertView_ isViewLoaded]) [alertView_ dismissViewControllerAnimated:YES completion:nil];
 #endif
         	[alertView_ release];
+
 	[super dealloc];
 }
 
@@ -142,7 +180,7 @@ private:
 	if ([[UIDevice currentDevice].systemVersion floatValue] >= 8) {
 		[[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alertView_ animated:YES completion:nil];
 	}
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	else
 	{
 		[alertView_ show];
@@ -155,7 +193,7 @@ private:
 	if ([[UIDevice currentDevice].systemVersion floatValue] >= 8) {
 		if ([alertView_ isViewLoaded]) [alertView_ dismissViewControllerAnimated:YES completion:nil];
 	}
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	else
 	{	
 		[alertView_ dismissWithClickedButtonIndex:-1 animated:YES];
@@ -168,7 +206,7 @@ private:
 	if ([[UIDevice currentDevice].systemVersion floatValue] >= 8) {
 		return [alertView_ isViewLoaded];
 	}
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	else
 	{
 		return [alertView_ isVisible];
@@ -190,7 +228,7 @@ private:
         gevent_EnqueueEvent(gid_, callback_, GUI_ALERT_DIALOG_COMPLETE_EVENT, event, 1, udata_);
 }
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 - (void)alertView:(UIAlertView *)alertView didDismissWithButtonIndex:(NSInteger)buttonIndex
 {
         if (buttonIndex >= 0)
@@ -203,7 +241,7 @@ private:
 @end
 
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 
 @interface GGAlertView : UIAlertView
 {
@@ -316,7 +354,7 @@ private:
 
 @interface GGTextInputDialog : UIViewController
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	GGAlertView *alertView4_;   // for <  iOS 5
 #endif
 	id alertView5_;	// for >= iOS 5
@@ -332,6 +370,13 @@ private:
 
 @implementation GGTextInputDialog
 
+- (void) forceCancel {
+	[[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:@"UIAlertControllerPressMenuButton"
+                                                  object:nil];
+	[self buttonPressed:@"" withIndex:0];
+}
+
 - (id)initWithTitle:(NSString *)title
 			message:(NSString *)message
 			   text:(NSString *)text
@@ -344,12 +389,16 @@ private:
 {
     if (self = [super init])
     {
+		[[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(forceCancel)
+                                               name:@"UIAlertControllerPressMenuButton"
+                                             object:nil];
 		NSString *currSysVer = [[UIDevice currentDevice] systemVersion];
 		BOOL ios5 = ([currSysVer compare:@"5.0" options:NSNumericSearch] != NSOrderedAscending);
 
 		if (!ios5)
 		{
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 			alertView4_ = [[GGAlertView alloc] initWithTitle:title
 													message:message
 												   delegate:self
@@ -411,7 +460,7 @@ private:
             
 	            alertView_ = alertView5_;
 		}
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 		else
 		{
                     alertView5_ =[[UIAlertView alloc] initWithTitle:title
@@ -444,7 +493,7 @@ private:
 
 - (void)dealloc
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	UIAlertView * tmpAlertView = (UIAlertView*)alertView_;
 	tmpAlertView.delegate = nil;
 	[tmpAlertView dismissWithClickedButtonIndex:-1 animated:NO];
@@ -455,39 +504,39 @@ private:
 
 - (void)show
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     if ([[UIDevice currentDevice].systemVersion floatValue] < 8) {
 	[((UIAlertView *)alertView_) show];
     } else {
 #endif
         [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alertView_ animated:YES completion:nil];
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     }
 #endif
 }
 
 - (void)hide
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     if ([[UIDevice currentDevice].systemVersion floatValue] < 8) {
 	[alertView_ dismissWithClickedButtonIndex:-1 animated:YES];
     } else {
 #endif
         if ([alertView_ isViewLoaded]) [alertView_ dismissViewControllerAnimated:YES completion:nil];
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     }
 #endif
 }
 
 - (BOOL)isVisible
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     if ([[UIDevice currentDevice].systemVersion floatValue] < 8) {
 	return [alertView_ isVisible];
     } else {
 #endif
         return [alertView_ isViewLoaded];
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     }
 #endif
 }
@@ -570,7 +619,7 @@ private:
                 gevent_EnqueueEvent(gid_, callback_, GUI_TEXT_INPUT_DIALOG_COMPLETE_EVENT, event, 1, udata_);
 }
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 - (void)alertView:(UIAlertView *)alertView didDismissWithButtonIndex:(NSInteger)buttonIndex
 {
 	if (buttonIndex >= 0)

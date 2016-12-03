@@ -12,12 +12,23 @@ import android.content.Intent;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnTouchListener;
+import android.view.Gravity;
+import android.graphics.Color;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.text.InputType;
 
 import com.giderosmobile.android.player.*;
+import com.giderosmobile.androidtemplate.R;
 
 public class AndroidTemplateActivity extends Activity implements OnTouchListener
 {
@@ -32,15 +43,25 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
 		System.loadLibrary("lsqlite3");
 		System.loadLibrary("json");
 		System.loadLibrary("bitop");
+		//Line below is a marker for plugin insertion scripts. Do not remove or change
+		//GIDEROS-STATIC-INIT//
 	}
 
 	static private String[] externalClasses = {
+		//Line below is a marker for plugin insertion scripts. Do not remove or change
+		//GIDEROS-EXTERNAL-CLASS//
+			null
 	};
 	
 	private GLSurfaceView mGLView;
 
 	private boolean mHasFocus = false;
 	private boolean mPlaying = false;
+    
+    private static FrameLayout splashLayout;
+	private static ImageView splash;
+	private static FrameLayout layout;
+	private static int hasSplash = -1;
 		
 	@Override
 	public void onCreate(Bundle savedInstanceState)
@@ -50,15 +71,53 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
         mGLView = new GiderosGLSurfaceView(this);
 		setContentView(mGLView);
 		mGLView.setOnTouchListener(this);
+        
+        boolean showSplash = true;
+        
+		if(showSplash && getResources().getIdentifier("splash", "drawable", getPackageName()) != 0){
+			layout = (FrameLayout)getWindow().getDecorView();
+			hasSplash = 11;
+			//create a layout for animation
+			splashLayout = new FrameLayout(this);
+			//parameters for layout
+			FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+		                FrameLayout.LayoutParams.MATCH_PARENT ,
+		                FrameLayout.LayoutParams.MATCH_PARENT,
+		                Gravity.CENTER);
+			splashLayout.setLayoutParams(params);
+			//set background color
+			splashLayout.setBackgroundColor(Color.parseColor("#ffffff"));
+		 
+			//create image view for animation
+			splash = new ImageView(this);
+			//image view parameters
+			FrameLayout.LayoutParams params2 = new FrameLayout.LayoutParams(
+		                 FrameLayout.LayoutParams.WRAP_CONTENT,
+		                 FrameLayout.LayoutParams.WRAP_CONTENT,
+		                 Gravity.CENTER);
+			splash.setLayoutParams(params2);
+		 
+			//scale your image
+			splash.setScaleType(ImageView.ScaleType.CENTER );
+		 
+			//load image source     
+			splash.setBackgroundResource(R.drawable.splash);
+		
+			//add image view to layout
+			splashLayout.addView(splash);
+			//add image layout to main layout
+			layout.addView(splashLayout);
+		}
 		
 		WeakActivityHolder.set(this);
 
-		GiderosApplication.onCreate(externalClasses);
+		GiderosApplication.onCreate(externalClasses,mGLView);
 	}
 
 	int[] id = new int[256];
 	int[] x = new int[256];
 	int[] y = new int[256];
+    float[] pressure = new float[256];
 
 	@Override
 	public void onStart()
@@ -170,6 +229,7 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
 			id[i] = event.getPointerId(i);
 			x[i] = (int) event.getX(i);
 			y[i] = (int) event.getY(i);
+            pressure[i] = (float) event.getPressure(i);
 		}
 
 		int actionMasked = event.getActionMasked();
@@ -178,16 +238,16 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
 				
 		if (actionMasked == MotionEvent.ACTION_DOWN || actionMasked == MotionEvent.ACTION_POINTER_DOWN)
 		{
-			app.onTouchesBegin(size, id, x, y, actionIndex);
+			app.onTouchesBegin(size, id, x, y, pressure, actionIndex);
 		} else if (actionMasked == MotionEvent.ACTION_MOVE)
 		{
-			app.onTouchesMove(size, id, x, y);
+			app.onTouchesMove(size, id, x, y, pressure);
 		} else if (actionMasked == MotionEvent.ACTION_UP || actionMasked == MotionEvent.ACTION_POINTER_UP)
 		{
-			app.onTouchesEnd(size, id, x, y, actionIndex);
+			app.onTouchesEnd(size, id, x, y, pressure, actionIndex);
 		} else if (actionMasked == MotionEvent.ACTION_CANCEL)
 		{
-			app.onTouchesCancel(size, id, x, y);
+			app.onTouchesCancel(size, id, x, y, pressure);
 		}
 
 		return true;
@@ -196,6 +256,7 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
 	@Override
     public boolean onKeyDown(int keyCode, KeyEvent event)
     {
+        //GIDEROS-ACTIVTIY-ONKEYDOWN//
 		GiderosApplication app = GiderosApplication.getInstance();
 		if (app != null && app.onKeyDown(keyCode, event) == true)
 			return true;
@@ -207,11 +268,52 @@ public class AndroidTemplateActivity extends Activity implements OnTouchListener
 	@Override
     public boolean onKeyUp(int keyCode, KeyEvent event)
     {
+        //GIDEROS-ACTIVTIY-ONKEYUP//
 		GiderosApplication app = GiderosApplication.getInstance();
 		if (app != null && app.onKeyUp(keyCode, event) == true)
 			return true;
 		
 		return super.onKeyUp(keyCode, event);
+    }
+	
+	@Override
+    public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		GiderosApplication app = GiderosApplication.getInstance();
+		if (app != null && app.onKeyMultiple(keyCode, repeatCount, event) == true)
+			return true;
+		
+		return super.onKeyMultiple(keyCode, repeatCount, event);
+    }	
+
+	public void onRequestPermissionsResult(int requestCode,
+			String permissions[], int[] grantResults) {
+	}
+
+    
+    //GIDEROS-ACTIVTIY-METHODS//
+    
+    static public void dismisSplash(){
+        if(hasSplash == -1){
+            return;
+        }
+    	else if(hasSplash == 0){
+    		hasSplash = -1;
+    		new Handler(Looper.getMainLooper()).post(new Runnable() {
+    		    @Override
+    		    public void run() {
+    		    	splashLayout.setVisibility(View.GONE);
+    		    	splash.setBackgroundResource(0);
+    		    	//remove animation view from main layout
+    		    	layout.removeView(splashLayout);
+    		    	splashLayout = null;
+    		    	splash = null;
+    		    	layout = null;
+    		    }
+    		});
+    	}
+    	else if(hasSplash > 0){
+    		hasSplash--;
+    	}
     }
 }
 
@@ -221,6 +323,7 @@ class GiderosGLSurfaceView extends GLSurfaceView
 	{
 		super(context);
 		setEGLContextClientVersion(2);
+		setEGLConfigChooser(8,8,8,0,16,8);
 		mRenderer = new GiderosRenderer();
 		setRenderer(mRenderer);
 		if (android.os.Build.VERSION.SDK_INT >= 11)
@@ -240,6 +343,28 @@ class GiderosGLSurfaceView extends GLSurfaceView
 			{
 			}
 		}
+		setFocusable(true);
+		setFocusableInTouchMode(true);
+	}
+	
+	@Override
+	public InputConnection onCreateInputConnection(EditorInfo outAttrs)
+	{
+	    outAttrs.actionLabel = "";
+	    outAttrs.hintText = "";
+	    outAttrs.initialCapsMode = 0;
+	    outAttrs.initialSelEnd = outAttrs.initialSelStart = -1;
+	    outAttrs.label = "";
+	    outAttrs.imeOptions = EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI;        
+	    outAttrs.inputType = InputType.TYPE_NULL;        
+
+	    return  new BaseInputConnection(this, false);       
+	}     
+
+	@Override
+	public boolean onCheckIsTextEditor ()
+	{
+	    return true;
 	}
 
 	GiderosRenderer mRenderer;
@@ -261,6 +386,11 @@ class GiderosRenderer implements GLSurfaceView.Renderer
 	{
 		GiderosApplication app = GiderosApplication.getInstance();
 		if (app != null)
+		{
+			//GIDEROS-ACTIVITY-PREDRAW//
 			app.onDrawFrame();
+			//GIDEROS-ACTIVITY-POSTDRAW//
+			AndroidTemplateActivity.dismisSplash();
+		}
 	}
 }

@@ -180,13 +180,14 @@ public:
 	void setProjectProperties(const ProjectProperties &properties);
 	bool isRunning();
 	
-	void touchesBegin(int size, int *id, int *x, int *y, int actionIndex);
-	void touchesMove(int size, int *id, int *x, int *y);
-	void touchesEnd(int size, int *id, int *x, int *y, int actionIndex);
-	void touchesCancel(int size, int *id, int *x, int *y);
+	void touchesBegin(int size, int *id, int *x, int *y, float *pressure, int actionIndex);
+	void touchesMove(int size, int *id, int *x, int *y, float *pressure);
+	void touchesEnd(int size, int *id, int *x, int *y, float *pressure, int actionIndex);
+	void touchesCancel(int size, int *id, int *x, int *y, float *pressure);
 	
 	bool keyDown(int keyCode, int repeatCount);
 	bool keyUp(int keyCode, int repeatCount);
+	void keyChar(const char *keyChar);
 	
 	void pause();
 	void resume();
@@ -518,6 +519,20 @@ void NetworkManager::calculateMD5(const char* file)
 		md5_[file] = md5;
 }
 
+static void printToLog_s(const char *str, int len, void *data)
+{
+	if (len<0)
+		glog_i("%s\n",str);
+	else
+	{
+		char* buffer = (char*)malloc(len+1);
+		memcpy(buffer, str,len);
+		buffer[len]=0;
+		glog_i("%s\n",buffer);
+		free(buffer);
+	}
+}
+
 ApplicationManager::ApplicationManager(JNIEnv *env, bool player)
 {
 	JavaVM* vm;
@@ -582,6 +597,8 @@ ApplicationManager::ApplicationManager(JNIEnv *env, bool player)
 	application_->setPlayerMode(player_);
 	if (player_)
 		application_->setPrintFunc(NetworkManager::printToServer_s, networkManager_);
+	else
+		application_->setPrintFunc(printToLog_s, NULL);
 	application_->enableExceptions();
 
 	Binder::disableTypeChecking();
@@ -1145,24 +1162,24 @@ void ApplicationManager::setProjectProperties(const ProjectProperties &propertie
 	properties_ = properties;
 }
 
-void ApplicationManager::touchesBegin(int size, int *id, int *x, int *y, int actionIndex)
+void ApplicationManager::touchesBegin(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 {
-	ginputp_touchBegin(size, id, x, y, actionIndex);
+	ginputp_touchBegin(size, id, x, y, pressure, actionIndex);
 }
 
-void ApplicationManager::touchesMove(int size, int *id, int *x, int *y)
+void ApplicationManager::touchesMove(int size, int *id, int *x, int *y, float *pressure)
 {
-	ginputp_touchesMove(size, id, x, y);
+	ginputp_touchesMove(size, id, x, y, pressure);
 }
 
-void ApplicationManager::touchesEnd(int size, int *id, int *x, int *y, int actionIndex)
+void ApplicationManager::touchesEnd(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 {
-	ginputp_touchEnd(size, id, x, y, actionIndex);
+	ginputp_touchEnd(size, id, x, y, pressure, actionIndex);
 }
 
-void ApplicationManager::touchesCancel(int size, int *id, int *x, int *y)
+void ApplicationManager::touchesCancel(int size, int *id, int *x, int *y, float *pressure)
 {
-	ginputp_touchesCancel(size, id, x, y);
+	ginputp_touchesCancel(size, id, x, y, pressure);
 }
 
 bool ApplicationManager::keyDown(int keyCode, int repeatCount)
@@ -1189,6 +1206,13 @@ bool ApplicationManager::keyUp(int keyCode, int repeatCount)
 	return true;
 }
 
+void ApplicationManager::keyChar(const char *str)
+{
+	ginputp_keyChar(str);
+}
+
+extern void gaudio_android_suspend(bool suspend);
+
 void ApplicationManager::pause()
 {
 	gtexture_SaveRenderTargets();
@@ -1199,10 +1223,12 @@ void ApplicationManager::pause()
 	application_->tick(&status);
 	if (status.error())
 		luaError(status.errorString());
+	gaudio_android_suspend(true);
  }
 
 void ApplicationManager::resume()
 {
+	gaudio_android_suspend(false);
     gapplication_enqueueEvent(GAPPLICATION_RESUME_EVENT, NULL, 0);
 
 	GStatus status;
@@ -1244,6 +1270,13 @@ void ApplicationManager::foreground()
 static ApplicationManager *s_applicationManager = NULL;
 
 extern "C" {
+
+int GiderosOpenALConfig_sampleRate=44100;
+
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeOpenALSetup(JNIEnv *env, jclass cls, jint sampleRate)
+{
+	GiderosOpenALConfig_sampleRate=sampleRate;
+}
 
 void Java_com_giderosmobile_android_player_GiderosApplication_nativeCreate(JNIEnv *env, jclass cls, jboolean player)
 {
@@ -1308,56 +1341,64 @@ void Java_com_giderosmobile_android_player_GiderosApplication_nativeOpenProject(
 	s_applicationManager->setOpenProject(project.c_str());
 }
 
-void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesBegin(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jint actionIndex)
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesBegin(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jfloatArray jpressure, jint actionIndex)
 {
 	jint* id = (jint*)env->GetPrimitiveArrayCritical(jid, 0);
 	jint* x = (jint*)env->GetPrimitiveArrayCritical(jx, 0);
 	jint* y = (jint*)env->GetPrimitiveArrayCritical(jy, 0);
+	jfloat* pressure = (jfloat*)env->GetPrimitiveArrayCritical(jpressure, 0);
 
-	s_applicationManager->touchesBegin(size, id, x, y, actionIndex);
+	s_applicationManager->touchesBegin(size, id, x, y, pressure, actionIndex);
 
 	env->ReleasePrimitiveArrayCritical(jid, id, 0);
 	env->ReleasePrimitiveArrayCritical(jx, x, 0);
 	env->ReleasePrimitiveArrayCritical(jy, y, 0);
+	env->ReleasePrimitiveArrayCritical(jpressure, pressure, 0);
 }
 
-void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesMove(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy)
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesMove(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jfloatArray jpressure)
 {
 	jint* id = (jint*)env->GetPrimitiveArrayCritical(jid, 0);
 	jint* x = (jint*)env->GetPrimitiveArrayCritical(jx, 0);
 	jint* y = (jint*)env->GetPrimitiveArrayCritical(jy, 0);
+	jfloat* pressure = (jfloat*)env->GetPrimitiveArrayCritical(jpressure, 0);
 
-	s_applicationManager->touchesMove(size, id, x, y);
+	s_applicationManager->touchesMove(size, id, x, y, pressure);
 
 	env->ReleasePrimitiveArrayCritical(jid, id, 0);
 	env->ReleasePrimitiveArrayCritical(jx, x, 0);
 	env->ReleasePrimitiveArrayCritical(jy, y, 0);
+	env->ReleasePrimitiveArrayCritical(jpressure, pressure, 0);
 }
 
-void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesEnd(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jint actionIndex)
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesEnd(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jfloatArray jpressure, jint actionIndex)
 {
 	jint* id = (jint*)env->GetPrimitiveArrayCritical(jid, 0);
 	jint* x = (jint*)env->GetPrimitiveArrayCritical(jx, 0);
 	jint* y = (jint*)env->GetPrimitiveArrayCritical(jy, 0);
+	jfloat* pressure = (jfloat*)env->GetPrimitiveArrayCritical(jpressure, 0);
 
-	s_applicationManager->touchesEnd(size, id, x, y, actionIndex);
+	s_applicationManager->touchesEnd(size, id, x, y, pressure, actionIndex);
 
 	env->ReleasePrimitiveArrayCritical(jid, id, 0);
 	env->ReleasePrimitiveArrayCritical(jx, x, 0);
 	env->ReleasePrimitiveArrayCritical(jy, y, 0);
+	env->ReleasePrimitiveArrayCritical(jpressure, pressure, 0);
 }
 
-void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesCancel(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy)
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeTouchesCancel(JNIEnv* env, jobject thiz, jint size, jintArray jid, jintArray jx, jintArray jy, jfloatArray jpressure)
 {
 	jint* id = (jint*)env->GetPrimitiveArrayCritical(jid, 0);
 	jint* x = (jint*)env->GetPrimitiveArrayCritical(jx, 0);
 	jint* y = (jint*)env->GetPrimitiveArrayCritical(jy, 0);
+	jfloat* pressure = (jfloat*)env->GetPrimitiveArrayCritical(jpressure, 0);
 
-	s_applicationManager->touchesCancel(size, id, x, y);
+	s_applicationManager->touchesCancel(size, id, x, y, pressure);
 
 	env->ReleasePrimitiveArrayCritical(jid, id, 0);
 	env->ReleasePrimitiveArrayCritical(jx, x, 0);
 	env->ReleasePrimitiveArrayCritical(jy, y, 0);
+	env->ReleasePrimitiveArrayCritical(jpressure, pressure, 0);
 }
 
 jboolean Java_com_giderosmobile_android_player_GiderosApplication_nativeKeyDown(JNIEnv* env, jclass cls, jint keyCode, jint repeatCount)
@@ -1368,6 +1409,13 @@ jboolean Java_com_giderosmobile_android_player_GiderosApplication_nativeKeyDown(
 jboolean Java_com_giderosmobile_android_player_GiderosApplication_nativeKeyUp(JNIEnv* env, jclass cls, jint keyCode, jint repeatCount)
 {
 	return s_applicationManager->keyUp(keyCode, repeatCount);
+}
+
+void Java_com_giderosmobile_android_player_GiderosApplication_nativeKeyChar(JNIEnv* env, jclass cls, jstring keyChar)
+{
+	const char* sBytes = env->GetStringUTFChars(keyChar, NULL);
+	s_applicationManager->keyChar(sBytes);
+	env->ReleaseStringUTFChars(keyChar, sBytes);
 }
 
 jboolean Java_com_giderosmobile_android_player_GiderosApplication_isRunning(JNIEnv* env, jclass cls)

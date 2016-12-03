@@ -8,9 +8,13 @@
 #include <stack>
 #include <string>
 #include <vector>
+#include <ppltasks.h>
 
 #include "giderosapi.h"
 
+using namespace concurrency;
+using namespace Windows::Foundation;
+using namespace Windows::Foundation::Collections;
 using namespace Windows::ApplicationModel;
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
@@ -58,6 +62,9 @@ void getDirectoryListing(const char* dir, std::vector<std::string>* files, std::
 ref class App sealed : public IFrameworkView
 {
     bool WindowClosed;
+	std::wstring resourcePath;
+	std::wstring docsPath;
+	std::wstring tempPath;
 
 public:
     virtual void Initialize(CoreApplicationView^ AppView)
@@ -73,6 +80,28 @@ public:
 
     virtual void SetWindow(CoreWindow^ Window)
     {
+		resourcePath= Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data();
+		docsPath = ApplicationData::Current->LocalFolder->Path->Data();
+		tempPath = ApplicationData::Current->TemporaryFolder->Path->Data();
+
+		StorageFile^ file = nullptr;
+		try {
+			String^ fileName = ref new String(L"Assets\\properties.bin");
+			IAsyncOperation<StorageFile^> ^gfa = Windows::ApplicationModel::Package::Current->InstalledLocation->GetFileAsync(fileName);
+			while (gfa->Status == AsyncStatus::Started)
+				CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+			file = gfa->GetResults();
+		}
+		catch (Exception^ e)
+		{
+			file = nullptr;
+		}
+
+		bool isPlayer = (file == nullptr);
+
+		// false means "don't use XAML"
+		gdr_initialize(false, Window, nullptr, Window->Bounds.Width, Window->Bounds.Height, isPlayer, resourcePath.c_str(), docsPath.c_str(), tempPath.c_str());
+
 		Window->Closed += ref new TypedEventHandler
 			<CoreWindow^, CoreWindowEventArgs^>(this, &App::Closed);
 		Window->PointerPressed += ref new TypedEventHandler
@@ -95,6 +124,8 @@ public:
 			<CoreWindow^, KeyEventArgs^>(this, &App::KeyUp);
 		Window->PointerWheelChanged += ref new TypedEventHandler
 			<CoreWindow^, PointerEventArgs^>(this, &App::WheelChanged);
+		Window->CharacterReceived += ref new TypedEventHandler
+				<CoreWindow^, CharacterReceivedEventArgs^>(this, &App::KeyChar);
 #else
 		HardwareButtons::BackPressed += ref new EventHandler<BackPressedEventArgs^>(this, &App::OnBackButtonPressed);   
 #endif
@@ -104,29 +135,20 @@ public:
 
     virtual void Run()
     {
-
-	  CoreWindow^ Window = CoreWindow::GetForCurrentThread();
-
-	  std::wstring resourcePath = Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data();
-	  std::wstring docsPath = ApplicationData::Current->LocalFolder->Path->Data();
-	  std::wstring tempPath = ApplicationData::Current->TemporaryFolder->Path->Data();
-	  bool isPlayer = false;
-
-	  gdr_initialize(Window, Window->Bounds.Width, Window->Bounds.Height, isPlayer, resourcePath.c_str(), docsPath.c_str(), tempPath.c_str());
-
 	  gdr_drawFirstFrame();
             
       // repeat until window closes
       while(!WindowClosed){
-		  gdr_drawFrame();
+		  gdr_drawFrame(false);
       }
 
 	  gdr_exitGameLoop();
-
-	  gdr_deinitialize();
     }
     
-    virtual void Uninitialize() {}
+    virtual void Uninitialize()
+	{
+		gdr_deinitialize();
+	}
             
     void OnActivated(CoreApplicationView^ CoreAppView, IActivatedEventArgs^ Args)
     {
@@ -227,6 +249,17 @@ public:
 		gdr_keyUp((int)Args->VirtualKey);
 	}
 
+	void KeyChar(CoreWindow^ Window, CharacterReceivedEventArgs^ Args)
+	{
+		Args->Handled = true;
+		char buf[16];
+		memset(buf,0,16);
+		wchar_t wc=Args->KeyCode;
+		WideCharToMultiByte(CP_UTF8,0,&wc,1,
+				buf,15,	NULL,NULL);
+		gdr_keyChar(buf);
+	}
+
 	void WheelChanged(CoreWindow^ Window, PointerEventArgs^ Args)
 	{
 		gdr_mouseWheel(Args->CurrentPoint->Position.X, Args->CurrentPoint->Position.Y, Args->CurrentPoint->Properties->MouseWheelDelta);
@@ -239,7 +272,6 @@ public:
 		args->Handled = true;
 	}
 #endif
-
 
 };
 

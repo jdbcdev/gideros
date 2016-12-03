@@ -45,7 +45,7 @@ unpack(list) returns all elements from list
 xpcall(f, err) pcall function f with new error handler err
 _G
 _VERSION - value "Lua 5.1.x"
-Accelerometer
+Accelerometer > Object
 Accelerometer.isAvailable() Accelerometer - does the accelerometer available?
 Accelerometer.new() Accelerometer - Creates new Accelerometer instance
 getAcceleration() Accelerometer - returns the 3-axis acceleration measured by the accelerometer
@@ -68,11 +68,11 @@ setPosition(x, y) Ads - sets position of the ad
 setX(x) Ads - Sets x position of the ad
 setY(y) Ads - sets y position of the ad
 showAd(...) Ads - display ad
-AlertDialog
+AlertDialog > Object
 AlertDialog.new(title, message, cancelButton [, button1, button2]) AlertDialog
 hide() AlertDialog
 show() AlertDialog
-Application
+Application > Object
 application
 canOpenUrl(url) Application - Tests if it is possible to open provided url
 configureFrustum(fov [, farplane]) Application - Configure the projection for 3D perspective.
@@ -104,6 +104,7 @@ setBackgroundColor(color) Application - sets the background color in hexadecimal
 setFps(fps) Application - sets the frame rate of the application
 setFullScreen(fullscreen) Application - Full screen or window mode
 setKeepAwake(keepAwake) Application - enables/disables screen dimming and device sleeping
+setKeyboardVisibility(visible) Application
 setLogicalDimensions(width, height) Application - sets the logical dimensions of the application
 setOrientation(orientation) Application - sets the orientation of the application
 setScaleMode(scaleMode) Application - sets the automatic scale mode of the application
@@ -268,9 +269,13 @@ setMaxForce(force) b2.MouseJoint - sets the maximum force in N
 setTarget(x, y) b2.MouseJoint - updates the target point
 b2.ParticleSystem
 b2.particlesystem
+containsParticle(id) b2.ParticleSystem
 createParticle(particleDef) b2.ParticleSystem - create new particle
 createParticleGroup(particleGoupDef) b2.ParticleSystem - create group of particles
 destroyParticle(id) b2.ParticleSystem - destroy particle by id
+destroyParticles(ids) b2.ParticleSystem
+getParticleCount() b2.ParticleSystem
+getParticleGroupList() b2.ParticleSystem
 setTexture(texture) b2.ParticleSystem - set texture to particles
 b2.ParticleSystem.FLAG_COLOR_MIXING - value 256
 b2.ParticleSystem.FLAG_ELASTIC - value 16
@@ -390,15 +395,23 @@ getPlayerCount() Controller - returns amount of connected controllers
 getPlayers() Controller - returns table with controller IDs
 isAnyAvailable() Controller - return true if any controller is connected
 virbate(ms) Controller - vibrate the controller for provided amount of miliseconds
-Core
+Core > Object
 core
+Core.asyncCall(task [, parameters]) Core - Launch function on separate thread as background task
 Core.class([base]) Core - Creates and returns new Gideros class
+Core.frameStatistics() Core - Return table with data about frame
+Core.yield(state) Core - Yield function running as background task
 coroutine
 coroutine.create(f) coroutine - creates coroutine from function f, returns coroutine
 coroutine.resume(co [, val1, ...]) coroutine - continues execution of co, returns bool status plus any values
 coroutine.status(co) coroutine - returns co status: "running", "suspended" or "dead"
 coroutine.wrap(f) coroutine - creates coroutine with body f, returns function that resumes co
 coroutine.yield([val1, ...]) coroutine - suspend execution of calling coroutine
+Cryptography
+cryptography
+Cryptography.aesDecrypt(ciphertext, key [, iv, paddingType]) Cryptography - Decrypt an AES 128 string
+Cryptography.aesEncrypt(plaintext, key [, iv, paddingType]) Cryptography - Encrypt a string with AES
+Cryptography.md5(input) Cryptography - Compute the MD5 hash of the input string
 debug
 debug.debug() debug - enters interactive debug mode, line with only "cont" terminates
 debug.gethook() debug - returns current hook function, hook mask, hook count
@@ -407,9 +420,10 @@ debug.getlocal(level, local) debug - returns name and value of local variable wi
 debug.getupvalue(func, up) debug - returns name and value of upvalue with index up of function func
 debug.sethook(hook, mask [, count]) debug - sets given function as a hook, mask="[crl]"
 debug.setlocal(level, local, value) debug - sets local variable with index local at stack level with value
+debug.settypemt() debug - Set meta table type
 debug.setupvalue(func, up, value) debug - sets upvalue with index up of function func with value
 debug.traceback([message, level]) debug - returns a string with a traceback of the call stack
-Event
+Event > Object
 Event.new(type) Event - creates a new Event object
 getTarget() Event - returns the element on which the event listener was registered
 getType() Event - returns the type of Event
@@ -433,6 +447,7 @@ Event.BANNER_ACTION_FINISHED - value "bannerActionFinished"
 Event.BANNER_AD_FAILED - value "bannerAdFailed"
 Event.BANNER_AD_LOADED - value "bannerAdLoaded"
 Event.BEGIN_CONTACT - value "beginContact"
+Event.BEGIN_CONTACT_PARTICLE - value "beginContactParticle"
 Event.CHECK_BILLING_SUPPORTED_COMPLETE - value "checkBillingSupportedComplete"
 Event.COMPLETE - value "complete"
 Event.COMPLETE - value "complete"
@@ -492,7 +507,7 @@ Event.TOUCHES_CANCEL - value "touchesCancel"
 Event.TOUCHES_END - value "touchesEnd"
 Event.TOUCHES_MOVE - value "touchesMove"
 Event.TRANSACTION - value "transaction"
-EventDispatcher
+EventDispatcher > Object
 EventDispatcher.new() EventDispatcher - creates a new EventDispatcher object
 addEventListener(type, listener [, data]) EventDispatcher - registers a listener function
 dispatchEvent(event) EventDispatcher - dispatches an event
@@ -528,13 +543,13 @@ flurry.startSession(apiKey) flurry - starts the Flurry session with your API key
 Font > FontBase
 Font.getDefault() Font - Get default font
 Font.new(txtfile, imagefile, filtering) Font - creates a new Font object
-FontBase
+FontBase > Object
 fontbase
 getAdvanceX(text, letterSpacing, size) FontBase
 getAscender() FontBase - returns the ascender of the font
 getBounds(text) FontBase - returns the tight bounding rectangle of the characters in the string specified by text
 getLineHeight() FontBase - returns the distance from one base line to the next
-Geolocation > EventDispatcher
+Geolocation > Object
 Geolocation.getAccuracy() Geolocation - returns the previously set desired accuracy
 Geolocation.getThreshold() Geolocation - returns the previously set minimum distance threshold
 Geolocation.isAvailable() Geolocation - does this device have the capability to determine current location?
@@ -569,7 +584,7 @@ GoogleBilling.REFUNDED - value "refunded"
 GoogleBilling.SERVICE_UNAVAILABLE - value "serviceUnavailable"
 GoogleBilling.SUBS - value "subs"
 GoogleBilling.USER_CANCELED - value "userCanceled"
-Gyroscope
+Gyroscope > Object
 Gyroscope.isAvailable() Gyroscope - does the gyroscope available?
 Gyroscope.new() Gyroscope - Creates new Gyroscope instance
 getRotationRate() Gyroscope - returns the rotation rate in radians per second
@@ -587,6 +602,8 @@ iad.Banner.BOTTOM - value "bottom"
 iad.Banner.LANDSCAPE - value "landscape"
 iad.Banner.PORTRAIT - value "portrait"
 iad.Banner.TOP - value "top"
+int64
+int64.new(value) int64 - Create 64 bit integer
 io
 io.close([file]) io - closes file, or the default output file
 io.flush() io - flushes the default output file
@@ -598,10 +615,13 @@ io.read(format1 [, ...]) io - reads file according to given formats, returns rea
 io.tmpfile() io - returns a handle for a temporary file, opened in update mode
 io.type(obj) io - returns "file" if obj is an open file handle, "close file" if closed, or nil if not a file handle
 io.write(value1 [, ...]) io - writes strings or numbers to file
+JS
+js
+JS.eval(code) JS
 json
 json.decode(jsondata) json - Returns Lua table from provided json encoded string
 json.encode(data) json - Returns encoded json string from provided Lua table
-KeyCode
+KeyCode > Object
 keycode
 KeyCode.A - value 65
 KeyCode.B - value 66
@@ -683,27 +703,64 @@ math.sqrt(v) math - returns square root of v
 math.tan(rad) math - returns tangent value of angle rad
 huge - value "1.#INF"
 pi - value "3.1415926535898"
-Matrix
+Matrix > Object
 Matrix.new(m11, m12, m21, m22, tx, ty) Matrix - creates a new Matrix object
+getAnchorPosition() Matrix - get anchor position from matrix transformation
 getElements() Matrix - returns the elements of this matrix instance
 getM11() Matrix - returns the value of the m11 component
 getM12() Matrix - returns the value of the m12 component
 getM21() Matrix - returns the value of the m21 component
 getM22() Matrix - returns the value of the m22 component
+getMatrix() Matrix - get all 16 elements of 4x4 matrix
+getPosition() Matrix - get position from matrix transformation
+getRotationX() Matrix - get rotation for x axis
+getRotationY() Matrix - get rotation on y axis
+getRotationZ() Matrix - get rotation for z axis
+getScale() Matrix - get scale from matrix transformation
+getScaleX() Matrix - get scale on x axis
+getScaleY() Matrix - get scale on y axis
+getScaleZ() Matrix - get scale on z axis
 getTx() Matrix - returns the value of the tx component
 getTy() Matrix - returns the value of the ty component
+getTz() Matrix - returns the value of the tz component
+getX() Matrix - get x position
+getY() Matrix - get y position
+getZ() Matrix - get z position
+invert() Matrix
+multiply(matrix) Matrix - Multiply current matrix with new one
+orthographicProjection(left, right, bottom, top, near, far) Matrix
+perspectiveProjection(left, right, bottom, top, near, far) Matrix
+perspectiveProjection(fov, aspect, near, far) Matrix
+rotate(angle, x vector, y vector, z vector) Matrix - combine existing rotation with provided
+scale(x scale [, y scale, z scale]) Matrix - combine existing scale with provided scale
+setAnchorPosition(x, y [, z]) Matrix - transform matrix for setting anchor position
 setElements(m11, m12, m21, m22, tx, ty) Matrix - sets all 6 elements of this matrix instance
 setM11(m11) Matrix - sets the value of the m11 component
 setM12(m12) Matrix - sets the value of the m22 component
 setM21(m21) Matrix
 setM22(m22) Matrix
+setMatrix([m11, m12, m13, m14, m21, m22, m23, m24, m31, m32, m33, m34, m41, m42, m43, m44]) Matrix - set all 16 elements of 4x4 matrix
+setPosition(x, y [, z]) Matrix - transform matrix for setting position
+setRotationX(x rotation) Matrix - set rotation on x axis
+setRotationY(y rotation) Matrix - set rotation on y axis
+setRotationZ(z rotation) Matrix - set rotation on z axis
+setScale(x [, y, z]) Matrix - transform matrix for setting scale
+setScaleX(x scale) Matrix - set scale on x axis
+setScaleY(y scale) Matrix - set scale on y axis
+setScaleZ(z scale) Matrix - set scale on z axis
 setTx(tx) Matrix - sets the value of the tx component
 setTy(ty) Matrix - sets the value of the ty component
+setTz(tz) Matrix - sets the value of the tz component
+setX(x) Matrix - set x position
+setY(y) Matrix - set y position
+setZ(z) Matrix - set z position
+transformPoint() Matrix
+translate(x [, y, z]) Matrix - combine existing translation with provided translation
 Mesh > Sprite
 Mesh.new([is3d]) Mesh
 clearColorArray() Mesh
 clearIndexArray() Mesh
-clearTexture() Mesh
+clearTexture([slot]) Mesh
 clearTextureCoordinateArray() Mesh
 clearVertexArray() Mesh
 getColor(i) Mesh - Returns color and alpha of the i-th element from color array
@@ -724,7 +781,7 @@ setColors(colors) Mesh
 setIndex(i, index) Mesh
 setIndexArray(indices) Mesh
 setIndices(indices) Mesh
-setTexture(texture) Mesh
+setTexture(texture [, slot]) Mesh
 setTextureCoordinate(i, u, v) Mesh
 setTextureCoordinateArray(textureCoordinates) Mesh
 setTextureCoordinates(textureCoordinates) Mesh
@@ -772,6 +829,11 @@ getPushNotifications() NotificationManager - get push notification
 getScheduledNotifications() NotificationManager - get schedule notifications
 registerForPushNotifications() NotificationManager - register for push notifications
 unregisterForPushNotifications() NotificationManager - unregister from notifications
+Object > Object
+object
+getBaseClass() Object - returns base class
+getClass() Object - returns class name
+isInstanceOf(classname) Object - checks if instance belongs to class
 os
 os.clock() os - returns CPU time used by program in seconds
 os.date(format [, time]) os - returns a string or table containing date and time, "*t" returns a table
@@ -787,13 +849,68 @@ os.timer() os - returns precise time in seconds relative to some arbitrary point
 os.tmpname() os - returns a string with a filename for a temporary file(dangerous! tmpfile is better-
 package
 package.loadlib(libname, funcname) package
+Particles > Sprite
+Particles.new() Particles - Create new particles group
+addParticles(particles) Particles - Add particles
+clearTexture() Particles - Clear texture for all particles
+getParticleAngle(i) Particles - get particle angle
+getParticleColor(i) Particles - Get color and alpha value of particle
+getParticleDecay(i) Particles
+getParticlePosition(i) Particles - get position of particle
+getParticles([set, tag]) Particles
+getParticleSize(i) Particles - get size of particle in pixels
+getParticleSpeed(i) Particles - Get speed of particle
+getParticleTag(i) Particles
+getParticleTtl(i) Particles - get initial time to live of particle
+isPaused() Particles
+removeParticles(particle indeces) Particles - Remove particles by index in table or as arguments
+setParticleAngle(i, angle) Particles - set angle of particle
+setParticleColor(i, color [, alpha]) Particles - set color of particles
+setParticleDecay(i, decay, decayAlpha, decayGrowth, decayAngular) Particles
+setParticlePosition(i, x, y) Particles - set position of particle
+setParticleSize(i, size) Particles - set size of particle
+setParticleSpeed(i [, x, y, a, s]) Particles - Set speed of particles
+setParticlesTag() Particles
+setParticleTag(i, tag) Particles
+setParticleTtl(i, ttl) Particles - set time to live
+setPaused(paused) Particles
+setTexture(texture) Particles - Set texture to all particles
+Path2D > Sprite
+Path2D.new() Path2D - Creates Path2D object
+setConvex(convex) Path2D - Flag the shape as convex.
+setFillColor(color [, alpha]) Path2D - Sets fill color
+setFontPath(font, character) Path2D - Sets the path from the outline of a TTFont character
+setLineColor(color [, alpha]) Path2D - Sets line color
+setLineThickness(thickness [, feather]) Path2D - Set the thickness of the outline
+setPath(commands, coordinates [, coordinates]) Path2D - set path to draw
+setSvgPath(svg_params) Path2D - set path with svg properties
+setTexture(texture) Path2D - sets texture for fill (Not implemented yet)
+Pixel > Sprite
+Pixel.new(texture [, x, y, width, height, sx, sy]) Pixel
+Pixel.new([color, alpha, width, height]) Pixel - Create new pixel
+getColor() Pixel - Gets the color of the Pixe
+getDimensions() Pixel
+getTexturePosition() Pixel
+getTextureScale() Pixel
+setColor([color, alpha]) Pixel - Sets the color of the Pixel
+setDimensions(w, h) Pixel - Sets both width and height of the Pixel.
+setHeight(h) Pixel - Sets the height of the pixel sprite.
+setTexture(texture [, slot, matrix]) Pixel
+setTextureMatrix(matrix) Pixel
+setTexturePosition(x, y) Pixel
+setTextureScale(sx, sy) Pixel
+setWidth(w) Pixel - Sets the width of the pixel sprite.
 RenderTarget > TextureBase
 RenderTarget.new(width, height, filtering) RenderTarget - Creates new RenderTarget object
-clear(color, alpha) RenderTarget - Clears rendered texture
+clear(color, alpha [, x, y, width, height]) RenderTarget - Clears rendered texture
 draw(sprite) RenderTarget - Renders provided object
-Shader
+getPixel(x, y) RenderTarget - Returns single pixels color and alpha channel
+getPixels(x, y, w, h) RenderTarget - Returns buffer containing color and alpha data from provided rectangle
+save(filename [, x, y, width, height]) RenderTarget - save contents of RenderTarget as image
+Shader > Object
 Shader.new(vertex shader, fragment shader, flags, uniform descriptor, attribute descriptor) Shader - create new shader
 getEngineVersion() Shader - get shader version
+getShaderLanguage() Shader - Get shader language
 setConstant(uniform name, data type, mult, data) Shader - change the value of a uniform
 Shader.CFLOAT - value 1
 Shader.CFLOAT4 - value 2
@@ -806,6 +923,7 @@ Shader.DINT - value 4
 Shader.DSHORT - value 2
 Shader.DUBYTE - value 1
 Shader.DUSHORT - value 3
+Shader.FLAG_FROM_CODE - value 4
 Shader.FLAG_NONE - value 0
 Shader.FLAG_NO_DEFAULT_HEADER - value 1
 Shader.SYS_COLOR - value 2
@@ -830,11 +948,12 @@ Shape.NONE - value "none"
 Shape.NON_ZERO - value "nonZero"
 Shape.SOLID - value "solid"
 Shape.TEXTURE - value "texture"
-Sound
+Sound > Object
 Sound.new(filename) Sound - creates a new Sound object
+Sound.setListenerPosition(x, y [, z, vx, vy, vz, dx, dy, dz, ux, uy, uz]) Sound
 getLength() Sound
 play(startTime, looping, paused) Sound - creates a new SoundChannel object to play the sound
-SoundChannel
+SoundChannel > Object
 soundchannel
 getPitch() SoundChannel - returns the current pitch of the sound channel
 getPosition() SoundChannel - returns the position of the current playback
@@ -847,6 +966,7 @@ setPaused(paused) SoundChannel - sets the paused state of the channel
 setPitch(pitch) SoundChannel - sets the pitch of the sound channel
 setPosition(position) SoundChannel - sets the position of the current playback
 setVolume(volume) SoundChannel - sets the volume of the sound channel
+setWorldPosition(x, y [, z, vx, vy, vz]) SoundChannel
 stop() SoundChannel - stops the sound playing in the channel
 Sprite > EventDispatcher
 Sprite.new() Sprite - creates a new Sprite object
@@ -860,8 +980,9 @@ getAnchorPosition() Sprite - Returns anchor position of Sprite
 getBounds(targetSprite) Sprite - returns the bounds as it appears in another sprite's coordinate system
 getChildAt(index) Sprite - returns the child sprite that exists at the specified index
 getChildIndex(child) Sprite - returns the index of the specified child sprite
+getClip() Sprite
 getColorTransform() Sprite - returns the red, green, blue and alpha channel multipliers
-getHeight() Sprite - returns the height
+getHeight([withoutTransform]) Sprite - returns the height
 getMatrix() Sprite - returns the transformation matrix of the sprite
 getNumChildren() Sprite - returns the number of children of this sprite
 getParent() Sprite - returns the parent sprite
@@ -873,7 +994,10 @@ getScale() Sprite - returns the horizontal, vertical and z scales of the sprite
 getScaleX() Sprite - returns the horizontal scale of the sprite
 getScaleY() Sprite - returns the vertical scale of the sprite
 getScaleZ() Sprite - returns the scale on z axis of the sprite
-getWidth() Sprite - returns the width
+getSkew() Sprite
+getSkewX() Sprite
+getSkewY() Sprite
+getWidth([withoutTransform]) Sprite - returns the width
 getX() Sprite - returns the x coordinate of the sprite
 getY() Sprite - returns the y coordinate of the sprite
 getZ() Sprite - returns the z coordinate of the sprite
@@ -887,7 +1011,7 @@ removeFromParent() Sprite - if the sprite has a parent, removes the sprite from 
 set(param, value) Sprite - sets the specified property by its name
 setAlpha(alpha) Sprite - sets the alpha transparency of this sprite
 setAnchorPosition(anchorX, anchorY [, anchorZ]) Sprite - Set anchor position
-setBlendMode(blendMode) Sprite - sets the blend mode of the sprite
+setBlendMode(blendMode or src [, dst]) Sprite - sets the blend mode of the sprite
 setClip(x, y, width, height) Sprite - Clip Sprite contents
 setColorTransform(redMultiplier, greenMultiplier, blueMultiplier, alphaMultiplier) Sprite - sets the red, green, blue and alpha channel multipliers
 setMatrix(matrix) Sprite - sets the transformation matrix of the sprite
@@ -900,6 +1024,9 @@ setScaleX(scaleX) Sprite - sets the horizontal scale of the sprite
 setScaleY(scaleY) Sprite - sets the vertical scale of the sprite
 setScaleZ(scale) Sprite - Set scale on z axis
 setShader(shader) Sprite - Set shader for this sprite
+setSkew(kx, ky) Sprite
+setSkewX(kx) Sprite
+setSkewY(ky) Sprite
 setVisible(visible) Sprite - sets the visibility of sprite
 setX(x) Sprite - sets the x coordinate of the sprite
 setY(y) Sprite - sets the y coordinate of the sprite
@@ -914,6 +1041,7 @@ Sprite.SCREEN - value "screen"
 sqlite3
 Stage > Sprite
 stage
+setClearColorBuffer(state) Stage - Enable/disable draw call for background color
 StoreKit
 storekit
 canMakePayments() StoreKit - returns whether the user is allowed to make payments
@@ -945,14 +1073,18 @@ table.insert(table [, pos, value]) table - insert value at location pos in table
 table.remove(table [, pos]) table - removes element at pos from table, default pos=n
 table.sort(table [, comp]) table - sorts in-place elements 1 to n, comp(v1,v2- true if v1<v2, default <
 TextField > Sprite
-TextField.new(font, text) TextField - creates a new TextField object with the specified font and text
+TextField.new(font, text [, sample]) TextField - creates a new TextField object with the specified font and text
 getLetterSpacing() TextField - returns the letter-spacing property which is used to increase or decrease the space between characters in a text
+getLineHeight() TextField - Get line height
+getSample() TextField - get string that was used as sample for determining line height
 getText() TextField - returns the text displayed
 getTextColor() TextField - returns the color of the text in a text field in hexadecimal format
+setFont(font) TextField - set font to use
 setLetterSpacing(spacing) TextField - sets the letter-spacing property which is used to increase or decrease the space between characters in a text
+setSample(sample) TextField - Set string that will be used as sample for determining text's line height
 setText(text) TextField - sets the text to be displayed
 setTextColor(color) TextField - sets the color of the text in a text field in hexadecimal format
-TextInputDialog
+TextInputDialog > AlertDialog
 TextInputDialog.new(title, message, text, cancelButton, button1, button2) TextInputDialog
 getInputType() TextInputDialog
 getText() TextInputDialog
@@ -966,8 +1098,9 @@ TextInputDialog.PHONE - value "phone"
 TextInputDialog.TEXT - value "text"
 TextInputDialog.URL - value "url"
 Texture > TextureBase
-Texture.new(filename, filtering, options) Texture - creates a new Texture object
-TextureBase
+Texture.new(pixels, width, height [, filtering, options]) Texture
+Texture.new(filename, filtering [, options]) Texture - creates a new Texture object
+TextureBase > Object
 texturebase
 getHeight() TextureBase - returns the height of the texture in pixels
 getWidth() TextureBase - returns the width of the texture in pixels
@@ -982,7 +1115,7 @@ TexturePack > TextureBase
 TexturePack.new(textures, padding, filtering, options) TexturePack - creates a new TexturePack object
 TexturePack.new(txtfile, imagefile, filtering, options) TexturePack
 getTextureRegion(texturename) TexturePack - returns the texture region of texture pack
-TextureRegion
+TextureRegion > Object
 TextureRegion.new(texture) TextureRegion - creates a new TextureRegion object
 TextureRegion.new(texture, x, y, width, height) TextureRegion
 getRegion() TextureRegion - returns the coordinates of the region
@@ -996,7 +1129,7 @@ shift(dx, dy) TileMap - shifts the tile map
 TileMap.FLIP_DIAGONAL - value 1
 TileMap.FLIP_HORIZONTAL - value 4
 TileMap.FLIP_VERTICAL - value 2
-Timer
+Timer > Object
 Timer.delayedCall(delay, func [, data]) Timer - delayed call a function after a set amount of time
 Timer.new(delay, repeatCount) Timer - creates a new Timer object
 Timer.pauseAll() Timer - pause all timers
@@ -1013,7 +1146,7 @@ start() Timer - starts the timer
 stop() Timer - stops the timer
 TTFont > FontBase
 TTFont.new(filename, size, text, filtering) TTFont - creates a new TTFont object
-UrlLoader
+UrlLoader > Object
 UrlLoader.new(url, method, headers, body) UrlLoader - creates a new UrlLoader object
 close() UrlLoader - terminates the current loading operation
 ignoreSslErrors() UrlLoader - Ignores SSL certificate related errors
@@ -1022,6 +1155,39 @@ UrlLoader.DELETE - value "delete"
 UrlLoader.GET - value "get"
 UrlLoader.POST - value "post"
 UrlLoader.PUT - value "put"
+utf8
+utf8.byte(s [, i, j]) utf8 - Returns the internal numerical codes of the characters
+utf8.char(code1 [, code2, codeN]) utf8 - Returns a string from integers as characters
+utf8.charpos(s [, charpos, offset]) utf8 - convert UTF-8 position to byte offset
+utf8.codepoint(s [, i, j]) utf8 - Returns the codepoints (as integers) from all characters
+utf8.codes(s) utf8 - Returns values so that the construction
+utf8.escape(s) utf8 - Escape a str to UTF-8 format string
+utf8.find(s, pattern [, init, plain]) utf8 - Looks for the first match of pattern in the string s
+utf8.fold(s) utf8 - convert UTF-8 string s to folded case used to compare by ignore case
+utf8.gmatch(s, pattern) utf8 - Returns an iterator function
+utf8.gsub(s, pattern, repl [, n]) utf8 - Returns a copy of s in which all (or the first n, if given) occurrences of the pattern have been replaced
+utf8.insert(s [, idx, substring]) utf8 - Insert a substring to s
+utf8.len(s [, i, j]) utf8 - Returns the number of UTF-8 characters in string
+utf8.lower(s) utf8 - Receives a string and returns a copy of this string with all uppercase letters changed to lowercase
+utf8.match(s, pattern [, init]) utf8 - Looks for the first match of pattern in the string s
+utf8.ncasecmp(a, b) utf8 - Compare a and b without case
+utf8.next(s [, charpos, offset]) utf8 - Iterate though the UTF-8 string s
+utf8.offset(s, n [, i]) utf8 - Returns the position (in bytes) where the encoding of the n-th character of s
+utf8.remove(s [, start, stop]) utf8 - Delete a substring in s
+utf8.reverse(s) utf8 - Returns a string that is the string s reversed.
+utf8.sub(s, i [, j]) utf8 - Returns the substring of s that starts at i and continues until j
+utf8.title(s) utf8 - Convert UTF-8 string s to title case used to compare by ignore case
+utf8.upper(s) utf8 - Receives a string and returns a copy of this string with all lowercase letters changed to uppercase. 
+utf8.width(s [, ambi_is_double, default_width]) utf8 - calculate the width of UTF-8 string s
+utf8.widthindex(s, location [, ambi_is_double, default_width]) utf8 - Return the character index at given location in string s.
+utf8.charpattern - value "[\0-\x7F\xC2-\xF4][\x80-\xBF]*"
+Viewport > Sprite
+viewport
+lookAngles(eyex, eyey, eyez, pitch, yaw, roll) Viewport
+lookAt(eyex, eyey, eyez, targetx, targety, targetz, upx, upy, upz) Viewport
+setContent(content) Viewport
+setProjection(matrix) Viewport - Specify a projection matrix to use when displaying the content. 
+setTransform(transform) Viewport
 zlib
 zlib.adler32([adler32, buffer]) zlib - update the adler32 value
 zlib.compress(buffer [, level, method, windowBits, memLevel, strategy]) zlib - Return compressed string

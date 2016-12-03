@@ -38,6 +38,10 @@
 #elif WINSTORE
 #include "dxcompat.hpp"
 #define OPENGL_DESKTOP
+#elif EMSCRIPTEN
+#define	OPENGL_ES
+    #include <GLES2/gl2.h>
+    #include <GLES2/gl2ext.h>
 #elif RASPBERRY_PI
     #include <GLES2/gl2.h>
     #include <GLES2/gl2ext.h>
@@ -88,10 +92,10 @@ class ogl2ShaderProgram : public ShaderProgram
 public:
     virtual void activate();
     virtual void deactivate();
-    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache);
+    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache,int stride=0,int offset=0);
     virtual void setConstant(int index,ConstantType type, int mult,const void *ptr);
     virtual void drawArrays(ShapeType shape, int first, unsigned int count);
-    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache);
+    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first=0,unsigned int dcount=0);
     virtual bool isValid();
     virtual const char *compilationLog();
 
@@ -115,8 +119,11 @@ class ogl2ShaderTexture : public ShaderTexture
 protected:
 	GLuint glid;
 	int width,height;
+	bool native;
 public:
 	ogl2ShaderTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
+	void setNative(void *externalTexture);
+	void *getNative();
 	virtual ~ogl2ShaderTexture();
 };
 
@@ -127,13 +134,17 @@ class ogl2ShaderBuffer : public ShaderBuffer
 	g_id tempTexture_;
 	GLuint textureId_;
 protected:
+	GLuint _depthRenderBuffer;
 	GLuint glid;
+	int width,height;
 	static GLint bindBuffer(GLint n);
 public:
 	ogl2ShaderBuffer(ShaderTexture *texture);
 	virtual ~ogl2ShaderBuffer();
 	void readPixels(int x,int y,int width,int height,ShaderTexture::Format format,ShaderTexture::Packing packing,void *data);
 	void prepareDraw();
+	void unbound();
+	void needDepthStencil();
 };
 
 class ogl2ShaderEngine : public ShaderEngine
@@ -141,7 +152,7 @@ class ogl2ShaderEngine : public ShaderEngine
 	ShaderBuffer *currentBuffer;
 	GLuint _depthRenderBuffer;
 	GLuint s_texture;
-	int s_depthEnable;
+	bool s_depthEnable;
 	bool s_depthBufferCleared;
 	GLenum blendFactor2GLenum(BlendFactor blendFactor);
 	int devWidth,devHeight;
@@ -149,13 +160,14 @@ public:
 	ogl2ShaderEngine(int sw,int sh);
 	virtual ~ogl2ShaderEngine();
 	const char *getVersion();
+	const char *getShaderLanguage() { return "glsl"; };
 	void reset(bool reinit=false);
-	void setDepthTest(bool enable);
 	ShaderTexture *createTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
 	ShaderBuffer *createRenderTarget(ShaderTexture *texture);
 	ShaderBuffer *setFramebuffer(ShaderBuffer *fbo);
 	ShaderProgram *createShaderProgram(const char *vshader,const char *pshader,int flags, const ShaderProgram::ConstantDesc *uniforms, const ShaderProgram::DataDesc *attributes);
 	void setViewport(int x,int y,int width,int height);
+	void adjustViewportProjection(Matrix4 &vp, float width, float height);
 	void resizeFramebuffer(int width,int height);
 	void setProjection(const Matrix4 p);
 	void setModel(const Matrix4 m);
@@ -163,6 +175,7 @@ public:
 	void bindTexture(int num,ShaderTexture *texture);
 	void setClip(int x,int y,int w,int h);
 	void setBlendFunc(BlendFactor sfactor, BlendFactor dfactor);
+	void setDepthStencil(DepthStencil state);
 };
 
 

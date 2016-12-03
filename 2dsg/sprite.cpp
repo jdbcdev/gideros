@@ -52,6 +52,7 @@ void Sprite::setShader(ShaderProgram *shader) {
 	if (shader_)
 		shader_->Release();
 	shader_ = shader;
+	shaderParams_.clear();
 }
 
 void Sprite::doDraw(const CurrentTransform&, float sx, float sy, float ex,
@@ -227,6 +228,13 @@ void Sprite::draw(const CurrentTransform& transform, float sx, float sy,
 			ShaderEngine::Engine->pushClip(sprite->clipx_, sprite->clipy_,
 					sprite->clipw_, sprite->cliph_);
 
+		if (sprite->shader_)
+		for(std::map<std::string,ShaderParam>::iterator it = sprite->shaderParams_.begin(); it != sprite->shaderParams_.end(); ++it) {
+				ShaderParam *p=&(it->second);
+				int idx=sprite->shader_->getConstantByName(p->name.c_str());
+				if (idx>=0)
+					sprite->shader_->setConstant(idx,p->type,p->mult,&(p->data[0]));
+		}
 		sprite->doDraw(sprite->worldTransform_, sx, sy, ex, ey);
 
 		stack.push(std::make_pair(sprite, true));
@@ -482,11 +490,11 @@ void Sprite::replaceChild(Sprite* oldChild, Sprite* newChild) {
 	newChild->parent_ = this;
 }
 
-void Sprite::localToGlobal(float x, float y, float* tx, float* ty) const {
+void Sprite::localToGlobal(float x, float y, float z, float* tx, float* ty, float* tz) const {
 	const Sprite* curr = this;
 
 	while (curr) {
-		curr->matrix().transformPoint(x, y, &x, &y);
+		curr->matrix().transformPoint(x, y, z, &x, &y, &z);
 		curr = curr->parent_;
 	}
 
@@ -495,9 +503,12 @@ void Sprite::localToGlobal(float x, float y, float* tx, float* ty) const {
 
 	if (ty)
 		*ty = y;
+
+	if (tz)
+		*tz = z;
 }
 
-void Sprite::globalToLocal(float x, float y, float* tx, float* ty) const {
+void Sprite::globalToLocal(float x, float y, float z, float* tx, float* ty, float* tz) const {
 	std::stack<const Sprite*> stack;
 
 	const Sprite* curr = this;
@@ -507,7 +518,7 @@ void Sprite::globalToLocal(float x, float y, float* tx, float* ty) const {
 	}
 
 	while (stack.empty() == false) {
-		stack.top()->matrix().inverseTransformPoint(x, y, &x, &y);
+		stack.top()->matrix().inverseTransformPoint(x, y, z, &x, &y, &z);
 		stack.pop();
 	}
 
@@ -516,6 +527,9 @@ void Sprite::globalToLocal(float x, float y, float* tx, float* ty) const {
 
 	if (ty)
 		*ty = y;
+
+	if (tz)
+		*tz = z;
 }
 
 void Sprite::objectBounds(float* minx, float* miny, float* maxx, float* maxy,
@@ -1137,6 +1151,12 @@ void Sprite::set(int param, float value, GStatus* status) {
 	case eStringIdAlphaMultiplier:
 		setAlphaMultiplier(value);
 		break;
+    case eStringIdSkewX:
+        setSkewX(value);
+        break;
+    case eStringIdSkewY:
+        setSkewY(value);
+        break;
 	default:
 		if (status)
 			*status = GStatus(2008, "param"); // Error #2008: Parameter '%s' must be one of the accepted values.
@@ -1180,6 +1200,10 @@ float Sprite::get(int param, GStatus* status) {
 		return getBlueMultiplier();
 	case eStringIdAlphaMultiplier:
 		return getAlphaMultiplier();
+    case eStringIdSkewX:
+        return skewX();
+    case eStringIdSkewY:
+        return skewY();
 	}
 
 	if (status)

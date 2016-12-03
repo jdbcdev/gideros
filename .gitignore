@@ -18,6 +18,7 @@ build/
 bld/
 [Bb]in/
 [Oo]bj/
+Generated Files/
 
 # Roslyn cache directories
 *.ide/
@@ -238,6 +239,7 @@ tmp
 .qmake.stash
 */moc_*.cpp
 */qrc_*.cpp
+moc_*.cpp
 
 # other generated files and folders
 *.exe
@@ -249,6 +251,9 @@ tmp
 *.dll
 *.dylib
 *.app
+
+# MAC DS store
+.DS_Store
 
 # some files and folder to include
 !/release

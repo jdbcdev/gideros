@@ -5,6 +5,7 @@
 #include <string>
 #include <platform.h>
 #include <sstream>
+#include "gideros.h"
 
 float infoColor_[3];
 
@@ -15,6 +16,12 @@ static void drawIP(const char* ip, int size, int xx, int yy)
                                  " "
                                  " "
                                  ".";
+
+    static const char* charcolon = " "
+                                   "."
+                                   " "
+                                   "."
+                                   " ";
 
     static const char* char0 = " .. "
                                ".  ."
@@ -70,13 +77,49 @@ static void drawIP(const char* ip, int size, int xx, int yy)
                                ".  ."
                                " .. ";
 
-    static const char* char9 = " .. "
-                               ".  ."
-                               " ..."
-                               "   ."
-                               " .. ";
+	static const char* char9 = " .. "
+							   ".  ."
+		                       " ..."
+		                       "   ."
+		                       " .. ";
 
-    static const char* charPercent = ".   ."
+	static const char* chara = " .. "
+		                       ".  ."
+		                       "...."
+		                       ".  ."
+		                       ".  .";
+
+	static const char* charb = "... "
+		                       ".  ."
+		                       "... "
+		                       ".  ."
+		                       "... ";
+
+	static const char* charc = " ..."
+		                       ".   "
+		                       ".   "
+		                       ".   "
+		                       " ...";
+
+	static const char* chard = "... "
+		                       ".  ."
+		                       ".  ."
+		                       ".  ."
+		                       "... ";
+
+	static const char* chare = "...."
+		                       ".   "
+		                       "... "
+		                       ".   "
+		                       "....";
+
+	static const char* charf = "...."
+		                       ".   "
+		                       "... "
+		                       ".   "
+		                       ".   ";
+
+	static const char* charPercent = ".   ."
                                      "   . "
                                      "  .  "
                                      " .   "
@@ -109,13 +152,6 @@ static void drawIP(const char* ip, int size, int xx, int yy)
         ".   .  . .    .  . .     . .     . .  . .   .  . ."
         "...  ..   ... .  . ...   . .     . .  . .    ..   ";
 
-	static const char* version =
-        " ..   ..   .  ....    ..   .. "
-        ".  . .  . ..  .      .  . .  ."
-        "  .  .  .  .  ....   .  .  ..."
-        " .   .  .  .     .   .  .    ."
-        "....  ..  ... ...  .  ..   .. ";
-
     static const char* resolution =
         "...  ...  ...  ..  .   .  . ..... .  ..  .  .  "
         ".  . .   .    .  . .   .  .   .   . .  . .. . ."
@@ -137,7 +173,7 @@ static void drawIP(const char* ip, int size, int xx, int yy)
         ".    .  . .  . .   . ."
         "....  ..   ..  .   .  ";
 
-	static const char* chars[] = {char0, char1, char2, char3, char4, char5, char6, char7, char8, char9};
+	static const char* chars[] = {char0, char1, char2, char3, char4, char5, char6, char7, char8, char9, chara, charb, charc, chard, chare, charf };
 
 	glPushColor();
 
@@ -148,9 +184,11 @@ static void drawIP(const char* ip, int size, int xx, int yy)
 	int len = strlen(ip);
 	for (int i = 0; i < len; ++i)
 	{
-		const char* chr;
+		const char* chr=charSpace;
         if (ip[i] == '.')
 			chr = chardot;
+        else if (ip[i] == ':')
+			chr = charcolon;
         else if(ip[i] == ' ')
             chr = charSpace;
         else if(ip[i] == 'X')
@@ -161,15 +199,15 @@ static void drawIP(const char* ip, int size, int xx, int yy)
 			chr = localip;
         else if (ip[i] == 'L')
 			chr = loading;
-		else if (ip[i] == 'V')
-			chr = version;
         else if (ip[i] == 'R')
             chr = resolution;
         else if (ip[i] == 'H')
             chr = hardware;
         else if (ip[i] == 'Z')
             chr = zoom;
-		else
+		else if ((ip[i]>='a')&&(ip[i]<='f'))
+			chr = chars[ip[i] - 'a'+10];
+		else if ((ip[i] >= '0') && (ip[i] <= '9'))
 			chr = chars[ip[i] - '0'];
 
 		int height = 5;
@@ -211,7 +249,7 @@ void refreshLocalIPs()
 	ips = getLocalIPs();
 
 	for (int i = (int)ips.size() - 1; i >= 0; --i)
-		if (ips[i].find_first_not_of("0123456789.") != std::string::npos)
+		if (ips[i].find_first_not_of("0123456789abcdef.:") != std::string::npos)
 			ips.erase(ips.begin() + i);
 }
 
@@ -229,7 +267,7 @@ void drawInfo()
     // set background color of opengl canvas to black and clear the buffer to render again
 	ShaderEngine::Engine->clearColor(1,1,1,1);
 
-    drawIP("V", 3, 2, 2);
+    drawIP(GIDEROS_VERSION, 3, 2, 2);
     drawIP("I", 3, 2, 2+7+3+7+3+7+3);
 
 	int x = 6;
@@ -264,7 +302,7 @@ void drawInfoResolution(int width, int height, int scale, int lWidth, int lHeigh
     }
 
     int y = 1;
-    drawIP("V", 2, 1, y);
+    drawIP(GIDEROS_VERSION, 2, 1, y);
 
     y = y + 8;
     drawIP("I", 2, 1, y);

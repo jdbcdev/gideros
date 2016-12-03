@@ -11,6 +11,7 @@
 
 #include "giderosapi.h"
 
+
 @interface ViewController ()
 @property (nonatomic, retain) EAGLContext *context;
 @property (nonatomic, assign) CADisplayLink *displayLink;
@@ -232,6 +233,13 @@ NSMutableArray *tableData;
 {
     [self hideTable];
     gdr_openProject([tableData objectAtIndex:indexPath.row]);
+}
+
+-(void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event
+{
+    //Ignore presses to avoid exiting the app when pressing Menu button, you should handle the PAUSE_EVENT of the MFIController
+    NSLog(@"pressesBegan ignore");
+    return;
 }
 
 @end

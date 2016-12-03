@@ -181,7 +181,7 @@ void GLCanvas::setupProperties() {
 	application_->enableExceptions();
     if (isPlayer_) {
         application_->setPrintFunc(printToServer);
-		server_ = new Server(15000, ::getDeviceName().c_str());
+		server_ = new Server(0, ::getDeviceName().c_str()); //Default port
 
 		// set the global server var to use in print to server function
 		g_server = server_;
@@ -195,7 +195,7 @@ void GLCanvas::setupProperties() {
 		deviceScale_ = devicePixelRatio();
 
 		setHardwareOrientation(ePortrait);
-		setResolution(320, 480);
+		setResolution(320, 480, false);
 		setFps(60);
 		setScale(1);
 		setDrawInfos(false);
@@ -230,10 +230,9 @@ void GLCanvas::initializeGL() {
  TODO: bu hata olayini iyi dusunmek lazim. bi timer event'inde hata olursa, o timer tekrar cagirilmiyordu. sebebi bu yuzden olsa gerek.
  TODO: belki de lua'yi exception'li derlemek lazim. koda baktigimda oyle birseyi destekliyordu
  */
-void GLCanvas::paintGL() {
-	GStatus status;
-	application_->enterFrame(&status);
 
+bool GLCanvas::checkLuaError(GStatus status)
+{
 	if (status.error()) {
 		running_ = false;
 
@@ -248,7 +247,16 @@ void GLCanvas::paintGL() {
 
 		application_->deinitialize();
 		application_->initialize();
+		return true;
 	}
+	return false;
+}
+
+void GLCanvas::paintGL() {
+	GStatus status;
+	application_->enterFrame(&status);
+
+	checkLuaError(status);
 
 	application_->clearBuffers();
 	application_->renderScene();
@@ -898,6 +906,10 @@ void GLCanvas::loadFiles(std::vector<char> data) {
 }
 
 void GLCanvas::mousePressEvent(QMouseEvent* event) {
+    if (event->source() == Qt::MouseEventSynthesizedBySystem) {
+	  event->accept();
+	  return;
+	}
     if (event->button() <= 4){
         mouseButtonPressed_[event->button()] = true;
     }
@@ -905,7 +917,10 @@ void GLCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void GLCanvas::mouseMoveEvent(QMouseEvent* event) {
-    
+   if (event->source() == Qt::MouseEventSynthesizedBySystem) {
+	  event->accept();
+	  return;
+	}
     bool mousePressed = false;
     for( int i=1; i<=4; ++i )
     {
@@ -922,6 +937,10 @@ void GLCanvas::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GLCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->source() == Qt::MouseEventSynthesizedBySystem) {
+	  event->accept();
+	  return;
+	}
     if (event->button() <= 4){
         if(mouseButtonPressed_[event->button()]) mouseButtonPressed_[event->button()] = false;
     }
@@ -934,10 +953,10 @@ void GLCanvas::wheelEvent(QWheelEvent* event) {
 }
 
 void GLCanvas::keyPressEvent(QKeyEvent* event) {
-	if (event->isAutoRepeat())
-		return;
-
-	ginputp_keyDown(event->key());
+	if (!event->isAutoRepeat())
+		ginputp_keyDown(event->key());
+	if (!event->text().isEmpty()) //Don't bother propagating empty key strokes
+		ginputp_keyChar(event->text().toUtf8().constData());
 }
 
 void GLCanvas::keyReleaseEvent(QKeyEvent* event) {
@@ -952,13 +971,13 @@ void GLCanvas::tabletEvent(QTabletEvent* event) {
     int xs[1];
     int ys[1];
     int ids[1];
-    int pressures[1];
+    float pressures[1];
     int touchTypes[1];
 
     xs[0] = event->x() * deviceScale_;
     ys[0] = event->y() * deviceScale_;
     ids[0] = 0;
-    pressures[0] = event->pressure() * 10000;
+    pressures[0] = event->pressure();
     touchTypes[0] = 3;
 
 
@@ -984,7 +1003,7 @@ bool GLCanvas::event(QEvent *event){
         int xs[size];
         int ys[size];
         int ids[size];
-        int pressures[size];
+        float pressures[size];
         int touchTypes[size];
 
         for( int i=0; i<size; ++i )
@@ -993,7 +1012,7 @@ bool GLCanvas::event(QEvent *event){
             xs[i] = p.pos().x() * deviceScale_;
             ys[i] = p.pos().y() * deviceScale_;
             ids[i] = i;
-            pressures[i] = p.pressure() * 10000;
+            pressures[i] = p.pressure();
             touchTypes[i] = p.flags();
         }
 
@@ -1001,16 +1020,16 @@ bool GLCanvas::event(QEvent *event){
         {
             QTouchEvent::TouchPoint p = list[i];
             if(event->type() == QEvent::TouchCancel){
-                ginputp_touchesCancel(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_, p.pressure() * 10000, p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
+                ginputp_touchesCancel(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_, p.pressure(), p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
             }
             else if(p.state() == Qt::TouchPointPressed){
-                ginputp_touchesBegin(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure() * 10000, p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
+                ginputp_touchesBegin(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure(), p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
             }
             else if(p.state() == Qt::TouchPointMoved){
-                ginputp_touchesMove(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure() * 10000, p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
+                ginputp_touchesMove(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure(), p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
             }
             else if(p.state() == Qt::TouchPointReleased){
-                ginputp_touchesEnd(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure() * 10000, p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
+                ginputp_touchesEnd(p.pos().x() * deviceScale_, p.pos().y() * deviceScale_,p.pressure(), p.flags(), i, size, xs, ys, ids, pressures, touchTypes);
             }
         }
         return true;
@@ -1043,18 +1062,12 @@ bool GLCanvas::event(QEvent *event){
         timerEvent((QTimerEvent *) event);
         return true;
     }
-    else if(event->type() == QEvent::Resize){
-        if(running_){
-            Event event(Event::APPLICATION_RESIZE);
-            GStatus status;
-            application_->broadcastEvent(&event, &status);
-        }
-    }
     else if(event->type() == QEvent::FocusIn){
         if(running_){
             Event event(Event::APPLICATION_RESUME);
             GStatus status;
             application_->broadcastEvent(&event, &status);
+            checkLuaError(status);
         }
     }
     else if(event->type() == QEvent::WindowUnblocked){
@@ -1062,6 +1075,7 @@ bool GLCanvas::event(QEvent *event){
             Event event(Event::APPLICATION_RESUME);
             GStatus status;
             application_->broadcastEvent(&event, &status);
+            checkLuaError(status);
         }
     }
     else if(event->type() == QEvent::FocusOut){
@@ -1069,6 +1083,7 @@ bool GLCanvas::event(QEvent *event){
             Event event(Event::APPLICATION_SUSPEND);
             GStatus status;
             application_->broadcastEvent(&event, &status);
+            checkLuaError(status);
         }
     }
     else if(event->type() == QEvent::WindowBlocked){
@@ -1076,6 +1091,7 @@ bool GLCanvas::event(QEvent *event){
             Event event(Event::APPLICATION_SUSPEND);
             GStatus status;
             application_->broadcastEvent(&event, &status);
+            checkLuaError(status);
         }
     }
     return QGLWidget::event(event);
@@ -1332,12 +1348,19 @@ Orientation GLCanvas::getHardwareOrientation() {
 	return orientation_;
 }
 
-void GLCanvas::setResolution(int width, int height) {
+void GLCanvas::setResolution(int width, int height,bool event) {
 	width_ = width;
 	height_ = height;
 
 	if (application_->isInitialized())
 		application_->setResolution(width_, height_);
+
+    if(event&&running_){
+        Event event(Event::APPLICATION_RESIZE);
+        GStatus status;
+        application_->broadcastEvent(&event, &status);
+        checkLuaError(status);
+    }
 }
 
 void GLCanvas::setExportedApp(bool exportedApp) {

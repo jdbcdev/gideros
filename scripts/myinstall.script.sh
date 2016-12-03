@@ -1,13 +1,25 @@
 rm -rf ~/.wine
 wine xyz > /dev/null 2>&1
 
-export QT=/Users/ar2rsawseen/Qt/5.5/clang_64
-export QT_WIN=~/.wine/drive_c/Qt/Qt5.5.0/5.5/mingw492_32
+# Arturs
+#export QT=/Users/ar2rsawseen/Qt/5.6/clang_64
+#export QT_WIN=~/.wine/drive_c/Qt/Qt5.6.0/5.6/mingw49_32
+#export QT_DLL=54
+#export IOS_SDK=9.1
+#export TVOS_SDK=9.0
+#export ANDROID_HOME=/usr/local/opt/android-sdk
+#export ANDROID_NDK=/usr/local/opt/android-ndk
+#export GVERSION=2016.06
+
+# John
+export QT=/Users/johnblackburn/Qt/5.6/clang_64
+export QT_WIN=~/.wine/drive_c/Qt/Qt5.6.0/5.6/mingw49_32
 export QT_DLL=54
-export IOS_SDK=8.2
+export IOS_SDK=9.3
+export TVOS_SDK=9.2
 export ANDROID_HOME=/usr/local/opt/android-sdk
-export ANDROID_NDK=/usr/local/opt/android-ndk
-export GVERSION=2015.02
+export ANDROID_NDK=/usr/local/bin
+export GVERSION=2016.8.1
 
 rm -rf build
 mkdir build
@@ -15,6 +27,9 @@ mkdir build
 cd scripts
 echo 'Updating api annotation'
 wget "http://docs.giderosmobile.com/reference/autocomplete.php" -O ../ui/Resources/gideros_annot.api
+
+echo 'updating docs'
+bash docs-update.sh
 
 echo 'Installing Qt for Windows...'
 tar zxf ../../dependencies/Qt.tar.bz2 -C ~/.wine/drive_c
@@ -50,6 +65,8 @@ echo 'Building iOS libraries...'
 bash cleanioslibs.sh > /dev/null
 bash buildioslibs.sh > /dev/null
 bash buildiosplugins.sh > /dev/null
+bash cleanioslibs.sh > /dev/null
+sleep 200
 bash cleanatvlibs.sh > /dev/null
 bash buildatvlibs.sh > /dev/null
 bash buildatvplugins.sh > /dev/null
@@ -68,10 +85,12 @@ bash copymac.sh
 
 cp -R ../../external/VisualStudio ../build/win/Templates
 cp -R ../../external/win32 ../build/win/Templates
+cp -R ../../external/Html5 ../build/win/Templates
 cp -R ../../external/GiderosWindowsPhonePlayer.zip ../build/win
 cp -R ../../external/GiderosWindowsPlayer.zip ../build/win
 cp -R ../../external/VisualStudio ../build/mac/Gideros\ Studio.app/Contents/Templates
 cp -R ../../external/win32 ../build/mac/Gideros\ Studio.app/Contents/Templates
+cp -R ../../external/Html5 ../build/mac/Gideros\ Studio.app/Contents/Templates
 cp -R ../../external/GiderosWindowsPhonePlayer.zip ../build/mac
 cp -R ../../external/GiderosWindowsPlayer.zip ../build/mac
 

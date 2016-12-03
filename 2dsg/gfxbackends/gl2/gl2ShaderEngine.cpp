@@ -44,7 +44,7 @@ void main() {\
 }";
 #else
 /* Vertex shader*/
-const char *hdrVShaderCode =
+static const char *hdrVShaderCode =
 #ifdef OPENGL_ES
 		"#version 100\n"
 		"#define GLES2\n"
@@ -56,13 +56,25 @@ const char *hdrVShaderCode =
 #endif
 		"attribute highp vec3 vVertex;\n";
 
-const char *stdVShaderCode = "uniform highp mat4 vMatrix;\n"
+static const char *hdrPSVShaderCode =
+#ifdef OPENGL_ES
+		"#version 100\n"
+		"#define GLES2\n"
+#else
+		"#version 120\n"
+				"#define highp\n"
+				"#define mediump\n"
+				"#define lowp\n"
+#endif
+		"attribute highp vec4 vVertex;\n";
+
+static const char *stdVShaderCode = "uniform highp mat4 vMatrix;\n"
 		"\n"
 		"void main() {\n"
 		"  vec4 vertex = vec4(vVertex,1.0);\n"
 		"  gl_Position = vMatrix*vertex;\n"
 		"}\n";
-const char *stdCVShaderCode = "attribute lowp vec4 vColor;\n"
+static const char *stdCVShaderCode = "attribute lowp vec4 vColor;\n"
 		"uniform highp mat4 vMatrix;\n"
 		"varying lowp vec4 fInColor; "
 		"\n"
@@ -71,7 +83,7 @@ const char *stdCVShaderCode = "attribute lowp vec4 vColor;\n"
 		"  gl_Position = vMatrix*vertex;\n"
 		"  fInColor=vColor;\n"
 		"}\n";
-const char *stdTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
+static const char *stdTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
 		"uniform highp mat4 vMatrix;\n"
 		"varying mediump vec2 fTexCoord;\n"
 		"\n"
@@ -80,7 +92,7 @@ const char *stdTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
 		"  gl_Position = vMatrix*vertex;\n"
 		"  fTexCoord=vTexCoord;\n"
 		"}\n";
-const char *stdCTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
+static const char *stdCTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
 		"attribute lowp vec4 vColor;\n"
 		"uniform highp mat4 vMatrix;\n"
 		"varying mediump vec2 fTexCoord;\n"
@@ -92,7 +104,7 @@ const char *stdCTVShaderCode = "attribute mediump vec2 vTexCoord;\n"
 		"  fTexCoord=vTexCoord;\n"
 		"  fInColor=vColor;\n"
 		"}\n";
-const char *stdPVShaderCode = "attribute lowp vec4 vColor;\n"
+static const char *stdPVShaderCode = "attribute lowp vec4 vColor;\n"
 		"uniform highp mat4 vMatrix;\n"
 		"uniform highp mat4 vWorldMatrix;\n"
 		"uniform mediump float vPSize;\n"
@@ -106,8 +118,32 @@ const char *stdPVShaderCode = "attribute lowp vec4 vColor;\n"
 		"  gl_PointSize=length(xpsize.xyz);\n"
 		"}\n";
 
+static const char *stdPSVShaderCode = "attribute mediump vec2 vTexCoord;\n"
+		"attribute lowp vec4 vColor;\n"
+		"uniform highp mat4 vMatrix;\n"
+		"uniform highp mat4 vWorldMatrix;\n"
+		"varying lowp vec4 fInColor;\n"
+		"varying mediump vec2 fStepRot;\n"
+		"varying mediump vec2 fTexCoord;\n"
+		"void main() {\n"
+		"  mediump vec2 rad=(vec2(-0.5,-0.5)+vTexCoord)*vVertex.z;\n"
+		"  mediump float angle=vVertex.w*3.141592654/180.0;\n"
+		"  mediump float ca=cos(angle);\n"
+		"  mediump float sa=sin(angle);\n"
+		"  mediump mat2 rot=mat2(ca,sa,-sa,ca);\n"
+		"  rad=rad*rot;\n"
+		"  highp vec4 vertex = vec4(vVertex.xy+rad,0.0,1.0);\n"
+		"  gl_Position = vMatrix*vertex;\n"
+		"  fInColor=vColor;\n"
+		"  mediump vec4 xpsize=vWorldMatrix*vec4(vVertex.z,0.0,0.0,0.0);\n"
+		"  highp float xpl=length(xpsize.xyz);\n"
+		"  if (xpl==0.0) xpl=1.0;\n"
+		"  fStepRot=vec2(sign(vVertex.z)/xpl,vVertex.w);\n"
+		"  fTexCoord=vTexCoord;\n"
+		"}\n";
+
 /* Fragment shader*/
-const char *hdrFShaderCode =
+static const char *hdrFShaderCode =
 #ifdef OPENGL_ES
 		"#version 100\n"
 		"#define GLES2\n";
@@ -118,15 +154,15 @@ const char *hdrFShaderCode =
 				"#define lowp\n";
 #endif
 
-const char *stdFShaderCode = "uniform lowp vec4 fColor;\n"
+static const char *stdFShaderCode = "uniform lowp vec4 fColor;\n"
 		"void main() {\n"
 		" gl_FragColor = fColor;\n"
 		"}\n";
-const char *stdCFShaderCode = "varying lowp vec4 fInColor;\n"
+static const char *stdCFShaderCode = "varying lowp vec4 fInColor;\n"
 		"void main() {\n"
 		" gl_FragColor = fInColor;\n"
 		"}\n";
-const char *stdTFShaderCode = "uniform lowp vec4 fColor;\n"
+static const char *stdTFShaderCode = "uniform lowp vec4 fColor;\n"
 		"uniform lowp sampler2D fTexture;\n"
 		"varying mediump vec2 fTexCoord;\n"
 		"void main() {\n"
@@ -134,7 +170,7 @@ const char *stdTFShaderCode = "uniform lowp vec4 fColor;\n"
 		" if (frag.a==0.0) discard;\n"
 		" gl_FragColor = frag;\n"
 		"}\n";
-const char *stdCTFShaderCode = "varying lowp vec4 fInColor;\n"
+static const char *stdCTFShaderCode = "varying lowp vec4 fInColor;\n"
 		"uniform lowp sampler2D fTexture;\n"
 		"varying mediump vec2 fTexCoord;\n"
 		"void main() {\n"
@@ -142,7 +178,7 @@ const char *stdCTFShaderCode = "varying lowp vec4 fInColor;\n"
 		" if (frag.a==0.0) discard;\n"
 		" gl_FragColor = frag;\n"
 		"}\n";
-const char *stdPFShaderCode =
+static const char *stdPFShaderCode =
 		"varying lowp vec4 fInColor;\n"
 				"uniform lowp sampler2D fTexture;\n"
 				"uniform mediump vec4 fTexInfo;\n"
@@ -159,6 +195,36 @@ const char *stdPFShaderCode =
 				" else\n"
 				"  gl_FragColor=fInColor*texture2D(fTexture, gl_PointCoord*fTexInfo.xy);\n"
 				"}\n";
+
+static const char *stdPSFShaderCode =
+		"varying lowp vec4 fInColor;\n"
+		"varying mediump vec2 fStepRot;\n"
+		"varying mediump vec2 fTexCoord;\n"
+		"uniform lowp sampler2D fTexture;\n"
+		"uniform mediump vec4 fTexInfo;\n"
+		"void main() {\n"
+		" if (fStepRot.x==0.0) discard;\n"
+		" if (fStepRot.x<0.0)\n"
+	"		 gl_FragColor=fInColor;\n"
+	"	 else\n"
+	"	 {\n"
+	"	 mediump vec2 rad=vec2(-0.5,-0.5)+fTexCoord;\n"
+	"	 if (fTexInfo.x<=0.0)\n"
+	"	 {\n"
+	"	  lowp vec4 frag;\n"
+	"	  frag=fInColor;\n"
+	"	  lowp float alpha=1.0-smoothstep(0.5-fStepRot.x,0.5+fStepRot.x,length(rad));\n"
+	"	  frag*=alpha;\n"
+	"	  gl_FragColor=frag;\n"
+	"	 }\n"
+	"	 else\n"
+	"	 {\n"
+	"	  if ((rad.x<-0.5)||(rad.y<-0.5)||(rad.x>0.5)||(rad.y>0.5))\n"
+	"		  discard;\n"
+	"	  gl_FragColor=fInColor*texture2D(fTexture, (rad+vec2(0.5,0.5))*fTexInfo.xy);\n"
+	"	 }\n"
+	"	 }\n"
+				"}\n";
 #endif
 
 const char *ogl2ShaderEngine::getVersion() {
@@ -171,6 +237,16 @@ const char *ogl2ShaderEngine::getVersion() {
 
 void ogl2ShaderEngine::resizeFramebuffer(int width,int height)
 {
+    /*
+    int fw=width,fh=height,crb=0;
+    //XXX width and height may not match the framebuffer (reversed), get them from the current fb
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&crb);
+    if (crb) {
+        glBindRenderbuffer(GL_RENDERBUFFER, crb);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &fw);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &fh);
+    }
+    glog_i("FrameBuffer:(%d) %d,%d Real(%d,%d)",crb,width,height,fw,fh);*/
 	devWidth = width;
 	devHeight = height;
 	int depthfmt = 0;
@@ -181,10 +257,10 @@ void ogl2ShaderEngine::resizeFramebuffer(int width,int height)
 #endif
 
 #ifdef OPENGL_ES
-	glBindRenderbuffer(GL_RENDERBUFFER, _depthRenderBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, _depthRenderBuffer);
 	glRenderbufferStorage(GL_RENDERBUFFER, depthfmt, devWidth,devHeight);
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _depthRenderBuffer);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _depthRenderBuffer);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, _depthRenderBuffer);
 #endif
 }
@@ -230,6 +306,9 @@ void ogl2ShaderEngine::reset(bool reinit) {
 #endif
 		ogl2ShaderProgram::resetAll();
 	}
+   /* glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _depthRenderBuffer);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, _depthRenderBuffer);*/
+
 	ShaderEngine::reset(reinit);
 	s_texture = 0;
 	s_depthEnable = 0;
@@ -264,6 +343,9 @@ void ogl2ShaderEngine::reset(bool reinit) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #endif
 }
+
+extern void pathShadersInit();
+extern void pathShadersRelease();
 
 void ogl2SetupShaders() {
 	glog_i("GL_VERSION:%s\n", glGetString(GL_VERSION));
@@ -310,6 +392,24 @@ void ogl2SetupShaders() {
 	ShaderProgram::stdParticle = new ogl2ShaderProgram(hdrVShaderCode,
 			stdPVShaderCode, hdrFShaderCode, stdPFShaderCode, stdPUniforms,
 			stdAttributes);
+
+	const ShaderProgram::ConstantDesc stdPSConstants[] = {
+		{ "vMatrix",ShaderProgram::CMATRIX,1,ShaderProgram::SysConst_WorldViewProjectionMatrix,true,0,NULL },
+		{ "vWorldMatrix",ShaderProgram::CMATRIX,1,ShaderProgram::SysConst_WorldMatrix,true,0,NULL },
+		{ "fTexture",ShaderProgram::CTEXTURE,1,ShaderProgram::SysConst_None,false,0,NULL },
+		{ "fTexInfo",ShaderProgram::CFLOAT4,1,ShaderProgram::SysConst_TextureInfo,false,0,NULL },
+		{ "",ShaderProgram::CFLOAT,0,ShaderProgram::SysConst_None,false,0,NULL }
+	};
+	const ShaderProgram::DataDesc stdPSAttributes[] = {
+		{ "vVertex", ShaderProgram::DFLOAT, 4, 0, 0 },
+		{ "vColor", ShaderProgram::DUBYTE, 4, 1, 0 },
+		{ "vTexCoord", ShaderProgram::DFLOAT, 2, 2, 0 },
+		{ "",ShaderProgram::DFLOAT,0,0,0 }
+	};
+
+	ShaderProgram::stdParticles = new ogl2ShaderProgram(
+			hdrPSVShaderCode,	stdPSVShaderCode, hdrFShaderCode, stdPSFShaderCode, stdPSConstants, stdPSAttributes);
+
 }
 
 ShaderProgram *ogl2ShaderEngine::createShaderProgram(const char *vshader,
@@ -320,12 +420,23 @@ ShaderProgram *ogl2ShaderEngine::createShaderProgram(const char *vshader,
 }
 
 ogl2ShaderEngine::ogl2ShaderEngine(int sw, int sh) {
+    
+    /*int fw=sw,fh=sh,crb=0;
+    //XXX width and height may not match the framebuffer (reversed), get them from the current fb
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&crb);
+    if (crb) {
+        glBindRenderbuffer(GL_RENDERBUFFER, crb);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &fw);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &fh);
+    }*/
+
 	devWidth = sw;
 	devHeight = sh;
 	_depthRenderBuffer = 0;
 
 #ifndef GIDEROS_GL1
 	ogl2SetupShaders();
+	pathShadersInit();
 #endif
 
 	reset(true);
@@ -340,6 +451,7 @@ ogl2ShaderEngine::~ogl2ShaderEngine() {
 	delete ShaderProgram::stdTexture;
 	delete ShaderProgram::stdTextureColor;
 	delete ShaderProgram::stdParticle;
+	pathShadersRelease();
 #ifdef OPENGL_ES
 	glDeleteRenderbuffers(1,&_depthRenderBuffer);
 #endif
@@ -370,6 +482,8 @@ ShaderBuffer *ogl2ShaderEngine::setFramebuffer(ShaderBuffer *fbo) {
 		glBindFramebufferEXT(GL_FRAMEBUFFER,
 				fbo ? ((ogl2ShaderBuffer *) fbo)->glid : 0);
 #endif
+	if (previous)
+		previous->unbound();
 	currentBuffer = fbo;
 	return previous;
 
@@ -395,6 +509,87 @@ void ogl2ShaderEngine::setProjection(const Matrix4 p) {
 #endif
 }
 
+void ogl2ShaderEngine::adjustViewportProjection(Matrix4 &vp, float width, float height) {
+	vp.scale(1, -1, 1);
+	vp.translate(0, height, 0);
+}
+
+static GLint stencilopToGl(ShaderEngine::StencilOp sf)
+{
+	switch (sf)
+	{
+	case ShaderEngine::STENCIL_KEEP: return GL_KEEP;
+	case ShaderEngine::STENCIL_ZERO: return GL_ZERO;
+	case ShaderEngine::STENCIL_REPLACE: return GL_REPLACE;
+	case ShaderEngine::STENCIL_INCR: return GL_INCR;
+	case ShaderEngine::STENCIL_INCR_WRAP: return GL_INCR_WRAP;
+	case ShaderEngine::STENCIL_DECR: return GL_DECR;
+	case ShaderEngine::STENCIL_DECR_WRAP: return GL_DECR_WRAP;
+	case ShaderEngine::STENCIL_INVERT: return GL_INVERT;
+	}
+	return GL_KEEP;
+}
+
+void ogl2ShaderEngine::setDepthStencil(DepthStencil state)
+{
+	if (state.dClear)
+	{
+		state.dClear=false;
+		s_depthBufferCleared=false;
+	}
+	if (state.dTest) {
+		if (!s_depthEnable) {
+			if (currentBuffer)
+				currentBuffer->needDepthStencil();
+			if ((!s_depthBufferCleared)||(state.dClear)) {
+	#ifdef OPENGL_ES
+				glClearDepthf(1);
+	#endif
+				glClear(GL_DEPTH_BUFFER_BIT);
+				s_depthBufferCleared = true;
+    			state.dClear=false;
+			}
+			s_depthEnable=true;
+			glEnable(GL_DEPTH_TEST);
+		}
+	} else {
+		if (s_depthEnable)
+		{
+			glDisable(GL_DEPTH_TEST);
+			s_depthEnable=false;
+		}
+	}
+	if (state.sClear)
+	{
+		if (currentBuffer)
+			currentBuffer->needDepthStencil();
+		glClear(GL_STENCIL_BUFFER_BIT);
+		state.sClear=false;
+	}
+	glStencilOp(stencilopToGl(state.sFail),stencilopToGl(state.dFail),stencilopToGl(state.dPass));
+	if (state.sFunc==STENCIL_DISABLE)
+		glDisable(GL_STENCIL_TEST);
+	else
+	{
+		glEnable(GL_STENCIL_TEST);
+		GLenum sf=GL_ALWAYS;
+		switch (state.sFunc)
+		{
+			case STENCIL_NEVER: sf=GL_NEVER; break;
+			case STENCIL_LESS: sf=GL_LESS; break;
+			case STENCIL_LEQUAL: sf=GL_LEQUAL; break;
+			case STENCIL_GREATER: sf=GL_GREATER; break;
+			case STENCIL_GEQUAL: sf=GL_GEQUAL; break;
+			case STENCIL_EQUAL: sf=GL_EQUAL; break;
+			case STENCIL_NOTEQUAL: sf=GL_NOTEQUAL; break;
+		}
+		glStencilFunc(sf,state.sRef,state.sMask);
+	}
+	dsCurrent=state;
+}
+
+
+
 void ogl2ShaderEngine::clearColor(float r, float g, float b, float a) {
 	glClearColor(r * a, g * a, b * a, a);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -411,24 +606,6 @@ void ogl2ShaderEngine::setClip(int x, int y, int w, int h) {
 	else {
 		glEnable(GL_SCISSOR_TEST);
 		glScissor(x, y, w, h);
-	}
-}
-
-void ogl2ShaderEngine::setDepthTest(bool enable) {
-	if (enable) {
-		if (!(s_depthEnable++)) {
-			if (!s_depthBufferCleared) {
-#ifdef OPENGL_ES
-				glClearDepthf(1);
-#endif
-				glClear(GL_DEPTH_BUFFER_BIT);
-				s_depthBufferCleared = true;
-			}
-			glEnable(GL_DEPTH_TEST);
-		}
-	} else {
-		if (!(--s_depthEnable))
-			glDisable(GL_DEPTH_TEST);
 	}
 }
 

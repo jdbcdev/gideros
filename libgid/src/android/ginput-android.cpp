@@ -93,6 +93,8 @@ public:
 		const int KEYCODE_Y = 53;
 		const int KEYCODE_Z = 54;
 
+		const int KEYCODE_BACKSPACE = 67;
+
 		const int KEYCODE_BUTTON_A = 96;
 		const int KEYCODE_BUTTON_B = 97;
 		const int KEYCODE_BUTTON_C = 98;
@@ -156,6 +158,7 @@ public:
 		keyMap_[KEYCODE_Y] = GINPUT_KEY_Y;
 		keyMap_[KEYCODE_Z] = GINPUT_KEY_Z;		
 
+		keyMap_[KEYCODE_BACKSPACE] = GINPUT_KEY_BACKSPACE;
 		keyMap_[KEYCODE_BUTTON_A] = GINPUT_KEY_A;
 		keyMap_[KEYCODE_BUTTON_B] = GINPUT_KEY_B;
 		keyMap_[KEYCODE_BUTTON_C] = GINPUT_KEY_C;
@@ -372,13 +375,13 @@ public:
     }	
 
 public:
-	void touchBegin(int size, int *id, int *x, int *y, int actionIndex)
+	void touchBegin(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 	{
 		ginput_TouchEvent *touchEvent = newTouchEvent(size);
 		
 		touchEvent->touch.x = x[actionIndex];
 		touchEvent->touch.y = y[actionIndex];
-        touchEvent->touch.pressure = 0;
+        touchEvent->touch.pressure = pressure[actionIndex];
         touchEvent->touch.touchType = 0;
 		touchEvent->touch.id = id[actionIndex];
 		
@@ -386,7 +389,7 @@ public:
 		{
 			touchEvent->allTouches[i].x = x[i];
 			touchEvent->allTouches[i].y = y[i];
-            touchEvent->allTouches[i].pressure = 0;
+            touchEvent->allTouches[i].pressure = pressure[i];
             touchEvent->allTouches[i].touchType = 0;
 			touchEvent->allTouches[i].id = id[i];
 		}
@@ -418,7 +421,7 @@ public:
 		}
 	}
 
-	void touchesMove(int size, int *id, int *x, int *y)
+	void touchesMove(int size, int *id, int *x, int *y, float *pressure)
 	{
 		for (int i = 0; i < size; ++i)
 		{
@@ -426,7 +429,7 @@ public:
 			
 			touchEvent->touch.x = x[i];
 			touchEvent->touch.y = y[i];
-            touchEvent->touch.pressure = 0;
+            touchEvent->touch.pressure = pressure[i];
             touchEvent->touch.touchType = 0;
 			touchEvent->touch.id = id[i];
 			
@@ -434,8 +437,8 @@ public:
 			{
 				touchEvent->allTouches[j].x = x[j];
 				touchEvent->allTouches[j].y = y[j];
-                touchEvent->touch.pressure = 0;
-                touchEvent->touch.touchType = 0;
+	            touchEvent->allTouches[j].pressure = pressure[j];
+	            touchEvent->allTouches[j].touchType = 0;
 				touchEvent->allTouches[j].id = id[j];
 			}
 			
@@ -466,13 +469,13 @@ public:
 		}
 	}
 
-	void touchEnd(int size, int *id, int *x, int *y, int actionIndex)
+	void touchEnd(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 	{
 		ginput_TouchEvent *touchEvent = newTouchEvent(size);
 
 		touchEvent->touch.x = x[actionIndex];
 		touchEvent->touch.y = y[actionIndex];
-        touchEvent->touch.pressure = 0;
+        touchEvent->touch.pressure = pressure[actionIndex];
         touchEvent->touch.touchType = 0;
 		touchEvent->touch.id = id[actionIndex];
 		
@@ -480,8 +483,8 @@ public:
 		{
 			touchEvent->allTouches[i].x = x[i];
 			touchEvent->allTouches[i].y = y[i];
-            touchEvent->touch.pressure = 0;
-            touchEvent->touch.touchType = 0;
+            touchEvent->allTouches[i].pressure = pressure[i];
+            touchEvent->allTouches[i].touchType = 0;
 			touchEvent->allTouches[i].id = id[i];
 		}
 
@@ -511,7 +514,7 @@ public:
 		}
 	}
 
-	void touchesCancel(int size, int *id, int *x, int *y)
+	void touchesCancel(int size, int *id, int *x, int *y, float *pressure)
 	{
 		for (int i = 0; i < size; ++i)
 		{
@@ -519,7 +522,7 @@ public:
 			
 			touchEvent->touch.x = x[i];
 			touchEvent->touch.y = y[i];
-            touchEvent->touch.pressure = 0;
+            touchEvent->touch.pressure = pressure[i];
             touchEvent->touch.touchType = 0;
 			touchEvent->touch.id = id[i];
 			
@@ -527,8 +530,8 @@ public:
 			{
 				touchEvent->allTouches[j].x = x[j];
 				touchEvent->allTouches[j].y = y[j];
-                touchEvent->touch.pressure = 0;
-                touchEvent->touch.touchType = 0;
+	            touchEvent->allTouches[j].pressure = pressure[j];
+	            touchEvent->allTouches[j].touchType = 0;
 				touchEvent->allTouches[j].id = id[j];
 			}
 			
@@ -662,6 +665,18 @@ public:
 		return 1;
     }
 	
+    void keyChar(const char *keychar)
+    {
+        ginput_KeyEvent *event = newKeyEvent(0,0);
+    	if (strlen(keychar)<(sizeof(event->charCode)))
+    	{
+    		strcpy(event->charCode,keychar);
+            gevent_EnqueueEvent(gid_, callback_s, GINPUT_KEY_CHAR_EVENT, event, 0, this);
+    	}
+        deleteKeyEvent(event);
+    }
+
+
 private:
     ginput_KeyEvent *newKeyEvent(int keyCode, int realCode)
     {
@@ -829,25 +844,25 @@ void ginput_getGyroscopeRotationRate(double *x, double *y, double *z)
     s_manager->getGyroscopeRotationRate(x, y, z);
 }
 
-void ginputp_touchBegin(int size, int *id, int *x, int *y, int actionIndex)
+void ginputp_touchBegin(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 {
     if (s_manager)
-        s_manager->touchBegin(size, id, x, y, actionIndex);
+        s_manager->touchBegin(size, id, x, y, pressure, actionIndex);
 }
-void ginputp_touchesMove(int size, int *id, int *x, int *y)
+void ginputp_touchesMove(int size, int *id, int *x, int *y, float *pressure)
 {
     if (s_manager)
-        s_manager->touchesMove(size, id, x, y);
+        s_manager->touchesMove(size, id, x, y, pressure);
 }
-void ginputp_touchEnd(int size, int *id, int *x, int *y, int actionIndex)
+void ginputp_touchEnd(int size, int *id, int *x, int *y, float *pressure, int actionIndex)
 {
     if (s_manager)
-        s_manager->touchEnd(size, id, x, y, actionIndex);
+        s_manager->touchEnd(size, id, x, y, pressure, actionIndex);
 }
-void ginputp_touchesCancel(int size, int *id, int *x, int *y)
+void ginputp_touchesCancel(int size, int *id, int *x, int *y, float *pressure)
 {
     if (s_manager)
-        s_manager->touchesCancel(size, id, x, y);
+        s_manager->touchesCancel(size, id, x, y, pressure);
 }
 
 g_bool ginputp_keyDown(int keyCode, int repeatCount)
@@ -862,6 +877,12 @@ g_bool ginputp_keyUp(int keyCode, int repeatCount)
     if (s_manager)
         return s_manager->keyUp(keyCode, repeatCount);
     return g_false;
+}
+
+void ginputp_keyChar(const char *keyChar)
+{
+    if (s_manager)
+        s_manager->keyChar(keyChar);
 }
 
 void ginput_setMouseToTouchEnabled(int enabled)

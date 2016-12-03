@@ -59,6 +59,7 @@ public:
 
     void keyDown(int keyCode, int realCode);
     void keyUp(int keyCode, int realCode);
+    void keyChar(const char *code);
 
 	void setClearColorBuffer(bool b)
 	{
@@ -77,6 +78,11 @@ public:
     void setScale(float scale)
 	{
 		scale_ = scale;
+	}
+
+    float getScale()
+	{
+		return scale_?scale_:1;;
 	}
 
 	void setLogicalDimensions(int width, int height);

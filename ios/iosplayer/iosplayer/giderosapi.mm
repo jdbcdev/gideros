@@ -34,11 +34,9 @@
 
 #include <gui.h>
 #include <ginput.h>
-#ifndef TARGET_OS_TV
 #include <ginput-ios.h>
-#endif
 #include <gevent.h>
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 #include <ggeolocation.h>
 #endif
 
@@ -171,7 +169,8 @@ public:
 	
 	static void printToServer_s(const char *str, int len, void *data)
 	{
-		static_cast<NetworkManager*>(data)->printToServer(str, len);
+        if (data)
+            static_cast<NetworkManager*>(data)->printToServer(str, len);
 	}
 	
 	void printToServer(const char *str, int len)
@@ -183,7 +182,7 @@ public:
     	memcpy(buffer + 1, str,size-2);
     	buffer[size-1]=0;
 		
-		server_->sendData(buffer, size);
+		server_->sendData(buffer, size, true);
 		
 		free(buffer);
 	}	
@@ -242,7 +241,11 @@ public:
 	void touchesMoved(NSSet *touches, NSSet *allTouches);
 	void touchesEnded(NSSet *touches, NSSet *allTouches);
 	void touchesCancelled(NSSet *touches, NSSet *allTouches);
-	
+
+    void keyDown(int keyCode, int repeat);
+    void keyUp(int keyCode, int repeat);
+    void keyChar(NSString *text);
+
 	void suspend();
 	void resume();
 	
@@ -255,7 +258,7 @@ public:
 	void exitRenderLoopHelper();
 	
 	void didReceiveMemoryWarning();
-#ifndef TARGET_OS_TV	
+#if TARGET_OS_TV == 0
 	BOOL shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation);	
 	void willRotateToInterfaceOrientationHelper(UIInterfaceOrientation toInterfaceOrientation);
 	void willRotateToInterfaceOrientation(UIInterfaceOrientation toInterfaceOrientation);
@@ -269,6 +272,11 @@ public:
     
     void foreground();
     void background();
+    void surfaceChanged(int width,int height);
+    
+    bool isKeyboardVisible();
+    bool setKeyboardVisibility(bool visible);
+
 
 private:
 	void loadProperties();
@@ -279,6 +287,7 @@ private:
 private:
 	UIView *view_;
 	bool player_;
+    bool keyboardVisible_;
 	LuaApplication *application_;
 	NetworkManager *networkManager_;
 
@@ -606,6 +615,7 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
 	width_ = width;
 	height_ = height;
 	player_ = player;
+    keyboardVisible_=false;
 
 	// gpath & gvfs
 	gpath_init();
@@ -633,14 +643,14 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
     gapplication_init();
 	
 	// input
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     ginput_init();
 #endif
 	
 	// geolocation
-	#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	ggeolocation_init();
-	#endif
+#endif
 
 	// http
 	ghttp_Init();
@@ -668,7 +678,7 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
 	application_->enableExceptions();
 	application_->initialize();
 	application_->setResolution(width_, height_);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
@@ -680,15 +690,9 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
     
     deviceOrientation_ = ePortrait;
 
-#ifdef TARGET_OS_TV
-  	if (width_>height_){
-		hardwareOrientation_ = eLandscapeLeft;
-		deviceOrientation_ = eLandscapeLeft;
-    }
-	else {
-		hardwareOrientation_ = ePortrait;
-		deviceOrientation_ = ePortrait;
-	}
+#if TARGET_OS_TV == 1
+	hardwareOrientation_ = eLandscapeLeft;
+	deviceOrientation_ = eLandscapeLeft;
 #endif
 
 	running_ = false;
@@ -719,7 +723,7 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
         NSString *cachesDirectory = [paths2 objectAtIndex:0];
         printf("%s\n", [cachesDirectory UTF8String]);
 		
-#ifdef TARGET_OS_TV
+#if TARGET_OS_TV == 1
 		setDocumentsDirectory([cachesDirectory UTF8String]);
 		setTemporaryDirectory([temporaryDirectory UTF8String]);
 		setResourceDirectory(pathForFileEx([resourceDirectory UTF8String], "assets"));	
@@ -774,12 +778,12 @@ ApplicationManager::~ApplicationManager()
 	ghttp_Cleanup();
 	
 	// geolocation
-	#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	ggeolocation_cleanup();
-	#endif
+#endif
 	
 	// input
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     ginput_cleanup();
 #endif
 	
@@ -800,7 +804,7 @@ ApplicationManager::~ApplicationManager()
 
 void ApplicationManager::drawFirstFrame()
 {
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
@@ -1076,14 +1080,14 @@ void ApplicationManager::loadProperties()
 	application_->setLogicalDimensions(properties_.logicalWidth, properties_.logicalHeight);
 	application_->setLogicalScaleMode((LogicalScaleMode)properties_.scaleMode);
 	application_->setImageScales(properties_.imageScales);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
 #endif
 
 	g_setFps(properties_.fps);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 	ginput_setMouseToTouchEnabled(properties_.mouseToTouch);
 	ginput_setTouchToMouseEnabled(properties_.touchToMouse);
 	ginput_setMouseTouchOrder(properties_.mouseTouchOrder);
@@ -1158,14 +1162,14 @@ void ApplicationManager::play(const std::vector<std::string>& luafiles)
 	application_->setLogicalDimensions(properties_.logicalWidth, properties_.logicalHeight);
 	application_->setLogicalScaleMode((LogicalScaleMode)properties_.scaleMode);
 	application_->setImageScales(properties_.imageScales);
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
     willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
 #endif
 
 	g_setFps(properties_.fps);
-#ifndef TARGET_OS_TV	
+#if TARGET_OS_TV == 0
 	ginput_setMouseToTouchEnabled(properties_.mouseToTouch);
 	ginput_setTouchToMouseEnabled(properties_.touchToMouse);
 	ginput_setMouseTouchOrder(properties_.mouseTouchOrder);
@@ -1224,7 +1228,7 @@ void ApplicationManager::setProjectName(const char *projectName)
 {
 	glog_v("setProjectName: %s", projectName);
     NSArray* paths;
-#ifdef TARGET_OS_TV
+#if TARGET_OS_TV == 1
     paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
 #else
     paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -1287,6 +1291,14 @@ void ApplicationManager::suspend()
     application_->tick(&status);
     if (status.error())
         luaError(status.errorString());
+    if (networkManager_)
+    {
+        delete networkManager_;
+        networkManager_=NULL;
+        if (player_)
+            application_->setPrintFunc(NetworkManager::printToServer_s, NULL);
+    }
+
 #if THREADED_RENDER_LOOP
     [renderCond_ unlock];
 #endif
@@ -1301,6 +1313,12 @@ void ApplicationManager::resume()
 #if THREADED_RENDER_LOOP
     [renderCond_ lock];
 #endif
+    if (player_&&!networkManager_)
+    {
+        networkManager_ = new NetworkManager(this);
+        application_->setPrintFunc(NetworkManager::printToServer_s, networkManager_);
+    }
+
     GStatus status;
     application_->tick(&status);
     if (status.error())
@@ -1353,7 +1371,7 @@ void ApplicationManager::exitRenderLoopHelper()
 #endif
 }
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 void ApplicationManager::touchesBegan(NSSet *touches, NSSet *allTouches)
 {
     ginputp_touchesBegan(touches, allTouches, (UIView*)view_);
@@ -1375,6 +1393,22 @@ void ApplicationManager::touchesCancelled(NSSet *touches, NSSet *allTouches)
 }
 #endif
 
+void ApplicationManager::keyDown(int keyCode, int repeat)
+{
+    ginputp_keyDown(keyCode,repeat);
+}
+
+void ApplicationManager::keyUp(int keyCode, int repeat)
+{
+    ginputp_keyUp(keyCode,repeat);
+}
+
+void ApplicationManager::keyChar(NSString *text)
+{
+    ginputp_keyChar([text UTF8String]);
+}
+
+
 void ApplicationManager::didReceiveMemoryWarning()
 {
     gapplication_enqueueEvent(GAPPLICATION_MEMORY_LOW_EVENT, NULL, 0);
@@ -1391,7 +1425,7 @@ void ApplicationManager::didReceiveMemoryWarning()
 #endif
 }
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 BOOL ApplicationManager::shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation)
 {
 	BOOL result;
@@ -1434,23 +1468,10 @@ NSUInteger ApplicationManager::supportedInterfaceOrientations()
 }
 #endif
 
-#ifdef TARGET_OS_TV
+#if TARGET_OS_TV == 1
 void ApplicationManager::willRotateToInterfaceOrientationHelperTV(Orientation deviceOrientation_)
 {
     application_->getApplication()->setDeviceOrientation(deviceOrientation_);
-
-
-
-    Orientation orientation = application_->orientation();
-
-    bool b1 = orientation == ePortrait || orientation == ePortraitUpsideDown;
-    bool b2 = deviceOrientation_ == ePortrait || deviceOrientation_ == ePortraitUpsideDown;
-
-    if (b1 != b2)
-        hardwareOrientation_ = deviceOrientation_;
-    else
-        hardwareOrientation_ = orientation;
-
     application_->setHardwareOrientation(hardwareOrientation_);
 
 }
@@ -1552,13 +1573,45 @@ void ApplicationManager::background()
 #endif
 }
 
+void ApplicationManager::surfaceChanged(int width,int height)
+{
+    if (ShaderEngine::Engine) ShaderEngine::Engine->resizeFramebuffer(width, height);
+}
+
+
+bool ApplicationManager::isKeyboardVisible(){
+    return keyboardVisible_;
+}
+
+bool ApplicationManager::setKeyboardVisibility(bool visible)
+{
+    keyboardVisible_=visible;
+    if (visible)
+        [view_ becomeFirstResponder];
+    else
+        [view_ resignFirstResponder];
+    return true;
+}
+
 static ApplicationManager *s_manager = NULL;
+
+bool setKeyboardVisibility(bool visible){
+    if (s_manager)
+        return s_manager->setKeyboardVisibility(visible);
+    return false;
+}
 
 extern "C" {
 
 void gdr_initialize(UIView* view, int width, int height, bool player)
 {
 	s_manager = new ApplicationManager(view, width, height, player);
+}
+    
+void gdr_surfaceChanged(int width,int height)
+{
+    if (s_manager)
+         s_manager->surfaceChanged(width,height);
 }
 
 void gdr_drawFrame()
@@ -1598,7 +1651,7 @@ void gdr_resume()
 {
 	s_manager->resume();
 }
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 BOOL gdr_shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation)
 {
 	return s_manager->shouldAutorotateToInterfaceOrientation(interfaceOrientation);
@@ -1624,7 +1677,7 @@ void gdr_didReceiveMemoryWarning()
 	s_manager->didReceiveMemoryWarning();
 }
 
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 void gdr_touchesBegan(NSSet *touches, NSSet *allTouches)
 {
 	s_manager->touchesBegan(touches, allTouches);
@@ -1645,6 +1698,22 @@ void gdr_touchesCancelled(NSSet *touches, NSSet *allTouches)
 	s_manager->touchesCancelled(touches, allTouches);
 }
 #endif
+    
+void gdr_keyDown(int keyCode, int repeat)
+{
+    s_manager->keyDown(keyCode,repeat);
+}
+
+void gdr_keyUp(int keyCode, int repeat)
+{
+    s_manager->keyUp(keyCode,repeat);
+}
+    
+void gdr_keyChar(NSString *text)
+{
+    s_manager->keyChar(text);
+}
+
 
 void gdr_handleOpenUrl(NSURL *url)
 {
@@ -1665,5 +1734,13 @@ BOOL gdr_isRunning()
 {
     return s_manager->isRunning();
 }
+    
+BOOL gdr_keyboardVisible()
+{
+    if (s_manager)
+        return s_manager->isKeyboardVisible();
+    return FALSE;
+}
+
     
 }

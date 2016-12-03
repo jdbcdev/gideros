@@ -4,6 +4,9 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include <time.h>
+
+#define GIDEROS_DEFAULT_PORT	15000
 
 #ifdef WINSTORE
 
@@ -17,7 +20,8 @@
 #include <Ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 #elif WIN32
-#include <WinSock.h>
+#include <winsock2.h>
+#include <Ws2tcpip.h>
 #else
 typedef int SOCKET;
 #endif
@@ -55,7 +59,7 @@ class QueueElement;
 class NetworkBase
 {
 public:
-	int sendData(const void* data, unsigned int size);
+	int sendData(const void* data, unsigned int size, bool noCheck=false);
 	void cancelSend();
 
 	SOCKET clientSock() const
@@ -122,7 +126,7 @@ public:
 	{
 		return serverSock_;
 	}
-
+    
 private:
 	SOCKET serverSock_;
     SOCKET broadcastSock_;
@@ -130,6 +134,7 @@ private:
     char deviceName_[32];
 
 	void cleanup(void);
+	void advertise();
 };
 
 class Client : public NetworkBase

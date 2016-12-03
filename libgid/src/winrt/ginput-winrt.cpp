@@ -6,6 +6,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <map>
+using namespace Windows::Devices::Sensors;
+using namespace Platform;
 
 struct Pointer{
 	int x;
@@ -173,6 +175,17 @@ public:
 
         ginput_KeyEvent *event = newKeyEvent(keyCode, realCode);
         gevent_EnqueueEvent(gid_, callback_s, GINPUT_KEY_UP_EVENT, event, 0, this);
+        deleteKeyEvent(event);
+    }
+
+    void keyChar(const char *keychar)
+    {
+        ginput_KeyEvent *event = newKeyEvent(0,0);
+     	if (strlen(keychar)<(sizeof(event->charCode)))
+     	{
+     		strcpy(event->charCode,keychar);
+             gevent_EnqueueEvent(gid_, callback_s, GINPUT_KEY_CHAR_EVENT, event, 0, this);
+     	}
         deleteKeyEvent(event);
     }
 
@@ -693,12 +706,27 @@ private:
 using namespace ginput;
 
 static InputManager *s_manager = NULL;
+static Accelerometer^ s_accel = nullptr;
+static Gyrometer^ s_gyro = nullptr;
 
 extern "C" {
 
 void ginput_init()
 {
     s_manager = new InputManager;
+	try {
+		s_accel = Accelerometer::GetDefault();
+	}
+	catch (Exception^ e)
+	{
+	}
+
+	try {
+		s_gyro = Gyrometer::GetDefault();
+	}
+	catch (Exception^ e)
+	{
+	}
 }
 
 void ginput_cleanup()
@@ -709,12 +737,11 @@ void ginput_cleanup()
 
 int ginput_isAccelerometerAvailable()
 {
-    return 0;
+    return (s_accel!=nullptr)?1:0;
 }
 
 void ginput_startAccelerometer()
 {
-
 }
 
 void ginput_stopAccelerometer()
@@ -724,17 +751,27 @@ void ginput_stopAccelerometer()
 
 void ginput_getAcceleration(double *x, double *y, double *z)
 {
-    if (x)
-        *x = 0;
-    if (y)
-        *y = 0;
-    if (z)
-        *z = 0;
+	if (x)
+		*x = 0;
+	if (y)
+		*y = 0;
+	if (z)
+		*z = 0;
+	if (s_accel != nullptr)
+	{
+		AccelerometerReading^ ar = s_accel->GetCurrentReading();
+		if (ar != nullptr)
+		{
+			if (x) *x = ar->AccelerationX;
+			if (y) *y = ar->AccelerationY;
+			if (z) *z = ar->AccelerationZ;
+		}
+	}
 }
 
 int ginput_isGyroscopeAvailable()
 {
-    return 0;
+	return (s_gyro != nullptr) ? 1 : 0;
 }
 
 void ginput_startGyroscope()
@@ -755,6 +792,16 @@ void ginput_getGyroscopeRotationRate(double *x, double *y, double *z)
         *y = 0;
     if (z)
         *z = 0;
+	if (s_gyro != nullptr)
+	{
+		GyrometerReading^ ar = s_gyro->GetCurrentReading();
+		if (ar != nullptr)
+		{
+			if (x) *x = ar->AngularVelocityX;
+			if (y) *y = ar->AngularVelocityY;
+			if (z) *z = ar->AngularVelocityZ;
+		}
+	}
 }
 
 void ginputp_keyDown(int keyCode)
@@ -767,6 +814,12 @@ void ginputp_keyUp(int keyCode)
 {
     if (s_manager)
         s_manager->keyUp(keyCode);
+}
+
+void ginputp_keyChar(const char *keyChar)
+{
+    if (s_manager)
+        s_manager->keyChar(keyChar);
 }
 
 void ginput_setMouseToTouchEnabled(int enabled)

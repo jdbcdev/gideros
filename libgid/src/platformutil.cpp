@@ -329,6 +329,15 @@ std::vector<std::string> getLocalIPs()
 	return jnb_getLocalIPs();
 }
 
+#elif EMSCRIPTEN
+
+std::vector<std::string> getLocalIPs()
+{
+ std::vector<std::string> none;
+ return none;
+}
+
+
 #else
 
 #include <stdio.h>
@@ -373,14 +382,12 @@ std::vector<std::string> getLocalIPs()
                 break;
             }
 
-			/*
 			case AF_INET6:
             {
                 struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)ifa->ifa_addr;
                 in_addr = &s6->sin6_addr;
                 break;
             }
-			*/
 
             default:
                 continue;
@@ -436,7 +443,7 @@ double iclock()
 	static double begin = CFAbsoluteTimeGetCurrent();
 	return CFAbsoluteTimeGetCurrent() - begin;
 }
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(STRICT_LINUX)
 static double nanoTime()
 {
 	struct timespec t;
@@ -479,6 +486,16 @@ extern "C"
 #include "md5.h"
 }
 
+void md5_frombuffer(const unsigned char *buffer,unsigned int size, unsigned char md5sum[16])
+{
+	md5_context ctx;
+
+	md5_starts( &ctx );
+	md5_update( &ctx, buffer, size );
+	md5_finish( &ctx, md5sum );
+}
+
+
 bool md5_fromfile(const char* filename, unsigned char md5sum[16])
 {
 	FILE* f = fopen(filename, "rb");
@@ -504,4 +521,40 @@ bool md5_fromfile(const char* filename, unsigned char md5sum[16])
 	return true;
 }
 
+extern "C"
+{
+#include "aes.h"
+}
+
+void aes_encrypt(const unsigned char *input,unsigned char *output,int size,const unsigned char *key,const unsigned char *iv,int padtype)
+{
+	if (iv)
+		AES128_CBC_encrypt_buffer(output,input,size,key,iv,padtype);
+	else
+	{
+		while (size>=16)
+		{
+			AES128_ECB_encrypt(input,key,output);
+			input+=16;
+			output+=16;
+			size-=16;
+		}
+	}
+}
+
+void aes_decrypt(const unsigned char *input,unsigned char *output,int size,const unsigned char *key,const unsigned char *iv,int padtype)
+{
+	if (iv)
+		AES128_CBC_decrypt_buffer(output,input,size,key,iv,padtype);
+	else
+	{
+		while (size>=16)
+		{
+			AES128_ECB_decrypt(input,key,output);
+			input+=16;
+			output+=16;
+			size-=16;
+		}
+	}
+}
 

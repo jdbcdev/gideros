@@ -1,0 +1,101 @@
+<plugin
+ name="Camera"
+ description="Allow to preview camera content into a gideros Texture">
+ <property name="camUsageDesc" type="string" title="Camera usage description (iOS)" default="This app needs to access your camera"/>
+ <property name="camRequired" type="boolean" title="Camera is mandatory (Android)"/>
+  <target name="AndroidStudio,APK">
+    <template name="sources" path="[[[sys.pluginDir]]]/bin/Android/src" dest="app/src/main/java"/>
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/Android/libs" dest="app/src/main/jniLibs"/>
+    <template name="Activity" path="">
+        <replacelist wildcards="[[[project.namews]]]Activity.java">
+            <append orig="//GIDEROS-STATIC-INIT//" by="		System.loadLibrary(&quot;camera&quot;);"/>
+            <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.camera.GCamera&quot;,"/>
+            <append orig="//GIDEROS-ACTIVITY-PREDRAW//" by="		com.giderosmobile.android.plugins.camera.GCamera.frame();"/>
+        </replacelist>
+    </template>
+    <set key="local.required" value="false"/>
+    <if condition="[[[plugin.camRequired]]]">
+    	<set key="local.required" value="true"/>
+    </if>
+    <template name="AndroidManifest" path="">
+        <replacelist wildcards="AndroidManifest.xml">
+            <append>
+            	<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
+            	<by><![CDATA[
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="[[[local.required]]]"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />            	
+            	]]></by>
+            </append>
+        </replacelist>
+    </template>
+ </target>
+ <target name="Android">
+    <template name="binares" path="[[[sys.pluginDir]]]/bin/Android"/>
+    <template name="Activity" path="">
+        <replacelist wildcards="[[[project.namews]]]Activity.java">
+           <append orig="//GIDEROS-STATIC-INIT//" by="		System.loadLibrary(&quot;camera&quot;);"/>
+            <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.camera.GCamera&quot;,"/>
+            <append orig="//GIDEROS-ACTIVITY-PREDRAW//" by="		com.giderosmobile.android.plugins.camera.GCamera.frame();"/>
+        </replacelist>
+    </template>
+   <template name="AndroidManifest" path="">
+        <replacelist wildcards="AndroidManifest.xml">
+            <append>
+            	<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
+            	<by><![CDATA[
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />            	
+            	]]></by>
+            </append>
+        </replacelist>
+    </template>
+ </target>
+ <target name="iOS">
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/iOS" dest="[[[project.namews]]]/Plugins" />
+    <template name="Activity" path="">
+        <replacelist wildcards="plugins.cpp">
+           <append orig="//GIDEROS-TAG-IOS:IMPORTPLUGIN//" by="		IMPORT_PLUGIN(Camera) "/>
+        </replacelist>
+    </template>
+   <template name="Project" path="">
+        <replacelist wildcards="project.pbxproj;EAGLView.m;[[[project.namews]]]-Info.plist">
+            <prepend>
+            	<orig>/* End PBXFileReference section */</orig>
+            	<by><![CDATA[
+		000000001BAC10CC005599BD = {isa = PBXBuildFile; fileRef = 000000011BAC10CC005599BD ; };
+		000000011BAC10CC005599BD = {isa = PBXFileReference; lastKnownFileType = archive.ar; name=libcamera.ios.a; path = [[[project.namews]]]/Plugins/libcamera.ios.a; sourceTree = "<group>"; };
+            	]]></by>
+            </prepend>
+            <prepend>
+            	<orig>5FD896EC15CED77F00D34824 /* UIKit.framework in Frameworks */,</orig>
+            	<by><![CDATA[
+		000000001BAC10CC005599BD,
+            	]]></by>
+            </prepend>
+            <prepend>
+            	<orig>5FD896EB15CED77F00D34824 /* UIKit.framework */,</orig>
+            	<by><![CDATA[
+		000000011BAC10CC005599BD,
+            	]]></by>
+            </prepend>
+	    <prepend>
+    		<orig>//GIDEROS-TAG-IOS:PREDRAW//</orig>
+		<by>cameraplugin_render(); </by>
+	    </prepend>
+	    <append>
+    		<orig>//GIDEROS-TAG-IOS:DRAWDEFS//</orig>
+		<by>extern void cameraplugin_render(); </by>
+	    </append>
+	    <prepend>
+		<orig><![CDATA[<key>CFBundleDisplayName</key>]]></orig>
+		<by><![CDATA[	
+			<key>NSCameraUsageDescription</key>
+			<string>[[[plugin.camUsageDesc]]]</string>
+		]]></by>
+	    </prepend>
+        </replacelist>
+    </template>
+ </target>
+</plugin>

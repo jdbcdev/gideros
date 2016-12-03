@@ -11,23 +11,24 @@
 
 #include <utf8.h>
 #include <algorithm>
+#include "path.h"
 
 static unsigned long read(	FT_Stream stream,
-							unsigned long offset,
-							unsigned char* buffer,
-							unsigned long count)
+                            unsigned long offset,
+                            unsigned char* buffer,
+                            unsigned long count)
 {
-	G_FILE* fis = (G_FILE*)stream->descriptor.pointer;
-	g_fseek(fis, offset, SEEK_SET);
-	if (count == 0)
-		return 0;
-	return g_fread(buffer, 1, count, fis);
+    G_FILE* fis = (G_FILE*)stream->descriptor.pointer;
+    g_fseek(fis, offset, SEEK_SET);
+    if (count == 0)
+        return 0;
+    return g_fread(buffer, 1, count, fis);
 }
 
 static void close(FT_Stream stream)
 {
-	G_FILE* fis = (G_FILE*)stream->descriptor.pointer;
-	g_fclose(fis);
+    G_FILE* fis = (G_FILE*)stream->descriptor.pointer;
+    g_fclose(fis);
 }
 
 TTFont::TTFont(Application *application, const char *filename, float size, bool smoothing, GStatus *status) : FontBase(application)
@@ -45,60 +46,91 @@ TTFont::TTFont(Application *application, const char *filename, float size, bool 
 
 void TTFont::constructor(const char *filename, float size, bool smoothing)
 {
-	face_ = NULL;
+    face_ = NULL;
 
-	G_FILE* fis = g_fopen(filename, "rb");
-	if (fis == NULL)
-	{
-		throw GiderosException(GStatus(6000, filename));		// Error #6000: %s: No such file or directory.
-		return;
-	}
+    G_FILE* fis = g_fopen(filename, "rb");
+    if (fis == NULL)
+    {
+        throw GiderosException(GStatus(6000, filename));		// Error #6000: %s: No such file or directory.
+        return;
+    }
 
-	memset(&stream_, 0, sizeof(stream_));
+    memset(&stream_, 0, sizeof(stream_));
 
-	g_fseek(fis, 0, SEEK_END);
-	stream_.size = g_ftell(fis);
-	g_fseek(fis, 0, SEEK_SET);
-	stream_.descriptor.pointer = fis;
-	stream_.read = read;
-	stream_.close = close;
+    g_fseek(fis, 0, SEEK_END);
+    stream_.size = g_ftell(fis);
+    g_fseek(fis, 0, SEEK_SET);
+    stream_.descriptor.pointer = fis;
+    stream_.read = read;
+    stream_.close = close;
 
-	FT_Open_Args args;
-	memset(&args, 0, sizeof(args));
-	args.flags = FT_OPEN_STREAM;
-	args.stream = &stream_;
+    FT_Open_Args args;
+    memset(&args, 0, sizeof(args));
+    args.flags = FT_OPEN_STREAM;
+    args.stream = &stream_;
 
-	if (FT_Open_Face(FT_Library_Singleton::instance(), &args, 0, &face_))
-		throw GiderosException(GStatus(6012, filename));		// Error #6012: %s: Error while reading font file.
+    if (FT_Open_Face(FT_Library_Singleton::instance(), &args, 0, &face_))
+        throw GiderosException(GStatus(6012, filename));		// Error #6012: %s: Error while reading font file.
 
     float scalex = application_->getLogicalScaleX();
     float scaley = application_->getLogicalScaleY();
 
-	const int RESOLUTION = 72;
-	if (FT_Set_Char_Size(face_, 0L, (int)floor(size * 64 + 0.5f), (int)floor(RESOLUTION * scalex + 0.5f), (int)floor(RESOLUTION * scaley + 0.5f)))
-	{
-		FT_Done_Face(face_);
-		face_ = NULL;
-        throw GiderosException(GStatus(6017, filename));		// Error #6017: Invalid font size.
-	}
+    const int RESOLUTION = 72;
 
-	ascender_ = face_->size->metrics.ascender >> 6;
-	height_ = face_->size->metrics.height >> 6;
+    if (FT_Set_Char_Size(face_, 0L, (int)floor(size * 64 + 0.5f), (int)floor(RESOLUTION * scalex + 0.5f), (int)floor(RESOLUTION * scaley + 0.5f)))
+    {
+        FT_Done_Face(face_);
+        face_ = NULL;
+        throw GiderosException(GStatus(6017, filename));		// Error #6017: Invalid font size.
+    }
+
+    ascender_ = face_->size->metrics.ascender >> 6;
+    height_ = face_->size->metrics.height >> 6;
+
+    currentLogicalScaleX_=scalex;
+    currentLogicalScaleX_=scaley;
+    defaultSize_=size;
 
     smoothing_ = smoothing;
 }
 
-TTFont::~TTFont()
-{
-	if (face_)
-		FT_Done_Face(face_);
-}
-
-void TTFont::getBounds(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy) const
+void TTFont::checkLogicalScale()
 {
     float scalex = application_->getLogicalScaleX();
+    float scaley = application_->getLogicalScaleY();
 
-    int minx = 0x7fffffff;
+    if ((scalex!=currentLogicalScaleX_)||(scaley!=currentLogicalScaleY_))
+    {
+        for(std::map<wchar32_t,GlyphData>::iterator it = glyphCache_.begin(); it != glyphCache_.end(); it++) {
+            free(it->second.bitmap);
+        }
+        glyphCache_.clear();
+        const int RESOLUTION = 72;
+        if (!FT_Set_Char_Size(face_, 0L, (int)floor(defaultSize_ * 64 + 0.5f), (int)floor(RESOLUTION * scalex + 0.5f), (int)floor(RESOLUTION * scaley + 0.5f)))
+        {
+            currentLogicalScaleX_=scalex;
+            currentLogicalScaleX_=scaley;
+            ascender_ = face_->size->metrics.ascender >> 6;
+            height_ = face_->size->metrics.height >> 6;
+        }
+    }
+}
+
+TTFont::~TTFont()
+{
+    if (face_)
+        FT_Done_Face(face_);
+    for(std::map<wchar32_t,GlyphData>::iterator it = glyphCache_.begin(); it != glyphCache_.end(); it++) {
+        free(it->second.bitmap);
+    }
+}
+
+void TTFont::getBounds(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy)
+{
+	float scalex = application_->getLogicalScaleX();
+	checkLogicalScale();
+
+	int minx = 0x7fffffff;
     int miny = 0x7fffffff;
     int maxx = -0x7fffffff;
     int maxy = -0x7fffffff;
@@ -110,13 +142,13 @@ void TTFont::getBounds(const wchar32_t *text, float letterSpacing, int *pminx, i
     int x = 0, y = 0;
     FT_UInt prev = 0;
     for (int i = 0; i < size; ++i)
-	{
+    {
         FT_UInt glyphIndex = FT_Get_Char_Index(face_, text[i]);
         if (glyphIndex == 0)
             continue;
 
         if (FT_Load_Glyph(face_, glyphIndex, FT_LOAD_DEFAULT))
-			continue;
+            continue;
 
         int top, left, width, height;
         if (face_->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
@@ -158,28 +190,29 @@ void TTFont::getBounds(const wchar32_t *text, float letterSpacing, int *pminx, i
         x += face_->glyph->advance.x >> 6;
 
         x += (int)(letterSpacing * scalex);
-	}
+    }
 
-	if (pminx)
-		*pminx = minx;
-	if (pminy)
-		*pminy = miny;
-	if (pmaxx)
-		*pmaxx = maxx;
-	if (pmaxy)
-		*pmaxy = maxy;
+    if (pminx)
+        *pminx = minx;
+    if (pminy)
+        *pminy = miny;
+    if (pmaxx)
+        *pmaxx = maxx;
+    if (pmaxy)
+        *pmaxy = maxy;
 }
 
-Dib TTFont::renderFont(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy) const
+Dib TTFont::renderFont(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy)
 {
-    float scalex = application_->getLogicalScaleX();
+	float scalex = application_->getLogicalScaleX();
+	checkLogicalScale();
 
     int minx, miny, maxx, maxy;
-	getBounds(text, letterSpacing, &minx, &miny, &maxx, &maxy);
+    getBounds(text, letterSpacing, &minx, &miny, &maxx, &maxy);
 
     Dib dib(application_, (maxx - minx) + 2, (maxy - miny) + 2, true);
-	unsigned char rgba[] = {255, 255, 255, 0};
-	dib.fill(rgba);
+    unsigned char rgba[] = {255, 255, 255, 0};
+    dib.fill(rgba);
 
     int size = 0;
     for (const wchar32_t *t = text; *t; ++t, ++size)
@@ -188,82 +221,95 @@ Dib TTFont::renderFont(const wchar32_t *text, float letterSpacing, int *pminx, i
     int x = 1, y = 1;
     FT_UInt prev = 0;
     for (int i = 0; i < size; ++i)
-	{
-        FT_UInt glyphIndex = FT_Get_Char_Index(face_, text[i]);
-        if (glyphIndex == 0)
-            continue;
-
-        if (FT_Load_Glyph(face_, glyphIndex, FT_LOAD_DEFAULT))
-			continue;
-
-        int top, left, width, height;
-        if (face_->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
+    {
+        GlyphData g=glyphCache_[text[i]];
+        if (g.bitmap==NULL)
         {
-            FT_BBox bbox;
-            FT_Outline_Get_CBox(&face_->glyph->outline, &bbox);
+            FT_UInt glyphIndex = FT_Get_Char_Index(face_, text[i]);
+            if (glyphIndex == 0)
+                continue;
 
-            bbox.xMin &= ~63;
-            bbox.yMin &= ~63;
-            bbox.xMax  = (bbox.xMax + 63) & ~63;
-            bbox.yMax  = (bbox.yMax + 63) & ~63;
+            if (FT_Load_Glyph(face_, glyphIndex, FT_LOAD_DEFAULT))
+                continue;
 
-            width  = (bbox.xMax - bbox.xMin) >> 6;
-            height = (bbox.yMax - bbox.yMin) >> 6;
-            top = bbox.yMax >> 6;
-            left = bbox.xMin >> 6;
+            int top, left, width, height;
+            if (face_->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
+            {
+                FT_BBox bbox;
+                FT_Outline_Get_CBox(&face_->glyph->outline, &bbox);
+
+                bbox.xMin &= ~63;
+                bbox.yMin &= ~63;
+                bbox.xMax  = (bbox.xMax + 63) & ~63;
+                bbox.yMax  = (bbox.yMax + 63) & ~63;
+
+                width  = (bbox.xMax - bbox.xMin) >> 6;
+                height = (bbox.yMax - bbox.yMin) >> 6;
+                top = bbox.yMax >> 6;
+                left = bbox.xMin >> 6;
+            }
+            else if (face_->glyph->format == FT_GLYPH_FORMAT_BITMAP)
+            {
+                width = face_->glyph->bitmap.width;
+                height = face_->glyph->bitmap.rows;
+                top = face_->glyph->bitmap_top;
+                left = face_->glyph->bitmap_left;
+            }
+            else
+                continue;
+
+            if (FT_Render_Glyph(face_->glyph, FT_RENDER_MODE_NORMAL))
+                continue;
+
+            FT_Bitmap &bitmap = face_->glyph->bitmap;
+            width = std::min(width, (int)bitmap.width);
+            height = std::min(height, (int)bitmap.rows);
+
+            g.pitch=bitmap.pitch;
+            g.height=height;
+            g.width=width;
+            g.top=top;
+            g.left=left;
+            g.glyph=glyphIndex;
+            g.advX=face_->glyph->advance.x>>6;
+            g.bitmap=(unsigned char *) malloc(g.height*g.pitch);
+            memcpy(g.bitmap,bitmap.buffer,g.height*g.pitch);
+            glyphCache_[text[i]]=g;
         }
-        else if (face_->glyph->format == FT_GLYPH_FORMAT_BITMAP)
+
+
+        x += kerning(prev, g.glyph) >> 6;
+        prev = g.glyph;
+
+        int xo = x + g.left - minx;
+        int yo = y - g.top - miny;
+        int index = 0;
+
+        for (int y = 0; y < g.height; ++y)
         {
-            width = face_->glyph->bitmap.width;
-            height = face_->glyph->bitmap.rows;
-            top = face_->glyph->bitmap_top;
-            left = face_->glyph->bitmap_left;
+            for (int x = 0; x < g.width; ++x)
+                dib.satAlpha(xo + x, yo + y, g.bitmap[index++]);
+            index=index+g.pitch-g.width;
         }
-        else
-            continue;
 
-        if (FT_Render_Glyph(face_->glyph, FT_RENDER_MODE_NORMAL))
-			continue;
-
-        FT_Bitmap &bitmap = face_->glyph->bitmap;
-
-        width = std::min(width, (int)bitmap.width);
-        height = std::min(height, (int)bitmap.rows);
-
-        x += kerning(prev, glyphIndex) >> 6;
-        prev = glyphIndex;
-
-        int xo = x + left;
-        int yo = y - top;
-
-		for (int y = 0; y < height; ++y)
-			for (int x = 0; x < width; ++x)
-			{
-				int index = x + y * bitmap.pitch;
-				int c = bitmap.buffer[index];
-
-				unsigned char a = dib.getAlpha(xo + x - minx, yo + y - miny);
-				dib.setAlpha(xo + x - minx, yo + y - miny, std::min(255, c + a));
-			}
-
-        x += face_->glyph->advance.x >> 6;
+        x += g.advX;
 
         x += (int)(letterSpacing * scalex);
     }
 
-	if (pminx)
-		*pminx = minx;
-	if (pminy)
-		*pminy = miny;
-	if (pmaxx)
-		*pmaxx = maxx;
-	if (pmaxy)
-		*pmaxy = maxy;
+    if (pminx)
+        *pminx = minx;
+    if (pminy)
+        *pminy = miny;
+    if (pmaxx)
+        *pmaxx = maxx;
+    if (pmaxy)
+        *pmaxy = maxy;
 
-	return dib;
+    return dib;
 }
 
-void TTFont::getBounds(const char *text, float letterSpacing, float *pminx, float *pminy, float *pmaxx, float *pmaxy) const
+void TTFont::getBounds(const char *text, float letterSpacing, float *pminx, float *pminy, float *pmaxx, float *pmaxy)
 {
     std::vector<wchar32_t> wtext;
     size_t len = utf8_to_wchar(text, strlen(text), NULL, 0, 0);
@@ -281,18 +327,19 @@ void TTFont::getBounds(const char *text, float letterSpacing, float *pminx, floa
     float scaley = application_->getLogicalScaleY();
 
     if (pminx)
-        *pminx = minx / scalex;
+        *pminx = minx/scalex;
     if (pminy)
-        *pminy = miny / scaley;
+        *pminy = miny/scaley;
     if (pmaxx)
-        *pmaxx = maxx / scalex;
+        *pmaxx = maxx/scalex;
     if (pmaxy)
-        *pmaxy = maxy / scaley;
+        *pmaxy = maxy/scaley;
 }
 
-float TTFont::getAdvanceX(const char *text, float letterSpacing, int size) const
+float TTFont::getAdvanceX(const char *text, float letterSpacing, int size)
 {
     float scalex = application_->getLogicalScaleX();
+	checkLogicalScale();
 
     std::vector<wchar32_t> wtext;
     size_t len = utf8_to_wchar(text, strlen(text), NULL, 0, 0);
@@ -328,7 +375,7 @@ float TTFont::getAdvanceX(const char *text, float letterSpacing, int size) const
 
     x += kerning(prev, FT_Get_Char_Index(face_, text[size])) >> 6;
 
-    return x / scalex;
+    return x/scalex;
 }
 
 int TTFont::kerning(FT_UInt left, FT_UInt right) const
@@ -343,14 +390,16 @@ int TTFont::kerning(FT_UInt left, FT_UInt right) const
     return 0;
 }
 
-float TTFont::getAscender() const
+float TTFont::getAscender()
 {
     float scaley = application_->getLogicalScaleY();
-    return ascender_ / scaley;
+	checkLogicalScale();
+    return ascender_/scaley;
 }
 
-float TTFont::getLineHeight() const
+float TTFont::getLineHeight()
 {
     float scaley = application_->getLogicalScaleY();
-    return height_ / scaley;
+	checkLogicalScale();
+    return height_/scaley;
 }

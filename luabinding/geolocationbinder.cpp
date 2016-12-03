@@ -1,4 +1,4 @@
-#ifndef TARGET_OS_TV
+#if TARGET_OS_TV == 0
 #include "geolocationbinder.h"
 #include <eventdispatcher.h>
 #include <ggeolocation.h>

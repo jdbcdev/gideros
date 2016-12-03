@@ -87,7 +87,16 @@ void Stage::enterFrame(int deltaFrameCount, double lastFrameRenderTime)
 
     EnterFrameEvent event(EnterFrameEvent::ENTER_FRAME, frameCount, deltaFrameCount, time, deltaTime, lastFrameRenderTime);
     for (std::size_t i = 0; i < v.size(); ++i)
-        v[i]->dispatchEvent(&event);
+	{
+		Sprite* ptr = v[i];
+		// Prevent garbage collected object. (otherwise crash)
+		// Reference counter of proper object must be greater than 1. (because of above loop)
+		// MovieClip occasionally made that crash, but other object types have possibility.
+        if (1 < ptr->refCount())
+        {
+            ptr->dispatchEvent(&event);
+        }
+	}
 
     application_->deleteAutounrefPool(pool);
 }
@@ -118,13 +127,19 @@ void Stage::touchesCancel(ginput_TouchEvent *event, float sx, float sy, float tx
 
 void Stage::keyDown(int keyCode, int realCode)
 {
-    KeyboardEvent event(KeyboardEvent::KEY_DOWN, keyCode, realCode);
+    KeyboardEvent event(KeyboardEvent::KEY_DOWN, keyCode, realCode,"");
     dispatchToSpritesWithListeners(&event);
 }
 
 void Stage::keyUp(int keyCode, int realCode)
 {
-    KeyboardEvent event(KeyboardEvent::KEY_UP, keyCode, realCode);
+    KeyboardEvent event(KeyboardEvent::KEY_UP, keyCode, realCode,"");
+    dispatchToSpritesWithListeners(&event);
+}
+
+void Stage::keyChar(const char *code)
+{
+    KeyboardEvent event(KeyboardEvent::KEY_CHAR, 0, 0, code);
     dispatchToSpritesWithListeners(&event);
 }
 
@@ -150,6 +165,7 @@ void Stage::populateSpritesWithListeners()
             sprite->hasEventListener(TouchEvent::TOUCHES_END)    ||
             sprite->hasEventListener(TouchEvent::TOUCHES_CANCEL) ||
             sprite->hasEventListener(KeyboardEvent::KEY_DOWN)    ||
+            sprite->hasEventListener(KeyboardEvent::KEY_CHAR)    ||
             sprite->hasEventListener(KeyboardEvent::KEY_UP))
         {
             spritesWithListeners_.push_back(sprite);

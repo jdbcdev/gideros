@@ -53,6 +53,11 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\mouseevent.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\movieclip2.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\ogl.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\particles.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\ft-path.c" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\path.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\svg-path.c" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\pixel.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\progressevent.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\shape.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\splashscreen.cpp" />
@@ -78,6 +83,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\ttfont.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\tttextfield.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\urlrequest.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\viewport.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\dict.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\geom.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\memalloc.c" />
@@ -319,16 +325,16 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\minizip-1.1\zip.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123\compat.c">
       <PreprocessorDefinitions>OPT_GENERIC;REAL_IS_FLOAT;FT2_BUILD_LIBRARY;PYSTRING_LIBRARY;WINSTORE;_UNICODE;UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\paths;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123\dct64.c">
-      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\paths;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123\dither.c">
-      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\paths;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123\equalizer.c">
-      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\paths;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123\feature.c">
       <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\libgid\external\mpg123-1.15.3\src</AdditionalIncludeDirectories>
@@ -412,6 +418,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\zlib-1.2.8\trees.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\zlib-1.2.8\uncompr.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\external\zlib-1.2.8\zutil.c" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\src\aes.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\src\drawinfo.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\src\gaudio-loader-mp3.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\libgid\src\gaudio-loader-wav.cpp" />
@@ -467,6 +474,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\bitmapbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\bitmapdatabinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\box2dbinder2.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\cryptobinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\dibbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\eventbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\eventdispatcherbinder.cpp" />
@@ -479,6 +487,11 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\matrixbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\meshbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\movieclipbinder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\particlesbinder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\path2dbinder.cpp">
+      <AdditionalIncludeDirectories>..\..\..\2dsg\gfxbackends;..\..\..\2dsg\gfxbackends\dx11;..\..\..\libnetwork;..\..\..\luabinding;..\..\..\libgid\external\freetype-2.4.12\src;..\..\..\libgid\external\freetype-2.4.12\include;..\..\..\libgid\external\pthreads-w32-2-9-1-release\Pre-built.2\include;..\..\..\external\liquidfun-1.0.0\liquidfun\Box2D;..\..\..\libgid\include\winrt;..\..\..\libgid\external\snappy-1.1.0;..\..\..\libgid\external\libpng-1.6.2;..\..\..\libgid\external\jpeg-9;..\..\..\libgid\external\openal-soft-1.16.0\include\AL;..\..\..\libgid\external\mpg123-1.15.3\src\libmpg123;..\..\..\lua\src;..\..\..\libgid\external\zlib-1.2.8;..\..\..\external\glu;..\..\..\libpystring;..\..\..\winrt;..\..\..\libplatform;..\..\..\libgvfs;..\..\..\libgideros;..\..\..\2dsg;..\..\..\libgid\include;%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory);..\..\..\libgid\external\libxmp-4.3\include;..\..\..\2dsg\paths</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\pixelbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\registermodules.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\rendertargetbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\shaderbinder.cpp" />
@@ -496,6 +509,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\tlsf.c" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\ttfontbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\urlloaderbinder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\viewportbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\zlibbinder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)giderosapi.cpp">
       <CompileAsWinRT>true</CompileAsWinRT>
@@ -536,6 +550,12 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\movieclip2.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\ogl.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\orientation.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\particles.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\khash.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\kvec.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\path.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\paths\prpath.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\pixel.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\point.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\progressevent.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\Rect.h" />
@@ -564,6 +584,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\ttfont.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\tttextfield.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\urlrequest.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\2dsg\viewport.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\dict-list.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\dict.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\external\glu\libtess\geom.h" />
@@ -647,6 +668,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgideros\pluginmanager.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgideros\refptr.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgideros\stringid.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgid\include\aes.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgid\include\gtimer.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgid\include\md5.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\libgid\include\platform.h" />
@@ -684,6 +706,9 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\matrixbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\meshbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\movieclipbinder.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\particlesbinder.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\path2dbinder.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\pixelbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\rendertargetbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\shaderbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\shapebinder.h" />
@@ -702,6 +727,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\tlsfbits.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\ttfontbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\urlloaderbinder.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\luabinding\viewportbinder.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\dxcompat.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\dxglobals.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)..\..\pch.h" />

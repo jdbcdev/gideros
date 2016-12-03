@@ -3,6 +3,7 @@
 #include "application.h"
 #include "texturemanager.h"
 #include "ogl.h"
+#include <utf8.h>
 
 TTTextField::TTTextField(Application* application, TTFont* font) : TextFieldBase(application)
 {
@@ -20,6 +21,23 @@ TTTextField::TTTextField(Application* application, TTFont* font) : TextFieldBase
 
 TTTextField::TTTextField(Application* application, TTFont* font, const char* text) : TextFieldBase(application)
 {
+    font_ = font;
+    font_->ref();
+
+    data_ = NULL;
+
+    text_ = text;
+    updateWide();
+
+    textColor_ = 0;
+
+    letterSpacing_ = 0;
+
+    createGraphics();
+}
+
+TTTextField::TTTextField(Application* application, TTFont* font, const char* text, const char* sample) : TextFieldBase(application)
+{
 	font_ = font;
 	font_->ref();
 
@@ -28,11 +46,26 @@ TTTextField::TTTextField(Application* application, TTFont* font, const char* tex
 	text_ = text;
 	updateWide();
 
+    sample_ = sample;
+
 	textColor_ = 0;
 
 	letterSpacing_ = 0;
 
-	createGraphics();
+    float scalex = application_->getLogicalScaleX();
+    float scaley = application_->getLogicalScaleY();
+
+    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
+    wsample_.resize(wsize);
+    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
+    font_->renderFont(wsample_.c_str(), letterSpacing_, &sminx, &sminy, &smaxx, &smaxy);
+    sminx = sminx/scalex;
+    sminy = sminy/scaley;
+    smaxx = smaxx/scalex;
+    smaxy = smaxy/scaley;
+
+
+    createGraphics();
 }
 
 TTTextField::~TTTextField()
@@ -61,13 +94,20 @@ void TTTextField::createGraphics()
 		return;
 	}
 
-	float scalex = application_->getLogicalScaleX();
-	float scaley = application_->getLogicalScaleY();
+    float scalex = application_->getLogicalScaleX();
+    float scaley = application_->getLogicalScaleY();
 
-    int ascender = font_->getAscender();
 
-	int minx, miny, maxx, maxy;
+    int minx, miny, maxx, maxy;
     Dib dib = font_->renderFont(wtext_.c_str(), letterSpacing_, &minx, &miny, &maxx, &maxy);
+
+    if (!wsample_.empty())
+    {
+        maxx = maxx - minx;
+        minx = 0;
+        miny = miny - sminy*scaley;
+        maxy = maxy - sminy*scaley;
+    }
 
     int dx = minx - 1;
     int dy = miny - 1;
@@ -110,10 +150,10 @@ void TTTextField::createGraphics()
 	int b = textColor_ & 0xff;
 	graphicsBase_.setColor(r / 255.f, g / 255.f, b / 255.f, 1);
 
-    minx_ = minx / scalex;
-    miny_ = miny / scaley;
-    maxx_ = maxx / scalex;
-    maxy_ = maxy / scaley;
+    minx_ = minx/scalex;
+    miny_ = miny/scaley;
+    maxx_ = maxx/scalex;
+    maxy_ = maxy/scaley;
 }
 
 void TTTextField::extraBounds(float* minx, float* miny, float* maxx, float* maxy) const
@@ -131,6 +171,17 @@ void TTTextField::extraBounds(float* minx, float* miny, float* maxx, float* maxy
 void TTTextField::doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey)
 {
 	graphicsBase_.draw(shader_);
+}
+
+void TTTextField::setFont(FontBase* font)
+{
+    if (font->getType() != FontBase::eTTFont) return;
+
+    font_->unref();
+    font_ = static_cast<TTFont*>(font);;
+    font_->ref();
+
+    createGraphics();
 }
 
 void TTTextField::setText(const char* text)
@@ -179,3 +230,32 @@ float TTTextField::letterSpacing() const
 	return letterSpacing_;
 }
 
+float TTTextField::lineHeight() const
+{
+    float scaley = application_->getLogicalScaleY();
+    return wsample_.empty()? 0 : smaxy - sminy;
+}
+
+void TTTextField::setSample(const char* sample)
+{
+    sample_ = sample;
+
+    float scalex = application_->getLogicalScaleX();
+    float scaley = application_->getLogicalScaleY();
+
+    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
+    wsample_.resize(wsize);
+    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
+    font_->renderFont(wsample_.c_str(), letterSpacing_, &sminx, &sminy, &smaxx, &smaxy);
+    sminx = sminx/scalex;
+    sminy = sminy/scaley;
+    smaxx = smaxx/scalex;
+    smaxy = smaxy/scaley;
+
+    createGraphics();
+}
+
+const char* TTTextField::sample() const
+{
+    return sample_.c_str();
+}

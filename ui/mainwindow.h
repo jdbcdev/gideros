@@ -11,6 +11,7 @@
 #include <deque>
 #include <Qsci/qsciscintilla.h>
 #include <QFontMetrics>
+#include <QListWidget>
 
 #define NEW_CLIENT
 
@@ -84,7 +85,9 @@ public slots:
 
         QTextCharFormat plainFormat(highlightCursor.charFormat());
         QTextCharFormat colorFormat = plainFormat;
-        colorFormat.setForeground(Qt::red);
+        colorFormat.setFontWeight(75);
+        colorFormat.setForeground(Qt::white);
+        colorFormat.setBackground(Qt::red);
 
         while (!highlightCursor.isNull() && !highlightCursor.atEnd()) {
             highlightCursor = document->find(searchString, highlightCursor, QTextDocument::FindWholeWords);
@@ -133,7 +136,7 @@ public slots:
 		}
 		QString s3 = str.mid(curr);
 		append(s3, df_);
-	} 
+    }
 
 signals:
 	void mouseDoubleClick(QMouseEvent* e);
@@ -158,6 +161,9 @@ public:
 private:
 	virtual void timerEvent(QTimerEvent*);
 	virtual void closeEvent(QCloseEvent* event);
+
+    virtual void keyPressEvent(QKeyEvent * event);
+    virtual void keyReleaseEvent(QKeyEvent * event);
 
 private slots:
 	void onSingleShot();
@@ -259,6 +265,7 @@ private:
 	QString projectName() const;
 	QString projectDirectory() const;
 	QString projectFileName_;
+    QString makeProjectRelativePath(const QString& path) const;
 
 #if 0
 private slots:
@@ -287,6 +294,9 @@ private:
     bool wrapSearch_;
     bool regexp_;
 
+    bool inChooseTab_;
+    int changeTabKeyPressState_;
+    QListWidget* tabListWidget_;
 private:
 	QList<QStringList> fileAssociations_;
 
@@ -330,6 +340,7 @@ private slots:
 	void dataReceived(const QByteArray& data);
 	void ackReceived(unsigned int id);
     void advertisement(const QString&,unsigned short,unsigned short,const QString&);
+
 #endif
 
 private slots:
@@ -363,6 +374,7 @@ private:
 
 private:
     QProcess *makeProcess_;
+    QProcess *luaProcess_;
 private slots:
     void stdoutToOutput();
     void stderrToOutput();

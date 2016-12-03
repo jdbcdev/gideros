@@ -198,7 +198,8 @@ void GMesh::resizeIndexArray(size_t size)
 
 void GMesh::resizeColorArray(size_t size)
 {
-    colors_.resize(size);
+	originalColors_.resize(size);
+	colors_.resize(size * 4);
     colors_.Update();
 }
 
@@ -227,6 +228,7 @@ void GMesh::clearIndexArray()
 
 void GMesh::clearColorArray()
 {
+	originalColors_.clear();
     colors_.clear();
     colors_.Update();
 }
@@ -281,6 +283,7 @@ void GMesh::clearTextureCoordinateArray()
 {
     originalTextureCoordinates_.clear();
     textureCoordinates_.clear();
+	textureCoordinates_.Update();
 }
 
 void GMesh::setPrimitiveType(ShaderProgram::ShapeType type)
@@ -288,7 +291,7 @@ void GMesh::setPrimitiveType(ShaderProgram::ShapeType type)
 	meshtype_=type;
 }
 
-void GMesh::setTextureSlot(int slot,TextureBase *texture)
+void GMesh::setTexture(TextureBase *texture,int slot)
 {
     if (texture)
         texture->ref();
@@ -321,20 +324,19 @@ void GMesh::setTextureSlot(int slot,TextureBase *texture)
     }
 }
 
-void GMesh::setTexture(TextureBase *texture)
+void GMesh::clearTexture(int slot)
 {
-	setTextureSlot(0,texture);
-}
-
-void GMesh::clearTexture()
-{
-    setTexture(NULL);
+    setTexture(NULL,slot);
 }
 
 void GMesh::doDraw(const CurrentTransform &, float sx, float sy, float ex, float ey)
 {
 	if (mesh3d_)
-		ShaderEngine::Engine->setDepthTest(true);
+	{
+		 ShaderEngine::DepthStencil stencil=ShaderEngine::Engine->pushDepthStencil();
+		 stencil.dTest=true;
+		 ShaderEngine::Engine->setDepthStencil(stencil);
+	}
 	if (vertices_.size() == 0) return;
 
 	ShaderProgram *p=colors_.empty()?ShaderProgram::stdBasic:ShaderProgram::stdColor;
@@ -407,7 +409,7 @@ void GMesh::doDraw(const CurrentTransform &, float sx, float sy, float ex, float
 void GMesh::childrenDrawn()
 {
     if (mesh3d_)
-		ShaderEngine::Engine->setDepthTest(false);
+   	 ShaderEngine::Engine->popDepthStencil();
 }
 
 void GMesh::extraBounds(float *minx, float *miny, float *maxx, float *maxy) const

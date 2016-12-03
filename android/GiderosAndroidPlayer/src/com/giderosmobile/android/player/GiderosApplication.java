@@ -1,10 +1,14 @@
 package com.giderosmobile.android.player;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.BufferedOutputStream;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -14,7 +18,9 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 
+import dalvik.system.DexClassLoader;
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
@@ -25,15 +31,19 @@ import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.media.AudioManager;
 import android.net.Uri;
+import android.opengl.GLSurfaceView;
 import android.os.Environment;
 import android.os.Vibrator;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
@@ -78,7 +88,7 @@ public class GiderosApplication
 	
 	private GGMediaPlayerManager mediaPlayerManager_;
 	
-	private AudioDevice audioDevice_;
+	//private AudioDevice audioDevice_;
 	
 	private ArrayList < Class < ? >>	sAvailableClasses = new ArrayList < Class < ? >> ();
 	
@@ -117,10 +127,12 @@ public class GiderosApplication
 	{
 		for ( String className : sExternalClasses )
 		{
-			Class < ? > theClass = findClass ( className );
-			if ( theClass != null ) {
-				
-				sAvailableClasses.add ( theClass );
+			if (className != null)
+			{
+				Class < ? > theClass = findClass ( className );
+				if ( theClass != null ) {				
+					sAvailableClasses.add ( theClass );
+				}
 			}
 		}
 		
@@ -133,7 +145,23 @@ public class GiderosApplication
 		
 		mediaPlayerManager_ = new GGMediaPlayerManager(mainFile, patchFile);
 
-		audioDevice_ = new AudioDevice();
+		//audioDevice_ = new AudioDevice();
+		Activity activity=WeakActivityHolder.get();
+		int sampleRate=0;
+		if (android.os.Build.VERSION.SDK_INT >= 17)
+		{
+			try
+			{
+				AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+				String sampleRateStr = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+				sampleRate = Integer.parseInt(sampleRateStr);
+			}
+			catch (Exception e)
+			{
+			}
+		}
+		if (sampleRate == 0) sampleRate = 44100; // Use a default value if property not found
+		GiderosApplication.nativeOpenALSetup(sampleRate);
 				
 		synchronized (lock)
 		{
@@ -142,6 +170,84 @@ public class GiderosApplication
 			if (allfiles_ != null)
 				GiderosApplication.nativeSetFileSystem(allfiles_);
 		}	
+		
+		loadLpkPlugins();
+	}
+	
+	public void loadLpkPlugins()
+	{
+		Activity activity=WeakActivityHolder.get();
+		AssetManager assetManager = activity.getAssets();
+		try {
+			String[] dexs = assetManager.list("dex");
+			String libraryPath = activity.getApplicationContext().getApplicationInfo().nativeLibraryDir;
+			Log.v("LPK","Looking for LPK plugins");
+			for (String dexn:dexs)
+			{
+				String dex=dexn.substring(0, dexn.indexOf("."));
+				Log.v("LPK","Found "+dexn+" ("+dex+")");
+				File dexInternalStoragePath = new File(activity.getDir("dex", Context.MODE_PRIVATE),dex+".dex");
+				if (!dexInternalStoragePath.exists())
+				{
+					//Copy dex to private area
+			    BufferedInputStream bis = null;
+				OutputStream dexWriter = null;
+
+				  final int BUF_SIZE = 8 * 1024;
+				  try {
+				      bis = new BufferedInputStream(assetManager.open("dex/"+dex+".dex"));
+				      dexWriter = new BufferedOutputStream(new FileOutputStream(dexInternalStoragePath));
+				      byte[] buf = new byte[BUF_SIZE];
+				      int len;
+				      while((len = bis.read(buf, 0, BUF_SIZE)) > 0) {
+				          dexWriter.write(buf, 0, len);
+				      }
+				      dexWriter.close();
+				      bis.close();				      
+				  } catch (Exception ge)
+				  {
+						ge.printStackTrace();
+					  dexInternalStoragePath.delete();
+				  }
+				}
+				if (dexInternalStoragePath.exists())
+				{
+					//Load plugin from dex
+					  // Internal storage where the DexClassLoader writes the optimized dex file to
+					  final File optimizedDexOutputPath = activity.getDir("optdex", Context.MODE_PRIVATE);
+
+					  DexClassLoader cl = new DexClassLoader(dexInternalStoragePath.getAbsolutePath(),
+					                                         optimizedDexOutputPath.getAbsolutePath(),
+					                                         libraryPath,
+					                                         activity.getClassLoader());
+					  try {
+						Class<?> k=cl.loadClass("com.giderosmobile.android.plugins."+dex+".Loader");
+						try {
+							k.newInstance();
+							Log.v("LPK","Loaded "+dex+" :"+k.getName());
+							try {
+								Method mtd = k.getMethod("onLoad", Activity.class);
+								mtd.invoke(null, activity);
+								Log.v("LPK","Initialized "+dex+" :"+k.getName());
+							} catch (NoSuchMethodException le) {
+							} catch (Exception le) {
+								le.printStackTrace();
+							}
+						} catch (InstantiationException e) {
+							e.printStackTrace();
+						} catch (IllegalAccessException e) {
+							e.printStackTrace();
+						}
+					} catch (ClassNotFoundException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (Error e) {
+			e.printStackTrace();
+		}
 	}
 
 	private String allfiles_ = null;
@@ -343,21 +449,26 @@ public class GiderosApplication
 		List<String> projects = new ArrayList<String>();
 	    if (dir.exists()) {
 	        File[] files = dir.listFiles();
-	        for (int i = 0; i < files.length; ++i) {
-	            File file = files[i];
-	            if (file.isDirectory()) {
-	                Logger.log("Found: " + file.getName());
-	                projects.add(file.getName());
-	            }
-	        }
+            if(files != null){
+                for (int i = 0; i < files.length; ++i) {
+                    File file = files[i];
+                    if (file.isDirectory()) {
+                        Logger.log("Found: " + file.getName());
+                        projects.add(file.getName());
+                    }
+                }
+            }
 	    }
 	    return projects;
 	} 
 	
 	
-	static public void onCreate(String[] externalClasses)
+	private static GLSurfaceView mGLView_;
+	static public void onCreate(String[] externalClasses, GLSurfaceView mGLView)
 	{
+		mGLView_=mGLView;
 		instance_ = new GiderosApplication(externalClasses);
+		setKeyboardVisibility(false);
 		for ( Class < ? > theClass : instance_.sAvailableClasses ) {
 			
 			executeMethod ( theClass, null, "onCreate", new Class < ? > [] { Activity.class }, new Object [] { WeakActivityHolder.get() });
@@ -441,7 +552,7 @@ public class GiderosApplication
 		geolocation_.stopUpdatingLocation();
 		geolocation_.stopUpdatingHeading();
 		mediaPlayerManager_.onPause();
-		audioDevice_.stop();
+		//audioDevice_.stop();
 	}
 	
 	public void onResume()
@@ -456,7 +567,7 @@ public class GiderosApplication
 		if (isHeadingStarted_)
 			geolocation_.startUpdatingHeading();
 		mediaPlayerManager_.onResume();
-		audioDevice_.start();
+		//audioDevice_.start();
 
 		for ( Class < ? > theClass : sAvailableClasses ) {
 
@@ -503,7 +614,7 @@ public class GiderosApplication
 	{
 		synchronized (lock)
 		{
-			GiderosApplication.nativeSurfaceChanged(w, h, getRotation());
+			GiderosApplication.nativeSurfaceChanged(w, h, getRotation(w,h));
 		}	
 	}
 
@@ -558,32 +669,29 @@ public class GiderosApplication
 		}
 	}
 
-	public void onTouchesBegin(int size, int[] id, int[] x, int[] y, int actionIndex)
+	public void onTouchesBegin(int size, int[] id, int[] x, int[] y, float[] pressure, int actionIndex)
 	{
 		if(!isRunning()){
 			if(projectList != null && projectList.getVisibility() == View.GONE){
 				projectList.setVisibility(View.VISIBLE);
 			}
 		}
-		GiderosApplication.nativeTouchesBegin(size, id, x, y, actionIndex);
+		GiderosApplication.nativeTouchesBegin(size, id, x, y, pressure, actionIndex);
 	}
 
-	public void onTouchesMove(int size, int[] id, int[] x,
-			int[] y)
+	public void onTouchesMove(int size, int[] id, int[] x, int[] y, float[] pressure)
 	{	
-		GiderosApplication.nativeTouchesMove(size, id, x, y);
+		GiderosApplication.nativeTouchesMove(size, id, x, y, pressure);
 	}
 
-	public void onTouchesEnd(int size, int[] id, int[] x,
-			int[] y, int actionIndex)
+	public void onTouchesEnd(int size, int[] id, int[] x, int[] y, float[] pressure, int actionIndex)
 	{
-		GiderosApplication.nativeTouchesEnd(size, id, x, y, actionIndex);
+		GiderosApplication.nativeTouchesEnd(size, id, x, y, pressure, actionIndex);
 	}
 
-	public void onTouchesCancel(int size, int[] id, int[] x,
-			int[] y)
+	public void onTouchesCancel(int size, int[] id, int[] x, int[] y, float[] pressure)
 	{
-		GiderosApplication.nativeTouchesCancel(size, id, x, y);
+		GiderosApplication.nativeTouchesCancel(size, id, x, y, pressure);
 	}	
 	
 	public boolean onKeyDown(int keyCode, KeyEvent event)
@@ -593,6 +701,8 @@ public class GiderosApplication
 			return true;
 		}
 		boolean handled = nativeKeyDown(keyCode, event.getRepeatCount());
+		if (event.getUnicodeChar()>0)
+			nativeKeyChar(Character.toString((char)event.getUnicodeChar()));
 		if(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE || keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_POWER){
 			return false;
 		}
@@ -604,6 +714,19 @@ public class GiderosApplication
 		return nativeKeyUp(keyCode, event.getRepeatCount());
 	}
 	
+	public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+		if (keyCode==KeyEvent.KEYCODE_UNKNOWN)
+			nativeKeyChar(event.getCharacters());
+		else if (event.getUnicodeChar()>0)
+		{
+			String cs=Character.toString((char)event.getUnicodeChar());
+			for (int k=0;k<event.getRepeatCount();k++)
+				nativeKeyChar(cs);
+		}
+				
+		return false; //XXX what should be return ?
+	}
+
 	public boolean isAccelerometerAvailable()
 	{
 		return accelerometer_.isAvailable();
@@ -856,6 +979,30 @@ public class GiderosApplication
 			activity.runOnUiThread(new Runnable() {public void run() {activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}});
 	}
 	
+	static public boolean setKeyboardVisibility(final boolean visible)
+	{
+		final Activity activity = WeakActivityHolder.get();
+		activity.runOnUiThread(new Runnable() {
+		    public void run() {
+		    	activity.getWindow().setSoftInputMode(visible?WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE:WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+		    	mGLView_.clearFocus();
+		    	if (visible)
+		    		mGLView_.requestFocus();
+		    	
+		    	InputMethodManager imm = (InputMethodManager)
+	    			activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+		    	if (visible)
+		    		imm.showSoftInput(mGLView_ , 0/*InputMethodManager.SHOW_FORCED*/);
+		    	else
+		    	{
+		    		imm.hideSoftInputFromWindow(mGLView_.getWindowToken() ,0); 
+		    		activity.onWindowFocusChanged(activity.hasWindowFocus());
+		    	}
+		    }
+		});
+		return true;
+	}
+	
 	static public void vibrate(int ms)	
 	{
 		try
@@ -892,6 +1039,24 @@ public class GiderosApplication
 	static public String getModel()
 	{
 		return android.os.Build.MODEL;
+	}
+    
+    static public String getDeviceType()
+	{
+		UiModeManager uiModeManager = (UiModeManager) WeakActivityHolder.get().getSystemService(Context.UI_MODE_SERVICE);
+        if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return "TV";
+        } else if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_APPLIANCE) {
+            return "Appliance";
+        } else if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_CAR) {
+            return "Car";
+        } else if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_DESK) {
+            return "Desk";
+        } else if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_WATCH) {
+            return "Watch";
+        } else {
+            return "Mobile";
+        }
 	}
 
 	static public void openUrl(String url)
@@ -976,14 +1141,13 @@ public class GiderosApplication
 		return sb.toString();
 	}	
 	
-	public static int getRotation()
+	public static int getRotation(int w,int h)
 	{
 		Activity activity = WeakActivityHolder.get();
 
-		int orientation = activity.getResources().getConfiguration().orientation;
 		int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
 		
-		if (orientation == Configuration.ORIENTATION_PORTRAIT)
+		if (w<=h)
 		{
 			if (rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_270)
 				return 0;
@@ -1018,6 +1182,8 @@ public class GiderosApplication
 	static private native boolean isRunning();
 	static private native boolean nativeKeyDown(int keyCode, int repeatCount);
 	static private native boolean nativeKeyUp(int keyCode, int repeatCount);
+	static private native void nativeKeyChar(String keyChar);
+	static private native void nativeOpenALSetup(int sampleRate);
 	static private native void nativeCreate(boolean player);
 	static private native void nativeSetDirectories(String externalDir, String internalDir, String cacheDir);
 	static private native void nativeSetFileSystem(String files);
@@ -1027,10 +1193,10 @@ public class GiderosApplication
 	static private native void nativeSurfaceCreated();
 	static private native void nativeSurfaceChanged(int w, int h, int rotation);
 	static private native void nativeDrawFrame();
-	static private native void nativeTouchesBegin(int size, int[] id, int[] x, int[] y, int actionIndex);
-	static private native void nativeTouchesMove(int size, int[] id, int[] x, int[] y);
-	static private native void nativeTouchesEnd(int size, int[] id, int[] x, int[] y, int actionIndex);
-	static private native void nativeTouchesCancel(int size, int[] id, int[] x, int[] y);
+	static private native void nativeTouchesBegin(int size, int[] id, int[] x, int[] y, float[] pressure, int actionIndex);
+	static private native void nativeTouchesMove(int size, int[] id, int[] x, int[] y, float[] pressure);
+	static private native void nativeTouchesEnd(int size, int[] id, int[] x, int[] y, float[] pressure, int actionIndex);
+	static private native void nativeTouchesCancel(int size, int[] id, int[] x, int[] y, float[] pressure);
 	static private native void nativeStop();
 	static private native void nativeStart();
 }

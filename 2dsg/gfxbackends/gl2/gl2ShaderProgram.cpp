@@ -12,12 +12,23 @@
 class gl2ShaderBufferCache : public ShaderBufferCache {
 public:
 	GLuint VBO;
-	gl2ShaderBufferCache() { VBO = 0; allVBO.insert(this);}
+	gl2ShaderBufferCache()
+	{
+		VBO = 0;
+		if (!allVBO)
+			allVBO=new std::set<gl2ShaderBufferCache*>();
+		allVBO->insert(this);
+	}
 	virtual ~gl2ShaderBufferCache()
 	{
 		if (VBO)
 			glDeleteBuffers(1,&VBO);
-		allVBO.erase(this);
+		allVBO->erase(this);
+		if (allVBO->empty())
+		{
+			delete allVBO;
+			allVBO=NULL;
+		}
 	}
 	void recreate()
 	{
@@ -29,10 +40,10 @@ public:
 	{
 		return (VBO!=0);
 	}
-	static std::set<gl2ShaderBufferCache *> allVBO;
+	static std::set<gl2ShaderBufferCache *> *allVBO;
 };
 
-std::set<gl2ShaderBufferCache *> gl2ShaderBufferCache::allVBO;
+std::set<gl2ShaderBufferCache *> *gl2ShaderBufferCache::allVBO=NULL;
 
 GLuint getCachedVBO(ShaderBufferCache **cache,bool &modified) {
 	if (!cache) return 0; //XXX: Could we check for VBO availability ?
@@ -55,8 +66,9 @@ void ogl2ShaderProgram::resetAll()
 {
 	  for (std::vector<ogl2ShaderProgram *>::iterator it = shaders.begin() ; it != shaders.end(); ++it)
 		  (*it)->recreate();
-	  for (std::set<gl2ShaderBufferCache *>::iterator it = gl2ShaderBufferCache::allVBO.begin() ; it != gl2ShaderBufferCache::allVBO.end(); ++it)
-		  (*it)->recreate();
+	  if (gl2ShaderBufferCache::allVBO)
+		  for (std::set<gl2ShaderBufferCache *>::iterator it = gl2ShaderBufferCache::allVBO->begin() ; it != gl2ShaderBufferCache::allVBO->end(); ++it)
+			  (*it)->recreate();
 }
 
 
@@ -95,7 +107,7 @@ GLuint ogl2LoadShader(GLuint type, const char *code, std::string &log) {
 		glDeleteShader(shader);
 		shader = 0;
 	}
-	glog_i("Loaded shader:%d\n", shader);
+	//glog_i("Loaded shader:%d\n", shader);
 	return shader;
 }
 
@@ -114,9 +126,9 @@ GLuint ogl2BuildProgram(GLuint vertexShader, GLuint fragmentShader, std::string 
 		log.append("Shader Program:\n");
 		log.append(&infoLog[0]);
 		log.append("\n");
-		glog_i("GL Program log:%s\n", &infoLog[0]);
+		glog_v("GL Program log:%s\n", &infoLog[0]);
 	}
-	glog_i("Loaded program:%d", program);
+	//glog_i("Loaded program:%d", program);
 	return program;
 }
 
@@ -165,7 +177,7 @@ void ogl2ShaderProgram::useProgram() {
 
 void ogl2ShaderProgram::setData(int index, DataType type, int mult,
 		const void *ptr, unsigned int count, bool modified,
-		ShaderBufferCache **cache) {
+		ShaderBufferCache **cache,int stride,int offset) {
 	useProgram();
 	GLenum gltype = GL_FLOAT;
 	bool normalize = false;
@@ -196,7 +208,7 @@ void ogl2ShaderProgram::setData(int index, DataType type, int mult,
 		break;
 	}
 #ifdef GIDEROS_GL1
-	glVertexPointer(mult,gltype, 0,ptr);
+	glVertexPointer(mult,gltype, stride, ((char *)ptr)+offset);
 #else
 	GLuint vbo=getCachedVBO(cache,modified);
 	glBindBuffer(GL_ARRAY_BUFFER,vbo);
@@ -206,11 +218,8 @@ void ogl2ShaderProgram::setData(int index, DataType type, int mult,
 			glBufferData(GL_ARRAY_BUFFER,elmSize * mult * count,ptr,GL_DYNAMIC_DRAW);
 		ptr=NULL;
 	}
-	glVertexAttribPointer(glattributes[index], mult, gltype, normalize, 0, ptr
-#ifdef DXCOMPAT_H
-			,count,modified,(GLuint *)cache
-#endif
-			);
+	if ((index<glattributes.size())&&(glattributes[index]>=0))
+	glVertexAttribPointer(glattributes[index], mult, gltype, normalize, stride, ((char *)ptr)+offset);
 #endif
 
 }
@@ -251,11 +260,22 @@ void ogl2ShaderProgram::setConstant(int index, ConstantType type, int mult,
 
 ogl2ShaderProgram::ogl2ShaderProgram(const char *vshader, const char *fshader,int flags,
 		const ConstantDesc *uniforms, const DataDesc *attributes) {
-	void *vs = LoadShaderFile(vshader, "glsl", NULL);
-	void *fs = LoadShaderFile(fshader, "glsl", NULL);
+	bool fromCode=(flags&ShaderProgram::Flag_FromCode);
+	void *vs = fromCode?(void *)vshader:LoadShaderFile(vshader, "glsl", NULL);
+	void *fs = fromCode?(void *)fshader:LoadShaderFile(fshader, "glsl", NULL);
 	const char *hdr=(flags&ShaderProgram::Flag_NoDefaultHeader)?"":hdrShaderCode;
 	program=0;
-	buildProgram(hdr,(char *) vs, hdr, (char *) fs, uniforms, attributes);
+	if (vs&&fs)
+		buildProgram(hdr,(char *) vs, hdr, (char *) fs, uniforms, attributes);
+	else if (vs==NULL)
+		errorLog="Vertex shader code not found";
+	else
+		errorLog="Fragment shader code not found";
+	if (!fromCode)
+	{
+		if (vs) free(vs);
+		if (fs) free(fs);
+	}
 	shaders.push_back(this);
 }
 
@@ -272,9 +292,11 @@ void ogl2ShaderProgram::buildProgram(const char *vshader1, const char *vshader2,
 		const ConstantDesc *uniforms, const DataDesc *attributes) {
 	cbsData=0;
     vshadercode=vshader1;
-    vshadercode.append(vshader2);
+    if (vshader2)
+    	vshadercode.append(vshader2);
     fshadercode=fshader1;
-    fshadercode.append(fshader2);
+    if (fshader2)
+    	fshadercode.append(fshader2);
 	GLint ntex = 0;
 	while (!uniforms->name.empty()) {
 		int usz = 0, ual = 4;
@@ -418,7 +440,7 @@ void ogl2ShaderProgram::drawArrays(ShapeType shape, int first,
 
 }
 void ogl2ShaderProgram::drawElements(ShapeType shape, unsigned int count,
-		DataType type, const void *indices, bool modified, ShaderBufferCache **cache) {
+		DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first,unsigned int dcount) {
 	ShaderEngine::Engine->prepareDraw(this);
 	activate();
 
@@ -478,9 +500,5 @@ void ogl2ShaderProgram::drawElements(ShapeType shape, unsigned int count,
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER,elmSize * count,indices,GL_DYNAMIC_DRAW);
 		indices=NULL;
 	}
-	glDrawElements(mode, count, dtype, indices
-#ifdef DXCOMPAT_H
-			, modified, (GLuint *)cache
-#endif
-			);
+	glDrawElements(mode, dcount?dcount:count, dtype, ((char *)indices)+elmSize*first);
 }

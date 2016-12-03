@@ -1,22 +1,40 @@
 apply plugin: 'com.android.application'
 android {
-    compileSdkVersion 21
-    buildToolsVersion "22.0.0"
+    compileSdkVersion 23
+    buildToolsVersion "23.0.2"
 
     defaultConfig {
         applicationId "com.giderosmobile.androidtemplate"
-        minSdkVersion 8
+        minSdkVersion 9
         targetSdkVersion 19
     }
+    
+    signingConfigs {
+        release {
+            //storeFile file("jksgid_StoreFile")
+            storePassword "jksgid_StorePass"
+            keyAlias "jksgid_KeyAlias"
+            keyPassword "jksgid_KeyPass"
+        }
+    }    
+    
 
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+            //signingConfig signingConfigs.release
         }
-    }
+    }    
+}
+
+repositories {
+   flatDir {
+       dirs 'libs'
+   }
 }
 
 dependencies {
     compile files('libs/gideros.jar')
+    //TAG-DEPENDENCIES//    
 }

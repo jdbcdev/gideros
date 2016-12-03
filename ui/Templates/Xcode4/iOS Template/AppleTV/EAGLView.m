@@ -10,6 +10,7 @@
 #import "ViewController.h"
 
 #include "giderosapi.h"
+//GIDEROS-TAG-ATV:DRAWDEFS//
 
 @interface EAGLView (PrivateMethods)
 - (void)createFramebuffer;
@@ -39,6 +40,8 @@
                                         kEAGLColorFormatRGBA8, kEAGLDrawablePropertyColorFormat,
                                         nil];
 		retinaDisplay = NO;
+        _hasText = NO;
+        _autocorrectionType = UITextAutocorrectionTypeNo;
     }
     
     return self;
@@ -50,6 +53,11 @@
     [context release];
     
     [super dealloc];
+}
+
+- (BOOL)canBecomeFirstResponder
+{
+    return gdr_keyboardVisible();
 }
 
 - (EAGLContext *)context
@@ -91,6 +99,7 @@
         
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             NSLog(@"Failed to make complete framebuffer object %x", glCheckFramebufferStatus(GL_FRAMEBUFFER));
+        gdr_surfaceChanged(framebufferWidth,framebufferHeight);
     }
 }
 
@@ -112,10 +121,13 @@
             colorRenderbuffer = 0;
         }
     }
+    framebufferDirty=FALSE;
 }
 
 - (void)setFramebuffer
 {
+    if (framebufferDirty)
+            [self deleteFramebuffer];
     if (context)
     {
         [EAGLContext setCurrentContext:context];
@@ -125,6 +137,7 @@
         
         glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebuffer);
         
+        //GIDEROS-TAG-ATV:PREDRAW//
         glViewport(0, 0, framebufferWidth, framebufferHeight);
     }
 }
@@ -140,6 +153,7 @@
         glBindRenderbuffer(GL_RENDERBUFFER, colorRenderbuffer);
         
         success = [context presentRenderbuffer:GL_RENDERBUFFER];
+        //GIDEROS-TAG-ATV:POSTDRAW//
     }
     
     return success;
@@ -148,7 +162,7 @@
 - (void)layoutSubviews
 {
     // The framebuffer will be re-created at the beginning of the next setFramebuffer method call.
-    [self deleteFramebuffer];
+    framebufferDirty=TRUE;
 }
 
 - (void)enableRetinaDisplay:(BOOL)enable
@@ -171,6 +185,17 @@
 	
     // The framebuffer will be re-created (with the new resolution) at the beginning of the next setFramebuffer method call.
 	[self deleteFramebuffer];
+}
+
+- (void)insertText:(NSString *)text;
+{
+    gdr_keyChar(text);
+}
+
+- (void)deleteBackward;
+{
+    gdr_keyDown(8,0); //Simulate a backspace key press and release
+    gdr_keyUp(8,0);
 }
 
 @end

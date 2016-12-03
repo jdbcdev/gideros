@@ -10,6 +10,7 @@ VPATH = \
 ..\2dsg;\
 ..\2dsg\gfxbackends;\
 ..\2dsg\gfxbackends\gl2;\
+..\2dsg\paths;\
 ..\luabinding;\
 ..\libnetwork;\
 ..\libpvrt;\
@@ -42,6 +43,7 @@ INCLUDEPATHS = \
 -I..\2dsg \
 -I..\2dsg\gfxbackends \
 -I..\2dsg\gfxbackends\gl2 \
+-I..\2dsg\paths \
 -I..\libgid\include
 
 CXXFLAGS = -O2 -fno-keep-inline-dllexport $(INCLUDEPATHS)
@@ -68,6 +70,18 @@ gideros.dll \
 pystring.dll \
 gid.dll \
 -lopengl32 -luser32 -lgdi32 -lcomdlg32 -lcomctl32 -lws2_32 -liphlpapi
+
+linksnoconsole = \
+..\libgid\external\freetype-2.4.12\build\mingw48_32\libfreetype.a \
+..\libgid\external\zlib-1.2.8\build\mingw48_32\libzlibx.a \
+-L"../libgid/external/glew-1.10.0/lib/mingw48_32" -lglew32 \
+gvfs.dll \
+lua.dll \
+gideros.dll \
+pystring.dll \
+gid.dll \
+-lopengl32 -mwindows -lws2_32 -liphlpapi
+
 
 objfiles = win32.o \
 accelerometerbinder.o         alertdialogbinder.o \
@@ -123,7 +137,7 @@ keyboardevent.o               keys.o \
 libnetwork.o                  luaapplication.o \
 Matrices.o                    matrix.o \
 matrixbinder.o                MaxRectsBinPack.o \
-md5.o                         memalloc.o \
+aes.o md5.o                         memalloc.o \
 mesh.o                        meshbinder.o \
 mouseevent.o                  movieclip2.o \
 movieclipbinder.o             normal.o \
@@ -156,14 +170,19 @@ ttbmfont.o \
 ttfont.o                      ttfontbinder.o \
 tttextfield.o \
 urlloaderbinder.o             urlrequest.o \
-utf8.o                        zlibbinder.o \
+utf8.o                        zlibbinder.o cryptobinder.o \
 Shaders.o \
 gl2ShaderBuffer.o \
 gl2ShaderEngine.o \
 gl2ShaderProgram.o \
 gl2ShaderTexture.o \
-shaderbinder.o \
-ftlibrarysingleton.o
+shaderbinder.o gl2PathShaders.o \
+ftlibrarysingleton.o \
+viewport.o viewportbinder.o \
+pixel.o pixelbinder.o \
+particles.o particlesbinder.o \
+path2dbinder.o path.o ft-path.o svg-path.o \
+win32_res.o
 
 %.o : %.cpp
 	g++ $(CXXFLAGS) -c $<
@@ -171,8 +190,17 @@ ftlibrarysingleton.o
 %.o : %.c
 	gcc $(CXXFLAGS) -c $<
 
+.PHONY : all
+all: win32.exe win32noconsole.exe
+
 win32.exe: $(objfiles) gvfs.dll lua.dll gideros.dll pystring.dll gid.dll
 	g++ -o win32.exe $(objfiles) $(links)
+
+win32noconsole.exe: $(objfiles) gvfs.dll lua.dll gideros.dll pystring.dll gid.dll
+	g++ -o win32noconsole.exe $(objfiles) $(linksnoconsole)
+
+win32_res.o: ..\libgid\src\win32\win32_res.rc
+	windres $< win32_res.o
 
 # b2Timer needs to undefine _WIN32
 b2Timer.o: \
@@ -180,6 +208,18 @@ b2Timer.o: \
  ..\external\liquidfun-1.0.0\liquidfun\Box2D/Box2D/Common/b2Timer.h \
  ..\external\liquidfun-1.0.0\liquidfun\Box2D/Box2D/Common/b2Settings.h
 	g++ -U_WIN32 $(CXXFLAGS) -c $<
+
+# needs C++11
+shaderbinder.o: ..\luabinding\shaderbinder.cpp \
+ ..\luabinding\shaderbinder.h ..\luabinding\binder.h ..\lua\src/lua.hpp \
+ ..\lua\src/lua.h ..\lua\src/luaconf.h ..\lua\src/lualib.h \
+ ..\lua\src/lauxlib.h ..\2dsg\gfxbackends/Shaders.h ..\2dsg/Matrices.h \
+ ..\2dsg/Vectors.h ..\luabinding\stackchecker.h \
+ ..\luabinding\luaapplication.h ..\libgideros/gideros_p.h \
+ ..\libgideros/gexport.h ..\libgid\include/gglobal.h ..\libgvfs/gexport.h \
+ ..\2dsg/orientation.h ..\2dsg/gstatus.h ..\libgideros/luautil.h \
+ ..\lua\src/lua.h ..\lua\src/lauxlib.h ..\lua\src/lualib.h
+	g++ -std=c++11 $(CXXFLAGS) -c $<
 
 -include win32.dep
 -include box2d1.dep
@@ -198,6 +238,7 @@ b2Timer.o: \
 -include libnetwork.dep
 -include libpvrt.dep
 -include libtess.dep
+-include aes.dep
 -include md5.dep
 -include utf8.dep
 -include ioapi.dep
@@ -222,7 +263,10 @@ depend :
 	g++ $(INCLUDEPATHS) -MM ..\libnetwork\*.cpp > libnetwork.dep
 	g++ $(INCLUDEPATHS) -MM ..\libpvrt\*.cpp > libpvrt.dep
 	g++ $(INCLUDEPATHS) -MM ..\external\glu\libtess\*.c > libtess.dep
+	g++ $(INCLUDEPATHS) -MM ..\libgid\src\aes.c > aes.dep
 	g++ $(INCLUDEPATHS) -MM ..\libgid\src\md5.c > md5.dep
 	g++ $(INCLUDEPATHS) -MM ..\libgid\src\utf8.c > utf8.dep
 	g++ $(INCLUDEPATHS) -MM ../external/minizip-1.1/source/ioapi.c > ioapi.dep
 	g++ $(INCLUDEPATHS) -MM ../external/minizip-1.1/source/unzip.c > unzip.dep
+	g++ $(INCLUDEPATHS) -MM ../2dsg/paths/*.cpp > paths.dep
+	g++ $(INCLUDEPATHS) -MM ../2dsg/paths/*.c > paths2.dep

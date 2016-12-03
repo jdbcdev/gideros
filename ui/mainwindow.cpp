@@ -22,6 +22,7 @@
 #include <QSettings>
 #include <QProcess>
 #include <QMdiArea>
+#include <QDateTime>
 #include "fileassociationsdialog.h"
 #include "textedit.h"
 #include <QTextBlock>
@@ -42,17 +43,22 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include "exportprojectdialog.h"
+#include "exportprogress.h"
 #include "startpagewidget2.h"
 #include "aboutdialog.h"
 #include <QSplitter>
 #include <QImage>
 #include "mdiarea.h"
-#include <QDateTime>
 #include <QToolBar>
+#include <QKeySequence>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    inChooseTab_ = false;
+    changeTabKeyPressState_ = 0;
+    tabListWidget_ = NULL;
+
 	ui.setupUi(this);
 
 	mdiArea_ = new MdiArea(this);
@@ -402,6 +408,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(makeProcess_, SIGNAL(readyReadStandardError()), this, SLOT(stderrToOutput()));
     connect(makeProcess_, SIGNAL(started()), this, SLOT(makeStarted()));
     connect(makeProcess_, SIGNAL(finished(int,QProcess::ExitStatus)), this, SLOT(makeFinished()));
+
+    luaProcess_ = new QProcess(this);
+#if defined(Q_OS_MAC)
+    env.insert("LUA_CPATH", toolsDir.path() + "/?.so");
+#endif
+    luaProcess_->setProcessEnvironment(env);
 }
 
 MainWindow::~MainWindow()
@@ -467,10 +479,19 @@ void MainWindow::hideStartPage()
 void MainWindow::advertisement(const QString& host,unsigned short port,unsigned short flags,const QString& name)
 {
 	QString nitem=QString("%1|%2|%3").arg(host).arg(port).arg(flags);
+	time_t ctime=time(NULL);
+	QString nfull=QString("%1|%2|%3|%4").arg(host).arg(port).arg(flags).arg(ctime);
 	for (int k=0;k<players_->count();k++)
-		if (players_->itemData(k)==nitem)
+	{
+		QStringList parts=players_->itemData(k).toString().split('|');
+		if (QString("%1|%2|%3").arg(parts[0]).arg(parts[1]).arg(parts[2])==nitem)
+		{
+			players_->setItemData(k,nfull);
 			return;
-	players_->addItem(QString("%1 (%2)").arg(name).arg(host),nitem);
+		}
+ 	}
+
+	players_->addItem(QString("%1 (%2:%3)").arg(name).arg(host).arg(port),nfull);
 }
 
 void MainWindow::playerChanged(const QString & text)
@@ -741,6 +762,17 @@ void MainWindow::onTimer()
 
 void MainWindow::timerEvent(QTimerEvent*)
 {
+	time_t ctime=time(NULL);
+
+	for (int k=0;k<players_->count();)
+	{
+		QStringList parts=players_->itemData(k).toString().split('|');
+		int itime=parts[3].toInt();
+		if ((itime>ctime)||(itime<(ctime-60)))
+			players_->removeItem(k);
+		else
+			k++;
+	}
 #ifndef NEW_CLIENT
 //	static int i = 0;
 //	printf("tick: %d\n", i++);
@@ -841,7 +873,7 @@ void MainWindow::timerEvent(QTimerEvent*)
 				}
 
 				QString fileName = QDir::cleanPath(path.absoluteFilePath(s2));
-				if (client_->sendFile(s1, fileName) == 0)
+                if (client_->sendFile(s1, fileName) == 0)
 				{
 					outputWidget_->append(s1 + " cannot be opened.\n");
 				}
@@ -1078,6 +1110,13 @@ QString MainWindow::projectName() const
 QString MainWindow::projectDirectory() const
 {
 	return QDir::cleanPath(QDir(projectFileName_).absoluteFilePath(".."));
+}
+
+QString MainWindow::makeProjectRelativePath(const QString& path) const
+{
+    QString returnPath = path;
+    returnPath.replace(projectDirectory(), "", Qt::CaseInsensitive);
+    return returnPath;
 }
 
 /*
@@ -2313,11 +2352,10 @@ quint32 _ntohl(quint32 x) {
 
 void MainWindow::exportProject()
 {
-
     ExportProjectDialog dialog(&libraryWidget_->getProjectProperties(), true, this);
 	if (dialog.exec() == QDialog::Accepted)
 	{
-		ExportProjectDialog::DeviceFamily deviceFamily = dialog.deviceFamily();
+		QString exportType = dialog.exportType();
 
         QString program = "Tools/gdrexport";
         QStringList arguments;
@@ -2325,17 +2363,15 @@ void MainWindow::exportProject()
         QString templatename;
         QString templatenamews;
 
-        switch (deviceFamily)
+
+        if (exportType=="iOS")
         {
-        case ExportProjectDialog::e_iOS:
             arguments << "-platform" << "ios";
             arguments << "-bundle" << dialog.ios_bundle();
             templatedir = "Xcode4";
             templatename = "iOS Template";
             templatenamews = "iOS_Template";
-            break;
-
-        case ExportProjectDialog::e_Android:
+        } else if (exportType=="Android") {
             templatename = "Android Template";
             templatenamews = "AndroidTemplate";
             arguments << "-platform" << "android";
@@ -2348,34 +2384,26 @@ void MainWindow::exportProject()
                 arguments << "-template" << "eclipse";
                 templatedir = "Eclipse";
             }
-            break;
-
-        case ExportProjectDialog::e_WinRT:
+        } else if (exportType=="WinRT") {
             templatedir = "VisualStudio";
             templatename = "WinRT Template";
             templatenamews = "WinRTTemplate";
             arguments << "-platform" << "winrt";
             arguments << "-organization" << dialog.winrt_org();
             arguments << "-package" << dialog.winrt_package();
-            break;
-
-        case ExportProjectDialog::e_Win32:
+        } else if (exportType=="Win32") {
             templatedir = "win32";
             templatename = "WindowsDesktopTemplate";
             templatenamews = "WindowsDesktopTemplate";
             arguments << "-platform" << "win32";
-            break;
-
-        case ExportProjectDialog::e_WindowsDesktop:
+        } else if (exportType=="Windows") {
             templatedir = "Qt";
             templatename = "WindowsDesktopTemplate";
             templatenamews = "WindowsDesktopTemplate";
             arguments << "-platform" << "windows";
             arguments << "-organization" << dialog.win_org();
             arguments << "-domain" << dialog.win_domain();
-            break;
-
-        case ExportProjectDialog::e_MacOSXDesktop:
+        } else if (exportType=="MacOSX") {
             templatedir = "Qt";
             templatename = "MacOSXDesktopTemplate";
             templatenamews = "MacOSXDesktopTemplate";
@@ -2383,10 +2411,20 @@ void MainWindow::exportProject()
             arguments << "-organization" << dialog.osx_org();
             arguments << "-domain" << dialog.osx_domain();
             arguments << "-bundle" << dialog.osx_bundle();
-            break;
-        case ExportProjectDialog::e_GApp:
+            arguments << "-category" << dialog.osx_category();
+        } else if (exportType=="GApp") {
             arguments << "-platform" << "gapp";
-            break;
+        } else if (exportType=="Html5") {
+            templatedir = "Html5";
+            templatename = "Html5";
+            templatenamews = "Html5";
+            arguments << "-platform" << "html5";
+            if (!dialog.html5_host().isEmpty())
+                arguments << "-hostname" << dialog.html5_host();
+        }
+        else
+        {
+            arguments << "-platform" << exportType;
         }
 
 
@@ -2421,8 +2459,11 @@ void MainWindow::exportProject()
             arguments << "-encrypt-assets";
         }
 
-        if(dialog.assetsOnly()){
+        if(dialog.exportMode()==1){
             arguments << "-assets-only";
+        }
+        if(dialog.exportMode()==2){
+            arguments << "-player";
         }
 
 
@@ -2435,11 +2476,15 @@ void MainWindow::exportProject()
         QDir out = QDir(output);
         out.mkdir(base);
         out.cd(base);
-        exportProcess->setStandardErrorFile(out.absoluteFilePath("error.log"));
-        exportProcess->start(program, arguments);
-        exportProcess->waitForFinished();
 
-        QMessageBox::information(this, tr("Gideros"), tr("Project is exported successfully."));
+        exportProcess->setProgram(program);
+        exportProcess->setArguments(arguments);
+
+        ExportProgress progress(exportProcess,this);
+    	progress.exec();
+    	delete exportProcess;
+
+        //QMessageBox::information(this, tr("Gideros"), tr("Project is exported successfully."));
 	}  // if dialog was accepted
 }
 
@@ -2611,6 +2656,8 @@ void MainWindow::findInFiles()
 
 				QsciScintilla sci;
 				QTextStream in(&file);
+                in.setCodec("UTF-8");
+                sci.setUtf8(true);
 				sci.setText(in.readAll());
 
 				int line = -1, index = -1;
@@ -2835,18 +2882,21 @@ void MainWindow::helpAndSupport()
 
 void MainWindow::apiDocumentation()
 {
-    /*
+
 #if defined(Q_OS_MAC)
-	QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("../../Documentation/reference_manual.html")));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("../../Documentation/reference.html")));
 #else
-	QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("Documentation/reference_manual.html")));
-#endif*/
-    QDesktopServices::openUrl(QUrl("http://docs.giderosmobile.com/reference/"));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("Documentation/reference.html")));
+#endif
 }
 
 void MainWindow::giderosDocumentation()
 {
-    QDesktopServices::openUrl(QUrl("http://docs.giderosmobile.com/"));
+#if defined(Q_OS_MAC)
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("../../Documentation/index.html")));
+#else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("Documentation/index.html")));
+#endif
 }
 
 
@@ -3094,5 +3144,102 @@ void MainWindow::on_actionFold_Unfold_Top_triggered()
     if (textEdit)
     {
         textEdit->sciScintilla()->foldAll(false);
+    }
+}
+
+void MainWindow::keyPressEvent(QKeyEvent * event)
+{
+#if defined(Q_OS_WIN)
+    if (event->key() == Qt::Key_Control)
+    {
+        changeTabKeyPressState_ = 1;
+    }
+
+    if (!inChooseTab_)
+    {
+        if (event->key() == Qt::Key_Tab)
+        {
+            if (changeTabKeyPressState_ == 1)
+            {
+                changeTabKeyPressState_ = 2;
+
+                inChooseTab_ = true;
+
+                event->accept();
+                tabListWidget_ = new QListWidget();
+
+                QList<QString> tabFilenameList = mdiArea_->tabFilenameOrderList();
+                for (int i = 0; i < tabFilenameList.size(); ++i)
+                {
+                    QString relativePath = makeProjectRelativePath(tabFilenameList[i]);
+                    tabListWidget_->addItem(new QListWidgetItem(relativePath));
+                }
+                tabListWidget_->setWindowFlags(Qt::Tool|Qt::FramelessWindowHint);
+                tabListWidget_->setFocusPolicy(Qt::NoFocus);
+
+#if QT_VERSION >= 0x040500
+                tabListWidget_->setWindowFlags(Qt::ToolTip|Qt::WindowStaysOnTopHint);
+#else
+                tabListWidget_->setWindowFlags(Qt::Tool|Qt::FramelessWindowHint);
+#endif
+                tabListWidget_->setFocusProxy(this);
+                tabListWidget_->setCurrentRow(std::min<int>(tabListWidget_->count(), 1));
+
+                tabListWidget_->show();
+            }
+            else
+            {
+            }
+        }
+    }
+    else
+    {// Ctrl+Tab,Tab,Tab... : next of current selection
+        int index = tabListWidget_->currentRow();
+        if (index + 1 < tabListWidget_->count())
+        {
+            index++;
+        }
+        else
+        {
+            index = 0;
+        }
+        tabListWidget_->setCurrentRow(index);
+    }
+
+#endif
+    if (!event->isAccepted())
+    {
+        QMainWindow::keyPressEvent(event);
+    }
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent * event)
+{
+#if defined(Q_OS_WIN)
+    if (event->key() == Qt::Key_Control)
+    {
+        changeTabKeyPressState_ = 0;
+
+        if (inChooseTab_)
+        {
+            inChooseTab_ = false;
+            //event->accept();
+
+            QListWidgetItem* selectedItem = tabListWidget_->item(tabListWidget_->currentRow());
+            if (selectedItem != NULL)
+            {
+                mdiArea_->changeCurrentTabByFilename(projectDirectory() + selectedItem->text());
+            }
+
+            tabListWidget_->hide();
+            tabListWidget_->deleteLater();
+            tabListWidget_ = NULL;
+        }
+    }
+
+#endif
+    if (!event->isAccepted())
+    {
+        QMainWindow::keyReleaseEvent(event);
     }
 }

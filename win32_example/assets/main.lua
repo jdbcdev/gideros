@@ -12,17 +12,16 @@ local bit=require("bit")
 print("bitop output=",bit.tobit(0xffffffff))
 print("bitop bor=",bit.bor(1, 2, 4, 8))
 
-application:setBackgroundColor(255)
-
-cl=application:get("commandLine")
-print("command line=",cl)
-
-application:setFps(60)
-print ("hello from Lua!")
-
 -- load texture, create bitmap from it and set as background
-local background = Bitmap.new(Texture.new("sky_world.png"))
+local bgTexture=Texture.new("sky_world.png")
+local bgTextureP=Texture.new("field.png")
+
+local background = Bitmap.new(bgTexture)
+
 stage:addChild(background)
+
+print ("local=",application:getLocale())
+print ("language=",application:getLanguage())
 
 -- these arrays contain the image file names of each frame
 local frames1 = {
@@ -47,37 +46,60 @@ stage:addChild(bird2)
 stage:addChild(bird3)
 stage:addChild(bird4)
 
---local alertDialog = AlertDialog.new("Error: not found", "Try reinstalling all software", "Cancel","OK", "No Way!")
---local alertDialog2 = AlertDialog.new("Important Question", "Should the UK be a member of the EU?", "Cancel", "Yes", "NOOOOOOOOO")
+function onKeyDown(event)
+  print (event.keyCode)
+  if event.keyCode==KeyCode.F then
+    application:setFullScreen(true)
 
-local function onComplete(event)
-  print(event.buttonIndex, event.buttonText)
+  elseif event.keyCode==KeyCode.W then
+    application:setFullScreen(false)
+
+  elseif event.keyCode==KeyCode.A then
+    application:setWindowSize(400,700)
+
+  elseif event.keyCode==KeyCode.P then
+    application:setOrientation(Application.PORTRAIT)
+    application:setWindowSize(300,600)
+    background:setTexture(bgTextureP)
+
+  elseif event.keyCode==KeyCode.L then
+    application:setOrientation(Application.LANDSCAPE_LEFT)
+    application:setWindowSize(300,600)
+    background:setTexture(bgTexture)
+  end
 end
-
-local function onComplete2(event)
-  print("Number 2:", event.buttonIndex, event.buttonText)
-end
-
-
---alertDialog:addEventListener(Event.COMPLETE, onComplete)
---alertDialog2:addEventListener(Event.COMPLETE, onComplete2)
-
-stage:addEventListener(Event.KEY_DOWN, function(event) 
- 				         if event.keyCode==KeyCode.F then 
-				           application:setFullScreen(true) 
-				         else 
-				           application:setFullScreen(false)
-					 end
-				       end)
-
-sound=Sound.new("1.wav")
-soundchannel=sound:play(0,false)
-soundchannel:setLooping(false)
---soundchannel:setPosition(300)
-soundchannel:setPitch(1.5)
 
 function onMouseDown(event)
-  print (event.x, event.y)
+print (event.x, event.y)
 end
 
+stage:addEventListener(Event.KEY_DOWN, onKeyDown)
 stage:addEventListener(Event.MOUSE_DOWN, onMouseDown)
+--application:setWindowSize(320,480)
+
+function onComplete(event)
+  print ("Lua reads a website!: ",event.data)
+end
+
+local filename = "ego.png"
+local file = io.open(filename, "rb")
+local contents = file:read( "*a" )
+local boundary = "somerndstring"
+ 
+local send = "--"..boundary..
+			"\r\nContent-Disposition: form-data; "..
+			"name="..filename.."; filename="..filename..
+			"\r\nContent-type: image/png"..
+			"\r\n\r\n"..contents..
+			"\r\n--"..boundary.."--\r\n";
+			
+
+ 
+local headers = {
+	["Content-Type"] = "multipart/form-data; boundary="..boundary,
+	["Content-Length"] = #send,
+}
+
+loader = UrlLoader.new("http://httpbin.org/post", UrlLoader.POST, headers, send)
+
+loader:addEventListener(Event.COMPLETE, onComplete)

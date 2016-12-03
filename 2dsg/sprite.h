@@ -9,6 +9,9 @@
 #include "graphicsbase.h"
 #include "matrix.h"
 #include <list>
+#include <vector>
+#include <string>
+#include <map>
 
 typedef Matrix4 CurrentTransform;
 typedef Matrix4 Matrix;
@@ -40,6 +43,8 @@ public:
 	
 	void localToGlobal(float x, float y, float* tx, float* ty) const;
 	void globalToLocal(float x, float y, float* tx, float* ty) const;
+	void localToGlobal(float x, float y, float z, float* tx, float* ty, float* tz) const;
+	void globalToLocal(float x, float y, float z, float* tx, float* ty, float* tz) const;
 
 	void setAlpha(float alpha);
 	float alpha() const;
@@ -90,6 +95,26 @@ public:
     	cliph_=ch;
     }
 
+    float clipX() const
+    {
+        return clipx_;
+    }
+
+    float clipY() const
+    {
+        return clipy_;
+    }
+
+    float clipW() const
+    {
+        return clipw_;
+    }
+    float clipH() const
+
+    {
+        return cliph_;
+    }
+
 	void setRotation(float r)
 	{
         localTransform_.setRotationZ(r);
@@ -134,6 +159,21 @@ public:
 	{
         localTransform_.setScaleXYZ(s, s, s);
 	}
+
+    void setSkewX(float sx)
+    {
+        localTransform_.setSkewX(sx);
+    }
+
+    void setSkewY(float sy)
+    {
+        localTransform_.setSkewY(sy);
+    }
+
+    void setSkewXY(float sx, float sy)
+    {
+        localTransform_.setSkewXY(sx, sy);
+    }
 
 	void setX(float x)
 	{
@@ -215,6 +255,16 @@ public:
         return localTransform_.scaleZ();
 	}
 
+    float skewX() const
+    {
+        return localTransform_.skewX();
+    }
+
+    float skewY() const
+    {
+        return localTransform_.skewY();
+    }
+
 	float x() const
 	{
         return localTransform_.x();
@@ -250,9 +300,9 @@ public:
         localTransform_.setMatrix(m11, m12, m21, m22, tx, ty);
 	}
 
-	void setMatrix(const Matrix2D& matrix)
+	void setMatrix(const Transform *matrix)
 	{
-        localTransform_.setMatrix(matrix.m11(),matrix.m12(),matrix.m21(),matrix.m22(),matrix.tx(),matrix.ty());
+        localTransform_=*matrix;
 	}
 
 	const Matrix4& matrix() const
@@ -311,7 +361,18 @@ public:
 	void clearBlendFunc();
 	void setBlendFunc(ShaderEngine::BlendFactor sfactor, ShaderEngine::BlendFactor dfactor);
 
+	struct ShaderParam
+	{
+		std::string name;
+		ShaderProgram::ConstantType type;
+		int mult;
+		std::vector<float> data;
+	};
 	void setShader(ShaderProgram *shader);
+	void setShaderConstant(ShaderParam p)
+	{
+		shaderParams_[p.name]=p;
+	}
 
 	void set(const char* param, float value, GStatus* status = NULL);
 	float get(const char* param, GStatus* status = NULL);
@@ -379,6 +440,7 @@ protected:
 
 protected:
 	ShaderProgram *shader_;
+	std::map<std::string,ShaderParam> shaderParams_;
 //	typedef std::list<GraphicsBase, Gideros::STLAllocator<GraphicsBase, StdAllocator> > GraphicsBaseList;
 //	GraphicsBaseList graphicsBases_;
 

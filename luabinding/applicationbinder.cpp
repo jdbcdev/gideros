@@ -47,6 +47,7 @@ ApplicationBinder::ApplicationBinder(lua_State* L)
 		{"getLocale", ApplicationBinder::getLocale},
 		{"getLanguage", ApplicationBinder::getLanguage},
 		{"setKeepAwake", ApplicationBinder::setKeepAwake},
+		{"setKeyboardVisibility", ApplicationBinder::setKeyboardVisibility},
 		{"getLogicalTranslateX", ApplicationBinder::getLogicalTranslateX},
 		{"getLogicalTranslateY", ApplicationBinder::getLogicalTranslateY},
 		{"getLogicalScaleX", ApplicationBinder::getLogicalScaleX},
@@ -161,7 +162,13 @@ int ApplicationBinder::getDeviceWidth(lua_State* L)
 
 	LuaApplication* application = static_cast<LuaApplication*>(luaL_getdata(L));
 
-	lua_pushnumber(L, application->getHardwareWidth());
+	Orientation orientation = application->orientation();
+
+	if ((orientation == eLandscapeLeft || orientation == eLandscapeRight) &&
+	    (application->hardwareOrientation()==eFixed))
+		lua_pushnumber(L, application->getHardwareHeight());
+	else
+		lua_pushnumber(L, application->getHardwareWidth());
 
 	return 1;
 }
@@ -173,7 +180,13 @@ int ApplicationBinder::getDeviceHeight(lua_State* L)
 
 	LuaApplication* application = static_cast<LuaApplication*>(luaL_getdata(L));
 
-	lua_pushnumber(L, application->getHardwareHeight());
+	Orientation orientation = application->orientation();
+
+	if ((orientation == eLandscapeLeft || orientation == eLandscapeRight) &&
+	    (application->hardwareOrientation()==eFixed))
+		lua_pushnumber(L, application->getHardwareWidth());
+	else
+		lua_pushnumber(L, application->getHardwareHeight());
 
 	return 1;
 }
@@ -221,6 +234,16 @@ int ApplicationBinder::setKeepAwake(lua_State* L)
 	::setKeepAwake(lua_toboolean(L, 2) != 0);
 
 	return 0;
+}
+
+int ApplicationBinder::setKeyboardVisibility(lua_State* L)
+{
+	Binder binder(L);
+	(void)binder.getInstance("Application", 1);
+
+	lua_pushboolean(L,::setKeyboardVisibility(lua_toboolean(L, 2) != 0));
+
+	return 1;
 }
 
 int ApplicationBinder::getLogicalTranslateX(lua_State* L)

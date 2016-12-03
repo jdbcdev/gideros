@@ -351,6 +351,17 @@
 		5FE658BA18FBF0FB001D8EE3 /* zutil.c in Sources */ = {isa = PBXBuildFile; fileRef = 5FE658AB18FBF0FB001D8EE3 /* zutil.c */; };
 		EB08A3521AAA06F900D8F27D /* Matrices.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB08A3501AAA06F900D8F27D /* Matrices.cpp */; };
 		EB08A3531AAA06F900D8F27D /* Matrices.h in Headers */ = {isa = PBXBuildFile; fileRef = EB08A3511AAA06F900D8F27D /* Matrices.h */; };
+		EB140D891C5BB810000180C7 /* aes.c in Sources */ = {isa = PBXBuildFile; fileRef = EB140D881C5BB810000180C7 /* aes.c */; };
+		EB140D8B1C5BB83A000180C7 /* cryptobinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB140D8A1C5BB83A000180C7 /* cryptobinder.cpp */; };
+		EB27A5FA1CCDFC7E003A5580 /* pixel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB27A5F91CCDFC7E003A5580 /* pixel.cpp */; };
+		EB27A5FC1CCDFC9B003A5580 /* pixelbinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB27A5FB1CCDFC9B003A5580 /* pixelbinder.cpp */; };
+		EB27A5FE1CFF1CEA003A5580 /* particlesbinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB27A5FD1CFF1CEA003A5580 /* particlesbinder.cpp */; };
+		EB27A6001CFF1D0B003A5580 /* particles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB27A5FF1CFF1D0B003A5580 /* particles.cpp */; };
+		EB35B49A1C1190C200227849 /* ft-path.c in Sources */ = {isa = PBXBuildFile; fileRef = EB35B4971C1190C200227849 /* ft-path.c */; };
+		EB35B49B1C1190C200227849 /* prpath.h in Headers */ = {isa = PBXBuildFile; fileRef = EB35B4981C1190C200227849 /* prpath.h */; };
+		EB35B49C1C1190C200227849 /* svg-path.c in Sources */ = {isa = PBXBuildFile; fileRef = EB35B4991C1190C200227849 /* svg-path.c */; };
+		EB7A5EA51C9BE7D70068EFCA /* viewportbinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB7A5EA41C9BE7D70068EFCA /* viewportbinder.cpp */; };
+		EB7A5EA71C9BE8080068EFCA /* viewport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB7A5EA61C9BE8080068EFCA /* viewport.cpp */; };
 		EB82BDCE1B29606C00281732 /* gl2ShaderBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB82BDC21B29606C00281732 /* gl2ShaderBuffer.cpp */; };
 		EB82BDCF1B29606C00281732 /* gl2ShaderEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB82BDC31B29606C00281732 /* gl2ShaderEngine.cpp */; };
 		EB82BDD01B29606C00281732 /* gl2ShaderProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB82BDC41B29606C00281732 /* gl2ShaderProgram.cpp */; };
@@ -408,6 +419,14 @@
 		EBD8CB2E1B903E70002F9D6C /* tempfile.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD8CB2B1B903E70002F9D6C /* tempfile.h */; };
 		EBD8CB301B904104002F9D6C /* xmp.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD8CB2F1B904104002F9D6C /* xmp.h */; };
 		EBD8CB321B904216002F9D6C /* gaudio-loader-xmp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EBD8CB311B904216002F9D6C /* gaudio-loader-xmp.cpp */; };
+		EBD9AC721B99EEF2006C8316 /* ft-path.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD9AC661B99EEF2006C8316 /* ft-path.h */; };
+		EBD9AC731B99EEF2006C8316 /* khash.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD9AC671B99EEF2006C8316 /* khash.h */; };
+		EBD9AC741B99EEF2006C8316 /* kvec.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD9AC681B99EEF2006C8316 /* kvec.h */; };
+		EBD9AC751B99EEF2006C8316 /* path.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EBD9AC6A1B99EEF2006C8316 /* path.cpp */; };
+		EBD9AC761B99EEF2006C8316 /* path.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD9AC6B1B99EEF2006C8316 /* path.h */; };
+		EBD9AC7B1B99EEF2006C8316 /* svg-path.h in Headers */ = {isa = PBXBuildFile; fileRef = EBD9AC701B99EEF2006C8316 /* svg-path.h */; };
+		EBD9AC7D1B99EF35006C8316 /* gl2PathShaders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EBD9AC7C1B99EF35006C8316 /* gl2PathShaders.cpp */; };
+		EBD9AC7F1B99EF5A006C8316 /* path2dbinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EBD9AC7E1B99EF5A006C8316 /* path2dbinder.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -757,6 +776,17 @@
 		5FE658AB18FBF0FB001D8EE3 /* zutil.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = zutil.c; path = "../../../libgid/external/zlib-1.2.8/zutil.c"; sourceTree = "<group>"; };
 		EB08A3501AAA06F900D8F27D /* Matrices.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Matrices.cpp; path = ../../2dsg/Matrices.cpp; sourceTree = "<group>"; };
 		EB08A3511AAA06F900D8F27D /* Matrices.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Matrices.h; path = ../../2dsg/Matrices.h; sourceTree = "<group>"; };
+		EB140D881C5BB810000180C7 /* aes.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = aes.c; path = ../../../libgid/src/aes.c; sourceTree = "<group>"; };
+		EB140D8A1C5BB83A000180C7 /* cryptobinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = cryptobinder.cpp; path = ../../luabinding/cryptobinder.cpp; sourceTree = "<group>"; };
+		EB27A5F91CCDFC7E003A5580 /* pixel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = pixel.cpp; path = ../../2dsg/pixel.cpp; sourceTree = "<group>"; };
+		EB27A5FB1CCDFC9B003A5580 /* pixelbinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = pixelbinder.cpp; path = ../../luabinding/pixelbinder.cpp; sourceTree = "<group>"; };
+		EB27A5FD1CFF1CEA003A5580 /* particlesbinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = particlesbinder.cpp; path = ../../luabinding/particlesbinder.cpp; sourceTree = "<group>"; };
+		EB27A5FF1CFF1D0B003A5580 /* particles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = particles.cpp; path = ../../2dsg/particles.cpp; sourceTree = "<group>"; };
+		EB35B4971C1190C200227849 /* ft-path.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "ft-path.c"; sourceTree = "<group>"; };
+		EB35B4981C1190C200227849 /* prpath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = prpath.h; sourceTree = "<group>"; };
+		EB35B4991C1190C200227849 /* svg-path.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "svg-path.c"; sourceTree = "<group>"; };
+		EB7A5EA41C9BE7D70068EFCA /* viewportbinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = viewportbinder.cpp; path = ../../luabinding/viewportbinder.cpp; sourceTree = "<group>"; };
+		EB7A5EA61C9BE8080068EFCA /* viewport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = viewport.cpp; path = ../../2dsg/viewport.cpp; sourceTree = "<group>"; };
 		EB82BDC21B29606C00281732 /* gl2ShaderBuffer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gl2ShaderBuffer.cpp; sourceTree = "<group>"; };
 		EB82BDC31B29606C00281732 /* gl2ShaderEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gl2ShaderEngine.cpp; sourceTree = "<group>"; };
 		EB82BDC41B29606C00281732 /* gl2ShaderProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gl2ShaderProgram.cpp; sourceTree = "<group>"; };
@@ -814,6 +844,14 @@
 		EBD8CB2B1B903E70002F9D6C /* tempfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tempfile.h; path = "../../../libgid/external/libxmp-4.3/src/tempfile.h"; sourceTree = "<group>"; };
 		EBD8CB2F1B904104002F9D6C /* xmp.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = xmp.h; path = "../../../libgid/external/libxmp-4.3/include/xmp.h"; sourceTree = "<group>"; };
 		EBD8CB311B904216002F9D6C /* gaudio-loader-xmp.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = "gaudio-loader-xmp.cpp"; path = "../../../libgid/src/gaudio-loader-xmp.cpp"; sourceTree = "<group>"; };
+		EBD9AC661B99EEF2006C8316 /* ft-path.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "ft-path.h"; sourceTree = "<group>"; };
+		EBD9AC671B99EEF2006C8316 /* khash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = khash.h; sourceTree = "<group>"; };
+		EBD9AC681B99EEF2006C8316 /* kvec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = kvec.h; sourceTree = "<group>"; };
+		EBD9AC6A1B99EEF2006C8316 /* path.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = path.cpp; sourceTree = "<group>"; };
+		EBD9AC6B1B99EEF2006C8316 /* path.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = path.h; sourceTree = "<group>"; };
+		EBD9AC701B99EEF2006C8316 /* svg-path.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "svg-path.h"; sourceTree = "<group>"; };
+		EBD9AC7C1B99EF35006C8316 /* gl2PathShaders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gl2PathShaders.cpp; sourceTree = "<group>"; };
+		EBD9AC7E1B99EF5A006C8316 /* path2dbinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = path2dbinder.cpp; path = ../../luabinding/path2dbinder.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -916,6 +954,7 @@
 		5F0CD7C515BB021500479287 /* src */ = {
 			isa = PBXGroup;
 			children = (
+				EB140D881C5BB810000180C7 /* aes.c */,
 				EBD8CB311B904216002F9D6C /* gaudio-loader-xmp.cpp */,
 				5ECDAB331ADAE0D100278F39 /* drawinfo.cpp */,
 				5ECDAB341ADAE0D100278F39 /* md5.c */,
@@ -1255,9 +1294,13 @@
 		5F321EAD15BBC3EF00542289 /* 2dsg */ = {
 			isa = PBXGroup;
 			children = (
+				EBD9AC641B99EEF2006C8316 /* paths */,
 				EB82BDBA1B29606C00281732 /* gfxbackends */,
 				EB08A3501AAA06F900D8F27D /* Matrices.cpp */,
 				EB08A3511AAA06F900D8F27D /* Matrices.h */,
+				EB27A5FF1CFF1D0B003A5580 /* particles.cpp */,
+				EB27A5F91CCDFC7E003A5580 /* pixel.cpp */,
+				EB7A5EA61C9BE8080068EFCA /* viewport.cpp */,
 				5F321EAF15BBC3FC00542289 /* application.cpp */,
 				5F321EB015BBC3FC00542289 /* bitmap.cpp */,
 				5F321EB115BBC3FC00542289 /* bitmapdata.cpp */,
@@ -1331,6 +1374,11 @@
 		5F321F2215BBCA8000542289 /* luabinding */ = {
 			isa = PBXGroup;
 			children = (
+				EB27A5FD1CFF1CEA003A5580 /* particlesbinder.cpp */,
+				EB27A5FB1CCDFC9B003A5580 /* pixelbinder.cpp */,
+				EB7A5EA41C9BE7D70068EFCA /* viewportbinder.cpp */,
+				EB140D8A1C5BB83A000180C7 /* cryptobinder.cpp */,
+				EBD9AC7E1B99EF5A006C8316 /* path2dbinder.cpp */,
 				EB82BDD51B305E2F00281732 /* shaderbinder.cpp */,
 				EBD254C91ADD149000CC57F9 /* zlibbinder.cpp */,
 				5F321F2415BBEB3200542289 /* accelerometerbinder.cpp */,
@@ -1422,6 +1470,7 @@
 		EB82BDC11B29606C00281732 /* gl2 */ = {
 			isa = PBXGroup;
 			children = (
+				EBD9AC7C1B99EF35006C8316 /* gl2PathShaders.cpp */,
 				EB82BDC21B29606C00281732 /* gl2ShaderBuffer.cpp */,
 				EB82BDC31B29606C00281732 /* gl2ShaderEngine.cpp */,
 				EB82BDC41B29606C00281732 /* gl2ShaderProgram.cpp */,
@@ -1494,6 +1543,23 @@
 			path = "../../../libgid/external/libxmp-4.3/src/loaders";
 			sourceTree = "<group>";
 		};
+		EBD9AC641B99EEF2006C8316 /* paths */ = {
+			isa = PBXGroup;
+			children = (
+				EB35B4971C1190C200227849 /* ft-path.c */,
+				EB35B4981C1190C200227849 /* prpath.h */,
+				EB35B4991C1190C200227849 /* svg-path.c */,
+				EBD9AC661B99EEF2006C8316 /* ft-path.h */,
+				EBD9AC671B99EEF2006C8316 /* khash.h */,
+				EBD9AC681B99EEF2006C8316 /* kvec.h */,
+				EBD9AC6A1B99EEF2006C8316 /* path.cpp */,
+				EBD9AC6B1B99EEF2006C8316 /* path.h */,
+				EBD9AC701B99EEF2006C8316 /* svg-path.h */,
+			);
+			name = paths;
+			path = ../../2dsg/paths;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -1554,22 +1620,28 @@
 				5F276FC418F4020E00D78AE4 /* b2WheelJoint.h in Headers */,
 				EBD8CAA61B903A50002F9D6C /* it.h in Headers */,
 				5F276FCA18F4020E00D78AE4 /* b2ParticleSystem.h in Headers */,
+				EBD9AC741B99EEF2006C8316 /* kvec.h in Headers */,
 				5F276F6918F4020E00D78AE4 /* b2Distance.h in Headers */,
 				5F276FC018F4020E00D78AE4 /* b2RopeJoint.h in Headers */,
 				5F276F8218F4020E00D78AE4 /* b2Settings.h in Headers */,
 				5F276FB618F4020E00D78AE4 /* b2MotorJoint.h in Headers */,
 				5F276FAA18F4020E00D78AE4 /* b2PolygonAndCircleContact.h in Headers */,
+				EB35B49B1C1190C200227849 /* prpath.h in Headers */,
 				5F276F8018F4020E00D78AE4 /* b2Math.h in Headers */,
+				EBD9AC721B99EEF2006C8316 /* ft-path.h in Headers */,
 				5F276FA818F4020E00D78AE4 /* b2EdgeAndPolygonContact.h in Headers */,
 				5F276F7618F4020E00D78AE4 /* b2Shape.h in Headers */,
 				5F276F6218F4020E00D78AE4 /* b2BroadPhase.h in Headers */,
 				5F321F7315BBF2E100542289 /* giderosapi.h in Headers */,
+				EBD9AC7B1B99EEF2006C8316 /* svg-path.h in Headers */,
 				5F276F6D18F4020E00D78AE4 /* b2TimeOfImpact.h in Headers */,
 				EB08A3531AAA06F900D8F27D /* Matrices.h in Headers */,
 				5F0104071776F719002E6C6E /* grendertarget.h in Headers */,
+				EBD9AC761B99EEF2006C8316 /* path.h in Headers */,
 				5F276F7D18F4020E00D78AE4 /* b2GrowableStack.h in Headers */,
 				5F276FB218F4020E00D78AE4 /* b2GearJoint.h in Headers */,
 				5F276F7818F4020E00D78AE4 /* b2BlockAllocator.h in Headers */,
+				EBD9AC731B99EEF2006C8316 /* khash.h in Headers */,
 				5F276F9E18F4020E00D78AE4 /* b2ChainAndPolygonContact.h in Headers */,
 				5F276FBE18F4020E00D78AE4 /* b2RevoluteJoint.h in Headers */,
 				5F276F9618F4020E00D78AE4 /* b2TimeStep.h in Headers */,
@@ -1660,6 +1732,7 @@
 				5F0CD83C15BB0B3D00479287 /* pngmem.c in Sources */,
 				5F276F9018F4020E00D78AE4 /* b2ContactManager.cpp in Sources */,
 				5F276F7F18F4020E00D78AE4 /* b2Math.cpp in Sources */,
+				EB140D8B1C5BB83A000180C7 /* cryptobinder.cpp in Sources */,
 				5F0CD83D15BB0B3D00479287 /* pngpread.c in Sources */,
 				5F276FBB18F4020E00D78AE4 /* b2PulleyJoint.cpp in Sources */,
 				5F0CD83E15BB0B3D00479287 /* pngread.c in Sources */,
@@ -1766,6 +1839,7 @@
 				5F321E0415BB516F00542289 /* event.cpp in Sources */,
 				5F321E0515BB516F00542289 /* eventdispatcher.cpp in Sources */,
 				5F276F6A18F4020E00D78AE4 /* b2DynamicTree.cpp in Sources */,
+				EB7A5EA71C9BE8080068EFCA /* viewport.cpp in Sources */,
 				5F321E0615BB516F00542289 /* eventvisitor.cpp in Sources */,
 				5F321E0715BB516F00542289 /* gplugin-ios.mm in Sources */,
 				EBD8CA8E1B903A50002F9D6C /* common.c in Sources */,
@@ -1786,6 +1860,7 @@
 				5F321EE315BBC3FC00542289 /* colortransform.cpp in Sources */,
 				5F321EE415BBC3FC00542289 /* dib.cpp in Sources */,
 				5F321EE515BBC3FC00542289 /* enterframeevent.cpp in Sources */,
+				EB27A5FC1CCDFC9B003A5580 /* pixelbinder.cpp in Sources */,
 				5F321EE615BBC3FC00542289 /* errorevent.cpp in Sources */,
 				5F276F6518F4020E00D78AE4 /* b2CollidePolygon.cpp in Sources */,
 				5F321EE715BBC3FC00542289 /* font.cpp in Sources */,
@@ -1822,6 +1897,7 @@
 				5F276F6418F4020E00D78AE4 /* b2CollideEdge.cpp in Sources */,
 				5ECDAB381ADAE0D100278F39 /* md5.c in Sources */,
 				EBD8CB321B904216002F9D6C /* gaudio-loader-xmp.cpp in Sources */,
+				EBD9AC7F1B99EF5A006C8316 /* path2dbinder.cpp in Sources */,
 				EB82BDD31B29606C00281732 /* Shaders.cpp in Sources */,
 				5F321EF915BBC3FC00542289 /* stageorientationevent.cpp in Sources */,
 				5F321EFA15BBC3FC00542289 /* stopwatch.cpp in Sources */,
@@ -1845,10 +1921,12 @@
 				5F321F0A15BBC3FC00542289 /* tttextfield.cpp in Sources */,
 				EBD8CAFA1B903A50002F9D6C /* sample.c in Sources */,
 				EBD8CB121B903A50002F9D6C /* mix_all.c in Sources */,
+				EBD9AC7D1B99EF35006C8316 /* gl2PathShaders.cpp in Sources */,
 				5F321F0C15BBC3FC00542289 /* urlrequest.cpp in Sources */,
 				5F321F1815BBC47500542289 /* dict.c in Sources */,
 				5F321F1915BBC47500542289 /* geom.c in Sources */,
 				5F276FB718F4020E00D78AE4 /* b2MouseJoint.cpp in Sources */,
+				EB27A5FA1CCDFC7E003A5580 /* pixel.cpp in Sources */,
 				5F321F1A15BBC47500542289 /* memalloc.c in Sources */,
 				5F321F1B15BBC47500542289 /* mesh.c in Sources */,
 				5FE658B418FBF0FB001D8EE3 /* infback.c in Sources */,
@@ -1865,6 +1943,7 @@
 				5F321F2015BBC47500542289 /* tess.c in Sources */,
 				EBD8CA6D1B903A50002F9D6C /* effects.c in Sources */,
 				5F321F2115BBC47500542289 /* tessmono.c in Sources */,
+				EBD9AC751B99EEF2006C8316 /* path.cpp in Sources */,
 				5F321F4715BBEB3200542289 /* tlsf.c in Sources */,
 				5F321F4815BBEB3200542289 /* accelerometerbinder.cpp in Sources */,
 				5F321F4915BBEB3200542289 /* alertdialogbinder.cpp in Sources */,
@@ -1876,6 +1955,7 @@
 				5F321F4C15BBEB3200542289 /* bitmapbinder.cpp in Sources */,
 				5ECDAB3A1ADAE0D100278F39 /* utf8.c in Sources */,
 				EBD8CAA71B903A50002F9D6C /* it_load.c in Sources */,
+				EB27A5FE1CFF1CEA003A5580 /* particlesbinder.cpp in Sources */,
 				5F321F4D15BBEB3200542289 /* bitmapdatabinder.cpp in Sources */,
 				EBD8CB1C1B903A50002F9D6C /* scan.c in Sources */,
 				5F276F9F18F4020E00D78AE4 /* b2CircleContact.cpp in Sources */,
@@ -1891,6 +1971,7 @@
 				EBD8CA821B903A50002F9D6C /* load.c in Sources */,
 				5F321F5315BBEB3200542289 /* fontbinder.cpp in Sources */,
 				5F321F5415BBEB3200542289 /* geolocationbinder.cpp in Sources */,
+				EB140D891C5BB810000180C7 /* aes.c in Sources */,
 				5F321F5515BBEB3200542289 /* gyroscopebinder.cpp in Sources */,
 				5FE658BA18FBF0FB001D8EE3 /* zutil.c in Sources */,
 				5F321F5615BBEB3200542289 /* keys.cpp in Sources */,
@@ -1910,6 +1991,7 @@
 				5F321F6215BBEB3200542289 /* textfieldbinder.cpp in Sources */,
 				5F321F6315BBEB3200542289 /* textinputdialogbinder.cpp in Sources */,
 				5F321F6415BBEB3200542289 /* texturebasebinder.cpp in Sources */,
+				EB35B49A1C1190C200227849 /* ft-path.c in Sources */,
 				5F321F6515BBEB3200542289 /* texturebinder.cpp in Sources */,
 				5F321F6615BBEB3200542289 /* texturepackbinder.cpp in Sources */,
 				5F321F6715BBEB3200542289 /* tilemapbinder.cpp in Sources */,
@@ -1917,6 +1999,7 @@
 				5F321F6915BBEB3200542289 /* ttfontbinder.cpp in Sources */,
 				5F276FB518F4020E00D78AE4 /* b2MotorJoint.cpp in Sources */,
 				EB82BDCF1B29606C00281732 /* gl2ShaderEngine.cpp in Sources */,
+				EB7A5EA51C9BE7D70068EFCA /* viewportbinder.cpp in Sources */,
 				5F321F6C15BBEB5F00542289 /* ginput-ios.mm in Sources */,
 				5F321F7615BBF2E100542289 /* giderosapi.mm in Sources */,
 				5F276F8E18F4020E00D78AE4 /* b2Body.cpp in Sources */,
@@ -1934,6 +2017,7 @@
 				EBD8CB131B903A50002F9D6C /* mixer.c in Sources */,
 				5F58B53E1619A0BA00B8E8FE /* gmesh.cpp in Sources */,
 				5ECDAB371ADAE0D100278F39 /* drawinfo.cpp in Sources */,
+				EB27A6001CFF1D0B003A5580 /* particles.cpp in Sources */,
 				5F58B5411619A0E400B8E8FE /* meshbinder.cpp in Sources */,
 				5F450BE11665066A001D8D4B /* gaudio-loader-wav.cpp in Sources */,
 				5F450BE21665066A001D8D4B /* gaudio-sample-openal.cpp in Sources */,
@@ -1945,6 +2029,7 @@
 				5F450BF41665146B001D8D4B /* gaudio-background-avaudioplayer.mm in Sources */,
 				5FE385BB16B09353007A91E1 /* ftlibrarysingleton.cpp in Sources */,
 				5FE385BC16B09353007A91E1 /* ttbmfont.cpp in Sources */,
+				EB35B49C1C1190C200227849 /* svg-path.c in Sources */,
 				5F3C82371762064700E5E187 /* pystring.cpp in Sources */,
 				5F3C823C1762100100E5E187 /* ghttp-ios.mm in Sources */,
 				5F0104061776F719002E6C6E /* grendertarget.cpp in Sources */,
@@ -1968,6 +2053,7 @@
 				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
@@ -2022,6 +2108,7 @@
 				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
@@ -2068,6 +2155,7 @@
 		5F0CD76B15BAFADE00479287 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				DSTROOT = /tmp/iosplayer.dst;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "iosplayer/iosplayer-Prefix.pch";
@@ -2112,6 +2200,7 @@
 		5F0CD76C15BAFADE00479287 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				DSTROOT = /tmp/iosplayer.dst;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "iosplayer/iosplayer-Prefix.pch";

@@ -149,7 +149,7 @@ NSMutableArray *tableData;
 
 - (void)drawFrame
 {
-	gdr_drawFrame();
+    gdr_drawFrame();
 }
 
 - (void)didReceiveMemoryWarning

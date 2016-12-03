@@ -58,6 +58,7 @@ SOURCES += \
     newprojectdialog.cpp\
     fileassociationsdialog.cpp\
     fileassociationeditdialog.cpp\
+    pluginschooser.cpp \
     textedit.cpp\
     playersettingsdialog.cpp\
     gotolinedialog.cpp\
@@ -69,12 +70,14 @@ SOURCES += \
     "../iconlibrary/iconlibrary.cpp"\
     "../libnetwork/bytebuffer.cpp" \
     exportprojectdialog.cpp \
+    exportprogress.cpp \
     aboutdialog.cpp \
     projectpropertiesdialog.cpp \
     startpagewidget2.cpp \
     recentprojectswidget.cpp \
     exampleprojectswidget.cpp \
     projectproperties.cpp \
+    propertyeditingtable.cpp \
     mdiarea.cpp \
     mdisubwindow.cpp \
     dependencygraph.cpp
@@ -82,6 +85,7 @@ SOURCES += \
 SOURCES += $$files(../libpvrt/*.cpp)
 
 SOURCES += "../libgid/src/platformutil.cpp"\
+			"../libgid/src/aes.c" \
 			"../libgid/src/md5.c"
 
 HEADERS  += \
@@ -103,14 +107,17 @@ HEADERS  += \
     addnewfiledialog.h\
     "../libpreviewwidget/previewwidget.h" \
     exportprojectdialog.h \
+    exportprogress.h \
     aboutdialog.h \
     projectpropertiesdialog.h \
     projectproperties.h \
+    propertyeditingtable.h \
     startpagewidget2.h \
     recentprojectswidget.h \
     exampleprojectswidget.h \
     mdiarea.h \
     mdisubwindow.h \
+    pluginschooser.h \
     dependencygraph.h
 
 FORMS    += mainwindow.ui \
@@ -128,8 +135,10 @@ FORMS    += mainwindow.ui \
     codedependenciesdialog.ui \
     addnewfiledialog.ui \
     exportprojectdialog.ui \
+    exportprogress.ui \
     aboutdialog.ui \
     projectpropertiesdialog.ui \
+    pluginschooser.ui \
     startpagewidget2.ui
 
 win32 {
@@ -144,9 +153,17 @@ macx {
 	CONFIG += c++11
 }
 
-LIBS += -lqscintilla2
+win32 {
+   LIBS += -lqscintilla2
+}
+
+macx {
+   LIBS += -lqscintilla2
+}
+
+unix:!macx {
+   LIBS += -lqt5scintilla2
+}
 
 RESOURCES += \
     ui.qrc
-
-

@@ -1,0 +1,43 @@
+<plugin
+ name="Microphone"
+ description="Providing microphone and recording capabilities">
+  <target name="AndroidStudio,APK">
+    <template name="sources" path="[[[sys.pluginDir]]]/bin/Android/src" dest="app/src/main/java"/>
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/Android/libs" dest="app/src/main/jniLibs"/>
+    <template name="Activity" path="">
+        <replacelist wildcards="[[[project.namews]]]Activity.java">
+            <append orig="//GIDEROS-STATIC-INIT//" by="		System.loadLibrary(&quot;microphone&quot;);"/>
+            <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.GMicrophone&quot;,"/>
+        </replacelist>
+    </template>
+    <template name="AndroidManifest" path="">
+        <replacelist wildcards="AndroidManifest.xml">
+           <append>
+            	<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
+            	<by><![CDATA[
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+            	]]></by>
+            </append>
+        </replacelist>
+    </template>
+ </target>
+ <target name="Android">
+    <template name="binares" path="[[[sys.pluginDir]]]/bin/Android"/>
+    <template name="Activity" path="">
+        <replacelist wildcards="[[[project.namews]]]Activity.java">
+            <append orig="//GIDEROS-STATIC-INIT//" by="		System.loadLibrary(&quot;microphone&quot;);"/>
+            <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.GMicrophone&quot;,"/>
+        </replacelist>
+    </template>
+    <template name="AndroidManifest" path="">
+        <replacelist wildcards="AndroidManifest.xml">
+           <append>
+            	<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
+            	<by><![CDATA[
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+            	]]></by>
+            </append>
+        </replacelist>
+    </template>
+ </target>
+</plugin>
