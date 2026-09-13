@@ -23013,6 +23013,10 @@ SQLITE_PRIVATE const char *sqlite3OpcodeName(int i){
 #include <errno.h>
 #if !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
 #include <sys/mman.h>
+#ifdef __EMSCRIPTEN__
+void *__mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+int __munmap(void *addr, size_t length);
+#endif
 #endif
 
 
@@ -23549,10 +23553,14 @@ static struct unix_syscall {
   { "fchown",       (sqlite3_syscall_ptr)posixFchown,     0 },
 #define osFchown    ((int(*)(int,uid_t,gid_t))aSyscall[20].pCurrent)
 
+#if __EMSCRIPTEN__
+  { "mmap",       (sqlite3_syscall_ptr)__mmap,     0 },
+  { "munmap",       (sqlite3_syscall_ptr)__munmap,          0 },
+#else
   { "mmap",       (sqlite3_syscall_ptr)mmap,     0 },
-#define osMmap ((void*(*)(void*,size_t,int,int,int,off_t))aSyscall[21].pCurrent)
-
   { "munmap",       (sqlite3_syscall_ptr)munmap,          0 },
+#endif
+#define osMmap ((void*(*)(void*,size_t,int,int,int,off_t))aSyscall[21].pCurrent)
 #define osMunmap ((void*(*)(void*,size_t))aSyscall[22].pCurrent)
 
 #if HAVE_MREMAP

@@ -10,10 +10,12 @@ public:
 	
 private:
 	static int create(lua_State* L);
-	static int destruct(lua_State* L);
+	static int destruct(void *p);
 
 	static int setWidth(lua_State* L);
 	static int setHeight(lua_State* L);
+	static int setAnchorPoint(lua_State* L);
+	static int getAnchorPoint(lua_State* L);
     static int setDimensions(lua_State *L);
     static int getDimensions(lua_State *L);
     static int setColor(lua_State *L);
@@ -24,6 +26,10 @@ private:
     static int getTexturePosition(lua_State *L);
     static int setTextureScale(lua_State *L);
     static int getTextureScale(lua_State *L);
+    static int setNinePatch(lua_State *L);
+
+    static int updateStyle(lua_State* L);
+    static int __parseGhosts(lua_State* L);
 };
 
 #endif

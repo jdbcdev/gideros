@@ -1,9 +1,11 @@
 #include "bitmap.h"
 #include "ogl.h"
 
+size_t Bitmap::bitmapsCount=0;
 VertexBuffer<unsigned short> Bitmap::quad;
 void Bitmap::doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey)
 {
+    G_UNUSED(sx); G_UNUSED(sy); G_UNUSED(ex); G_UNUSED(ey);
 	if (quad.empty())
 	{
 		quad.resize(4);
@@ -13,7 +15,31 @@ void Bitmap::doDraw(const CurrentTransform&, float sx, float sy, float ex, float
 		quad[3] = 2;
 		quad.Update();
 	}
-	graphicsBase_.draw(shader_,&quad);
+	graphicsBase_.draw(getShader(graphicsBase_.getShaderType()),&quad);
+}
+
+void Bitmap::cloneFrom(Bitmap *s) {
+    Sprite::cloneFrom(s);
+
+    bitmapdata_ = s->bitmapdata_;
+    if (bitmapdata_ != NULL)
+        bitmapdata_->ref();
+
+    texturebase_ = s->texturebase_;
+    if (texturebase_)
+        texturebase_->ref();
+
+    anchorx_ = s->anchorx_;
+    anchory_ = s->anchory_;
+    dx_ = s->dx_;
+    dy_ = s->dy_;
+    minx_ = s->minx_;
+    miny_ = s->miny_;
+    maxx_ = s->maxx_;
+    maxy_ = s->maxy_;
+
+    graphicsBase_=s->graphicsBase_;
+    graphicsBase_.cloned();
 }
 
 void Bitmap::updateBounds()
@@ -54,7 +80,8 @@ void Bitmap::extraBounds(float* minx, float* miny, float* maxx, float* maxy) con
 
 void Bitmap::setCoords()
 {
-	if (bitmapdata_ != NULL)
+    RENDER_LOCK();
+    if (bitmapdata_ != NULL)
 	{
 		graphicsBase_.data = bitmapdata_->texture()->data;
 
@@ -103,6 +130,7 @@ void Bitmap::setCoords()
 		graphicsBase_.texcoords[3] = Point2f(0, v);
 		graphicsBase_.texcoords.Update();
 	}
+    RENDER_UNLOCK();
 }
 
 void Bitmap::setAnchorPoint(float x, float y)
@@ -137,6 +165,7 @@ void Bitmap::setAnchorPoint(float x, float y)
 
 	setCoords();
     updateBounds();
+	invalidate(INV_GRAPHICS|INV_BOUNDS);
 }
 
 void Bitmap::getAnchorPoint(float* x, float* y) const

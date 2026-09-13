@@ -43,13 +43,6 @@
 #include "floatio.h"
 #endif
 
-#ifdef __ANDROID__
-static long double strtold(const char *s, char **sp)
-{
-    return strtod(s, sp);
-}
-#endif
-
 #ifdef WINSTORE
 #define __signed
 #define ssize_t size_t

@@ -10,6 +10,8 @@
 #include <algorithm>
 #include "gideros_p.h"
 
+//#define GID_CHECK_TYPES
+
 class EventDispatcher;
 
 class SlotBase
@@ -17,8 +19,10 @@ class SlotBase
 public:
 	virtual ~SlotBase() {}
 	virtual void call(Event* event) = 0;
+#ifdef GID_CHECK_TYPES
 	virtual const std::type_info& t1() const = 0;
 	virtual const std::type_info& t2() const = 0;
+#endif
 	virtual EventDispatcher* object() const = 0;
 };
 
@@ -28,7 +32,7 @@ class Slot : public SlotBase
 public:
 	Slot(T1* obj, void (T1::*slot)(T2*)) : obj_(obj), slot_(slot)
 	{
-		Event* e = (T2 *)0;
+		//Event* e = (T2 *)0;
 	}
 
 	virtual void call(Event* event)
@@ -49,12 +53,16 @@ public:
 
 	bool equals(const SlotBase* base)
 	{
+#ifdef GID_CHECK_TYPES
 		if (t1() == base->t1() && t2() == base->t2())
+#endif
 			return *this == *static_cast<const Slot*>(base);
-
+#ifdef GID_CHECK_TYPES
 		return false;
+#endif
 	}
 
+#ifdef GID_CHECK_TYPES
 	const std::type_info& t1() const
 	{
 		return typeid(T1);
@@ -64,7 +72,7 @@ public:
 	{
 		return typeid(T2);
 	}
-
+#endif
 private:
 	T1* obj_;
 	void (T1::*slot_)(T2*);
@@ -75,16 +83,33 @@ class GIDEROS_API EventDispatcher : public GReferenced
 public:
 	EventDispatcher()
 	{
+        slots_=nullptr;
+        sources_=nullptr;
+        targets_=nullptr;
 		allEventDispatchers_.insert(this);
 	}
 	
 	virtual ~EventDispatcher()
 	{
-        std::vector<EventDispatcher*> sources(sources_.begin(), sources_.end());
-        for (std::size_t i = 0; i < sources.size(); ++i)
-            sources[i]->removeEventListeners(this);
+        if (sources_) {
+            std::vector<EventDispatcher*> sources(sources_->begin(), sources_->end());
+            for (std::size_t i = 0; i < sources.size(); ++i)
+                sources[i]->removeEventListeners(this);
+            delete sources_;
+            sources_=nullptr;
+        }
 
         removeEventListeners();
+        if (targets_) {
+            for (std::set<EventDispatcher*>::iterator iter = targets_->begin(); iter != targets_->end(); ++iter)
+                (*iter)->removeSource(this);
+
+            delete targets_;
+            targets_=nullptr;
+        }
+
+        if (slots_)
+            delete slots_;
 
         allEventDispatchers_.erase(this);
 	}
@@ -96,7 +121,9 @@ public:
 
 		Slot<T1, T2> slot(obj, func);
 
-		std::vector<SlotBase*>& slots = slots_[type.id()];
+        if (slots_==nullptr) slots_=new map_t;
+
+        std::vector<SlotBase*>& slots = (*slots_)[type.id()];
 
 		bool isfound = false;
 		for (std::size_t i = 0; i < slots.size(); ++i)
@@ -126,9 +153,10 @@ public:
 	{
 		T2* typecheck = (T0*)0;
 
+        if (slots_==nullptr) return;
 		Slot<T1, T2> slot(obj, func);
 
-		std::vector<SlotBase*>& slots = slots_[type.id()];
+        std::vector<SlotBase*>& slots = (*slots_)[type.id()];
 
 		for (std::size_t i = 0; i < slots.size(); ++i)
             if (slots[i] && slot.equals(slots[i]))
@@ -148,7 +176,9 @@ public:
 
 	void removeEventListeners(EventDispatcher* obj)
 	{
-		for (map_t::iterator iter = slots_.begin(); iter != slots_.end(); ++iter)
+        if (slots_==nullptr) return;
+
+        for (map_t::iterator iter = slots_->begin(); iter != slots_->end(); ++iter)
 		{
 			std::vector<SlotBase*>& slots = iter->second;
             for (std::size_t i = 0; i < slots.size(); ++i)
@@ -168,7 +198,8 @@ public:
 
 	void removeEventListeners()
 	{
-		for (map_t::iterator iter = slots_.begin(); iter != slots_.end(); ++iter)
+        if (slots_==nullptr) return;
+        for (map_t::iterator iter = slots_->begin(); iter != slots_->end(); ++iter)
 		{
 			std::vector<SlotBase*>& slots = iter->second;
 			for (std::size_t i = 0; i < slots.size(); ++i)
@@ -179,21 +210,17 @@ public:
                 }
 		}
 
-        for (std::set<EventDispatcher*>::iterator iter = targets_.begin(); iter != targets_.end(); ++iter)
-            (*iter)->removeSource(this);
-
-        targets_.clear();
-
         eventListenersChanged();
 	}
 
 	void dispatchEvent(Event* event)
 	{
-		event->setTarget(this);
+        if (slots_==nullptr) return;
+        event->setTarget(this);
 
-		map_t::iterator iter = slots_.find(event->id());
+        map_t::iterator iter = slots_->find(event->id());
 
-		if (iter != slots_.end())
+        if (iter != slots_->end())
 		{
             std::vector<SlotBase*>& slots = iter->second;
 
@@ -206,32 +233,12 @@ public:
         }
 	}
 
-	static void broadcastEvent(Event* event)
-	{
-		std::vector<EventDispatcher*> v(allEventDispatchers_.begin(), allEventDispatchers_.end());	// NOTE: bunu static yapma. broadcastEvent icindeyken broadcastEvent'in cagirilma ihtimali var.
-
-		for (std::size_t i = 0; i < v.size(); ++i)
-			v[i]->ref();
-
-		try
-		{
-			for (std::size_t i = 0; i < v.size(); ++i)
-				v[i]->dispatchEvent(event);
-		}
-		catch(...)
-		{
-			for (std::size_t i = 0; i < v.size(); ++i)
-				v[i]->unref();
-			throw;
-		}
-
-		for (std::size_t i = 0; i < v.size(); ++i)
-			v[i]->unref();
-	}
+	static void broadcastEvent(Event* event);
 
 	bool hasEventListener() const
 	{
-		for (map_t::const_iterator iter = slots_.begin(); iter != slots_.end(); ++iter)
+        if (slots_==nullptr) return false;
+        for (map_t::const_iterator iter = slots_->begin(); iter != slots_->end(); ++iter)
         {
             const std::vector<SlotBase*>& slots = iter->second;
             for (std::size_t i = 0; i < slots.size(); ++i)
@@ -245,9 +252,10 @@ public:
 	template <class T0>
 	bool hasEventListener(const EventType<T0>& type) const
 	{
-		map_t::const_iterator iter = slots_.find(type.id());
+        if (slots_==nullptr) return false;
+        map_t::const_iterator iter = slots_->find(type.id());
 
-        if (iter == slots_.end())
+        if (iter == slots_->end())
             return false;
 
         const std::vector<SlotBase*>& slots = iter->second;
@@ -264,28 +272,34 @@ protected:
 private:
 	void addSource(EventDispatcher* ptr)
 	{
-		sources_.insert(ptr);
+        if (sources_==nullptr)
+            sources_=new std::set<EventDispatcher*>();
+        sources_->insert(ptr);
 	}
 
 	void removeSource(EventDispatcher* ptr)
 	{
-		sources_.erase(ptr);
+        if (sources_==nullptr) return;
+        sources_->erase(ptr);
 	}
 
 	void addTarget(EventDispatcher* ptr)
 	{
-		targets_.insert(ptr);
+        if (targets_==nullptr)
+            targets_=new std::set<EventDispatcher*>();
+        targets_->insert(ptr);
 	}
 
 	void removeTarget(EventDispatcher* ptr)
 	{
-		targets_.erase(ptr);
+        if (targets_==nullptr) return;
+        targets_->erase(ptr);
 	}
 
 	typedef std::map<int, std::vector<SlotBase*> > map_t;
-	map_t slots_;
-	std::set<EventDispatcher*> sources_;
-	std::set<EventDispatcher*> targets_;
+    map_t *slots_;
+    std::set<EventDispatcher*> *sources_;
+    std::set<EventDispatcher*> *targets_;
 
 protected:
 	static std::set<EventDispatcher*> allEventDispatchers_;

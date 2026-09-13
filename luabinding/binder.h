@@ -1,39 +1,48 @@
-#ifndef BINDER_H
-#define BINDER_H
+#pragma once
 
-//extern "C"
-//{
-//#include "lua.h"
-//#include "lauxlib.h"
-//#include "lualib.h"
-//}
 #include "lua.hpp"
+#include "luautil.h"
+#include <string>
+#include <vector>
+#include "gplugin.h"
 
 class Binder
 {
 public:
-	explicit Binder(lua_State* L) : L(L)
-	{
-	}
-	
-	void createClass(const char* classname,
-					 const char* basename,
-					 int (*constructor) (lua_State*),
-					 int (*destructor) (lua_State*),
-					 const luaL_reg* functionlist);
+    explicit Binder(lua_State* L) : L(L)
+    {
+    }
 
-	void pushInstance(const char* classname, void* ptr);
+    void initializeState();
 
-	void* getInstance(const char* classname, int index = 1) const;
+    void createClass(const char* classname,
+                     const char* basename,
+                     int (*constructor) (lua_State*),
+                     int (*destructor) (void*),
+                     const luaL_reg* functionlist);
 
-	void setInstance(int index, void* ptr);
+    // eg: createClass("Blah", "", nullptr, nullptr, {{ "bling", bling }, { nullptr, nullptr }});
+    // avoids creating a separate luaL_reg array (always end vector with {nullptr, nullptr})
+    void createClass(std::string classname,
+                     std::string basename,
+                     int (*constructor) (lua_State*),
+                     int (*destructor) (void*),
+                     std::vector<luaL_Reg> functionlist);
 
-	bool isInstanceOf(const char* classname, int index) const;
-	
-	static void disableTypeChecking();
-	static void enableTypeChecking();
+    void pushInstance(const char* classname, void* ptr);
 
-	lua_State* L;
+    void makeInstance(const char* classname, void* ptr);
+
+    void* getInstance(const char* classname, int index = 1) const;
+
+    void* getInstanceOfType(const char* classname, int type, int index = 1) const;
+
+    void setInstance(int index, void* ptr);
+
+    bool isInstanceOf(const char* classname, int index) const;
+
+    static void disableTypeChecking();
+    static void enableTypeChecking();
+
+    lua_State* L;
 };
-
-#endif

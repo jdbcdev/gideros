@@ -10,6 +10,10 @@
 
 static float STICK_DEADZONE = 0.25f;
 
+void setDeadZone(float deadzone) {
+	STICK_DEADZONE = deadzone;
+}
+
 @implementation GController
 
 -(id)init:(NSNumber*)nid{
@@ -35,15 +39,6 @@ static float STICK_DEADZONE = 0.25f;
 
 -(void)destroy{
     ghid_onDisconnected([self.playerId intValue]);
-    
-    [self.rightStick release];
-    [self.leftStick release];
-    [self.rightTrigger release];
-    [self.leftTrigger release];
-    [self.DPadDown release];
-    [self.DPadUp release];
-    [self.DPadRight release];
-    [self.DPadLeft release];
     
     self.rightStick = nil;
     self.leftStick = nil;
@@ -92,11 +87,11 @@ static float STICK_DEADZONE = 0.25f;
 }
 
 -(void)handleDPadUpButton:(float)value{
-    [self.DPadUp handleNegativeButton:value];
+    [self.DPadUp handlePositiveButton:value];
 }
 
 -(void)handleDPadDownButton:(float) value{
-    [self.DPadDown handlePositiveButton:value];
+    [self.DPadDown handleNegativeButton:value];
 }
 
 -(void) handleDPadLeftButton:(float) value{
@@ -139,11 +134,11 @@ static float STICK_DEADZONE = 0.25f;
         angle = -angle+2*M_PI;
         if(self.isLeft)
         {
-            ghid_onLeftJoystick(x, y, angle, strength, self.playerId);
+            ghid_onLeftJoystick(x, -y, angle, strength, self.playerId);
         }
         else
         {
-            ghid_onRightJoystick(x, y, angle, strength, self.playerId);
+            ghid_onRightJoystick(x, -y, angle, strength, self.playerId);
         }
     }
 }

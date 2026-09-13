@@ -1,6 +1,9 @@
 #include <gapplication.h>
 #include <gapplication-win32.h>
 
+#include <windows.h>
+#include <Shellscalingapi.h>
+HWND hwndcopy;
 class GGApplicationManager
 {
     
@@ -15,14 +18,23 @@ public:
         gevent_RemoveEventsWithGid(gid_);
     }
 	
-	int getScreenDensity()
-    {   
-      return 0;
+	int getScreenDensity(int *ldpi)
+    {
+#if NTDDI_VERSION >= NTDDI_WINBLUE
+		HMONITOR mon=MonitorFromWindow(hwndcopy,MONITOR_DEFAULTTOPRIMARY);
+		if (mon) {
+			UINT x,y;
+			if (GetDpiForMonitor(mon,MDT_RAW_DPI,&x,&y)==0) {
+				return x;
+			}
+		}
+#endif
+      return 96; //Default ?
     }
 
 	void exit()
 	{
-		//App.Current.Exit();
+		PostQuitMessage(0);
 	}
 
     g_id addCallback(gevent_Callback callback, void *udata)
@@ -65,6 +77,11 @@ void gapplication_init()
     s_manager = new GGApplicationManager;
 }
 
+void gapplication_init_w32(HWND hwnd)
+{
+    hwndcopy=hwnd;
+}
+
 void gapplication_cleanup()
 {
     delete s_manager;
@@ -91,8 +108,8 @@ void gapplication_exit()
 	s_manager->exit();
 }
 
-int gapplication_getScreenDensity(){
-	return s_manager->getScreenDensity();
+int gapplication_getScreenDensity(int *ldpi){
+	return s_manager->getScreenDensity(ldpi);
 }
 
 void gapplication_enqueueEvent(int type, void *event, int free)

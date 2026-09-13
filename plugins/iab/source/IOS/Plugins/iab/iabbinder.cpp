@@ -10,6 +10,8 @@
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 #endif
 
+static lua_State *L = NULL;
+
 static void luaL_newweaktable(lua_State *L, const char *mode)
 {
 	lua_newtable(L);			// create table for instance list
@@ -89,7 +91,7 @@ static char keyWeak = ' ';
 class IAB : public GEventDispatcherProxy
 {
 public:
-    IAB(lua_State *L, const char *iab) : L(L)
+    IAB(lua_State *L, const char *iab)
     {
 		iab_ = strdup(iab);
 		giab_initialize(iab);
@@ -278,13 +280,12 @@ private:
 	}
 
 private:
-    lua_State *L;
     const char* iab_;
 };
 
-static int destruct(lua_State* L)
+static int destruct(void *p)
 {
-	void *ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	GReferenced* object = static_cast<GReferenced*>(ptr);
 	IAB *iab = static_cast<IAB*>(object->proxy());
 	
@@ -479,10 +480,11 @@ static int loader(lua_State *L)
     
 static void g_initializePlugin(lua_State *L)
 {
+	::L = L;
     lua_getglobal(L, "package");
 	lua_getfield(L, -1, "preload");
 	
-	lua_pushcfunction(L, loader);
+	lua_pushcnfunction(L, loader, "plugin_init_iab");
 	lua_setfield(L, -2, "iab");
 	
 	lua_pop(L, 2);
@@ -491,6 +493,7 @@ static void g_initializePlugin(lua_State *L)
 
 static void g_deinitializePlugin(lua_State *L)
 {
+	::L = NULL;
     giab_cleanup();
 }
 

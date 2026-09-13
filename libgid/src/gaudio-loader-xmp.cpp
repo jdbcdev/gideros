@@ -2,7 +2,9 @@
 #include <gstdio.h>
 #include <glog.h>
 #include <xmp.h>
+#include <map>
 
+static std::map<g_id, xmp_context> ctxmap;
 
 extern "C" {
 
@@ -27,7 +29,11 @@ g_id gaudio_XmpOpen(const char *fileName, int *numChannels, int *sampleRate, int
 	    xmp_start_player(xc,44100,0);
 		if (numSamples)
 			*numSamples=(int)(44.1*fmi.total_time);
-		return (g_id) xc;
+	    g_id gid = g_NextId();
+	    ctxmap[gid]=xc;
+		if (error)
+			*error = GAUDIO_NO_ERROR;
+		return gid;
 	}
 	xmp_free_context(xc);
     if (error)
@@ -38,7 +44,7 @@ g_id gaudio_XmpOpen(const char *fileName, int *numChannels, int *sampleRate, int
 int gaudio_XmpSeek(g_id gid, long int offset, int whence)
 {
     struct xmp_frame_info fmi;
-	xmp_context xc=(xmp_context)gid;
+    xmp_context xc = ctxmap[gid];
 	long int p=offset/44.1;
     xmp_get_frame_info(xc, &fmi);
 	switch (whence)
@@ -55,16 +61,16 @@ int gaudio_XmpSeek(g_id gid, long int offset, int whence)
 
 long int gaudio_XmpTell(g_id gid)
 {
-	xmp_context xc=(xmp_context)gid;
+    xmp_context xc = ctxmap[gid];
     struct xmp_frame_info fmi;
     xmp_get_frame_info(xc, &fmi);
     long int pos=44.1*fmi.time;
     return pos;
 }
 
-size_t gaudio_XmpRead(g_id gid, size_t size, void *data)
+size_t gaudio_XmpRead(g_id gid, size_t size, void *data, unsigned int *streamPos)
 {
-	xmp_context xc=(xmp_context)gid;
+    xmp_context xc = ctxmap[gid];
     size = (size / 4) * 4;
     xmp_play_buffer(xc,data,size,0);
     return size;
@@ -72,7 +78,8 @@ size_t gaudio_XmpRead(g_id gid, size_t size, void *data)
 
 void gaudio_XmpClose(g_id gid)
 {
-	xmp_context xc=(xmp_context)gid;
+    xmp_context xc = ctxmap[gid];
+    ctxmap.erase(gid);
 	xmp_end_player(xc);
 	xmp_release_module(xc);
 	xmp_free_context(xc);

@@ -86,6 +86,7 @@ public:
 protected:
 	virtual void paintEvent(QPaintEvent* event)
 	{
+        Q_UNUSED(event);
 		QPainter painter(this);
 		painter.setBackground(brush_);
 		painter.eraseRect(0, 0, width(), height());
@@ -138,20 +139,20 @@ PreviewWidget::PreviewWidget(QWidget *parent) : QWidget(parent)
 {
 	setLayout(new QVBoxLayout);
 
-	layout()->setMargin(0);
+    layout()->setContentsMargins(0,0,0,0);
 	layout()->setSpacing(0);
 
 	widget_ = new ImageWidget(QString(), QString(), this);
 	widget_->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
 
-	QLabel* label = new QLabel("Preview");
+	/*QLabel* label = new QLabel("Preview");
 	label->setMargin(2);
 	label->setStyleSheet(
 		"border: 1px solid #AAAAAA;"
 		"background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #FCFCFC, stop: 1 #E2E2E2);"
-	);
+	);*/
 
-	layout()->addWidget(label);
+	//layout()->addWidget(label);
 	layout()->addWidget(widget_);
 }
 

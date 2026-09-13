@@ -147,7 +147,11 @@ public:
         return sound2->length;
     }
 
-    g_id SoundPlay(g_id sound, bool paused)
+    void SoundListener(float x,float y,float z,float vx,float vy,float vz,float dx,float dy,float dz,float ux,float uy,float uz)
+    {
+    }
+
+    g_id SoundPlay(g_id sound, bool paused, bool streaming)
     {
         GGLock lock(mutex_);
 
@@ -183,7 +187,7 @@ public:
 
         g_id gid = g_NextId();
 
-        Channel *channel = new Channel(gid, file, sound2, source);
+        Channel *channel = new Channel(gid, file, sound2, source, streaming);
 
         sound2->channels.insert(channel);
 
@@ -200,6 +204,11 @@ public:
 	//            alSourcePlay(channel->source);
 
         return gid;
+    }
+
+    bool SoundHasEffect(const char *effect)
+    {
+    	return false;
     }
 
     void ChannelStop(g_id channel)
@@ -333,7 +342,7 @@ public:
         return channel2->paused;
     }
 
-    bool ChannelIsPlaying(g_id channel)
+    bool ChannelIsPlaying(g_id channel, int *bufferSize, float *bufferSeconds)
     {
         GGLock lock(mutex_);
 
@@ -356,13 +365,17 @@ public:
 		XAUDIO2_VOICE_STATE state;
 		channel2->source->GetState(&state);
 
+        *bufferSize=channel2->bufferedSize;
+        int sampSize=channel2->sound->bitsPerSample*channel2->sound->numChannels/8;
+        *bufferSeconds=((float)channel2->bufferedSize)/(channel2->sound->sampleRate*sampSize);
+
 		if (state.BuffersQueued > 0 && !channel2->paused)
 			return true;
 		else
 			return false;
     }
 
-    void ChannelSetVolume(g_id channel, float volume)
+    void ChannelSetVolume(g_id channel, float volume, float balance)
     {
         GGLock lock(mutex_);
 
@@ -388,6 +401,17 @@ public:
         Channel *channel2 = iter->second;
 
         return channel2->volume;
+    }
+
+    g_id ChannelGetStreamId(g_id channel)
+    {
+        std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
+        if (iter == channels_.end())
+            return 0.f;
+
+        Channel *channel2 = iter->second;
+
+        return channel2->file;
     }
 
     void ChannelSetPitch(g_id channel, float pitch)
@@ -444,6 +468,14 @@ public:
         Channel *channel2 = iter->second;
 
         return channel2->looping;
+    }
+
+    void ChannelSetWorldPosition(g_id channel, float x, float y, float z, float vx,float vy,float vz)
+    {
+     }
+
+    void ChannelSetEffect(g_id channel, const char *effect, float *params)
+    {
     }
 
     g_id ChannelAddCallback(g_id channel, gevent_Callback callback, void *udata)
@@ -506,7 +538,7 @@ public:
         {
             Channel *channel2 = iter->second;
 
-            if (channel2->source == 0)
+            if (channel2->toClose)
             {
                 channel2->sound->loader.close(channel2->file);
 
@@ -516,6 +548,8 @@ public:
             }
             else
             {
+                if (channel2->source==0)
+                    channel2->toClose=true; //Delay close for one cycle, in case event was enqueued asynchronously
                 ++iter;
             }
         }
@@ -614,7 +648,7 @@ private:
 
     struct Channel
     {
-        Channel(g_id gid, g_id file, Sound *sound, IXAudio2SourceVoice *source) :
+        Channel(g_id gid, g_id file, Sound *sound, IXAudio2SourceVoice *source, bool streaming) :
             gid(gid),
             file(file),
             sound(sound),
@@ -624,6 +658,9 @@ private:
             pitch(1.f),
             looping(false),
             nodata(false),
+            toClose(false),
+			streaming(streaming),
+			bufferedSize(0),
             lastPosition(0)
         {
         }
@@ -637,6 +674,9 @@ private:
         float pitch;
         bool looping;
         bool nodata;
+        bool toClose;
+        bool streaming;
+        unsigned int bufferedSize;
         unsigned int lastPosition;
 
         std::deque<std::pair<Wave *, unsigned int> > buffers;
@@ -721,6 +761,7 @@ private:
 //				OutputDebugStringA("buffer has unqueued\n");
 				buffer = channel->buffers[0].first;
 				channel->buffers.pop_front();
+	            channel->bufferedSize-=buffer->xaBuffer()->AudioBytes;
 			}
 
         }
@@ -739,19 +780,26 @@ private:
 			size = channel->sound->loader.read(channel->file, BUFFER_SIZE, data);
 		}
 
-        if (size != 0)
+        if (size > 0)
         {
+        	int chn=channel->sound->numChannels;
+        	int csr=channel->sound->sampleRate;
+        	if (channel->sound->loader.format)
+        	{
+        		channel->sound->loader.format(channel->file,&csr,&chn);
+        	}
 //			OutputDebugStringA("size not zero\n");
         //     alBufferData(buffer, channel->sound->format, data, size, channel->sound->sampleRate);
 			// either allocate new memory and put data into it, or, if already allocated, replace.
 			buffer->Create(data,
-				channel->sound->numChannels,
-				channel->sound->sampleRate,
+				chn,
+				csr,
 				channel->sound->bitsPerSample,
 				channel->sound->numSamples, size);
 
         //     alSourceQueueBuffers(channel->source, 1, &buffer);
 			channel->source->SubmitSourceBuffer(buffer->xaBuffer());
+			channel->bufferedSize+=size;
 
             channel->buffers.push_back(std::make_pair(buffer, pos));
  
@@ -771,8 +819,8 @@ private:
 			buffer->Destroy();
 			delete buffer;
 			buffer = NULL;
-         
-			channel->nodata = true;
+            if ((size == 0)&&(!channel->streaming))
+            	channel->nodata = true;
         }
     }
 
@@ -784,6 +832,7 @@ private:
 		channel->source->DestroyVoice();
 		channel->source = NULL;
 
+		channel->bufferedSize=0;
 		// alSourceStop(channel->source);
         // alDeleteSources(1, &channel->source);
         // channel->source = 0;

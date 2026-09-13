@@ -7,6 +7,8 @@
 class FindReplaceDialog : public QDialog
 {
 	Q_OBJECT
+protected:
+	void hideEvent(QHideEvent * event);
 
 public:
 	FindReplaceDialog(QWidget *parent = 0);
@@ -19,6 +21,7 @@ public:
 	bool regularExpressions() const;
 
 	void setMathcesText(const QString& str);
+	void setSelectedText(QString s) const;
 
 signals:
 	void findNext();

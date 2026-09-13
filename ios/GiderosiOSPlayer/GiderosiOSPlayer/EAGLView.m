@@ -11,10 +11,22 @@
 
 #include "giderosapi.h"
 
+bool checkMetal=false;
+id<MTLDevice> metalDevice=nil;
+MTLRenderPassDescriptor *metalFramebuffer;
+extern void metalShaderEnginePresent(id<MTLDrawable>);
+extern void metalShaderNewFrame();
+
 @interface EAGLView (PrivateMethods)
 - (void)createFramebuffer;
 - (void)deleteFramebuffer;
 @end
+
+@interface LuaException : NSException
+@end
+@implementation LuaException
+@end
+
 
 @implementation EAGLView
 
@@ -23,6 +35,10 @@
 // You must implement this method
 + (Class)layerClass
 {
+    if (checkMetal)
+        metalDevice= MTLCreateSystemDefaultDevice();
+    if (metalDevice)
+        return [CAMetalLayer class];
     return [CAEAGLLayer class];
 }
 
@@ -31,15 +47,22 @@
     self = [super initWithFrame:rect];
 	if (self)
     {
-        CAEAGLLayer *eaglLayer = (CAEAGLLayer *)self.layer;
+        if (metalDevice) {
+            metalLayer= (CAMetalLayer *)self.layer;
+            metalLayer.opaque= TRUE;
+            //metalLayer.presentsWithTransaction=YES;
+        }
+        else {
+        eaglLayer = (CAEAGLLayer *)self.layer;
         
         eaglLayer.opaque = TRUE;
         eaglLayer.drawableProperties = [NSDictionary dictionaryWithObjectsAndKeys:
                                         [NSNumber numberWithBool:FALSE], kEAGLDrawablePropertyRetainedBacking,
                                         kEAGLColorFormatRGBA8, kEAGLDrawablePropertyColorFormat,
                                         nil];
+            }
 		retinaDisplay = NO;
-        _hasText = NO;
+        _autocorrectionType = UITextAutocorrectionTypeNo;
     }
     
     return self;
@@ -48,9 +71,52 @@
 - (void)dealloc
 {
     [self deleteFramebuffer];    
+    // Tear down context.
+    if ([EAGLContext currentContext] == context)
+        [EAGLContext setCurrentContext:nil];
     [context release];
     
     [super dealloc];
+}
+
+- (void) setup
+{
+    if (metalDevice) {
+        if (@available (iOS 11, tvOS 11, macOS 10.13, *)) {
+            MTLCaptureManager *sharedCaptureManager = [MTLCaptureManager sharedCaptureManager];
+            id<MTLCaptureScope> myCaptureScope = [sharedCaptureManager newCaptureScopeWithDevice:metalDevice];
+            myCaptureScope.label = @"Gideros Frame";
+            sharedCaptureManager.defaultCaptureScope = myCaptureScope;
+        }
+        metalFramebuffer=[MTLRenderPassDescriptor renderPassDescriptor];
+        [metalFramebuffer retain];
+    }
+    else
+    {
+    EAGLContext *aContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+    
+    if (!aContext)
+        NSLog(@"Failed to create ES context");
+    else if (![EAGLContext setCurrentContext:aContext])
+        NSLog(@"Failed to set ES context current");
+    
+    self.context = aContext;
+    [aContext release];
+    
+    [self setContext:context];
+    }
+    [self setFramebuffer];
+}
+
+- (void) tearDown
+{
+    // Tear down context.
+    if (metalDevice) {
+    }
+    else {
+        if ([EAGLContext currentContext] == context)
+            [EAGLContext setCurrentContext:nil];
+    }
 }
 
 - (BOOL)canBecomeFirstResponder
@@ -76,8 +142,46 @@
     }
 }
 
+static int lfbw=-1,lfbh=-1;
 - (void)createFramebuffer
 {
+    if (metalDevice)
+    {
+        if (!metalDrawable) {
+            if (@available (iOS 11, tvOS 11, macOS 10.13, *))
+                [[MTLCaptureManager sharedCaptureManager].defaultCaptureScope beginScope];
+
+            metalDrawable=[metalLayer nextDrawable];
+            [metalDrawable retain];
+            if (metalDepth==nil) {
+                MTLTextureDescriptor *td=[MTLTextureDescriptor new];
+                td.pixelFormat=MTLPixelFormatDepth32Float;
+                td.width=[metalDrawable.texture width];
+                td.height=[metalDrawable.texture height];
+                td.usage=MTLTextureUsageRenderTarget;
+                metalDepth=[metalDevice newTextureWithDescriptor:td];
+                [metalDepth retain];
+                td.pixelFormat=MTLPixelFormatStencil8;
+                metalStencil=[metalDevice newTextureWithDescriptor:td];
+                [metalStencil retain];
+            }
+            metalFramebuffer.colorAttachments[0].texture=metalDrawable.texture;
+            metalFramebuffer.depthAttachment.texture=metalDepth;
+            metalFramebuffer.depthAttachment.loadAction=MTLLoadActionClear;
+            metalFramebuffer.stencilAttachment.texture=metalStencil;
+            metalFramebuffer.stencilAttachment.loadAction=MTLLoadActionClear;
+            framebufferWidth=[metalDrawable.texture width];
+            framebufferHeight=[metalDrawable.texture height];
+            metalFramebuffer.colorAttachments[0].loadAction=MTLLoadActionClear;
+            metalFramebuffer.colorAttachments[0].clearColor=MTLClearColorMake(1,1,1,1);
+            if ((lfbw!=framebufferWidth)||(lfbh!=framebufferHeight))
+                gdr_surfaceChanged(framebufferWidth,framebufferHeight);
+            lfbw=framebufferWidth;
+            lfbh=framebufferHeight;
+            metalShaderNewFrame();
+        }
+    }
+    else {
     if (context && !defaultFramebuffer)
     {
         [EAGLContext setCurrentContext:context];
@@ -89,7 +193,7 @@
         // Create color render buffer and allocate backing store.
         glGenRenderbuffers(1, &colorRenderbuffer);
         glBindRenderbuffer(GL_RENDERBUFFER, colorRenderbuffer);
-        [context renderbufferStorage:GL_RENDERBUFFER fromDrawable:(CAEAGLLayer *)self.layer];
+        [context renderbufferStorage:GL_RENDERBUFFER fromDrawable:eaglLayer];
         glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &framebufferWidth);
         glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &framebufferHeight);
         
@@ -100,9 +204,22 @@
         gdr_surfaceChanged(framebufferWidth,framebufferHeight);
     }
 }
+}
 
 - (void)deleteFramebuffer
 {
+    if (metalDevice)
+    {
+        [metalDrawable release];
+        metalDrawable=nil;
+        [metalDepth release];
+        metalDepth=nil;
+        [metalStencil release];
+        metalStencil=nil;
+        lfbw=-1;
+        lfbh=-1;
+    }
+    else {
     if (context)
     {
         [EAGLContext setCurrentContext:context];
@@ -120,19 +237,29 @@
         }
     }
 }
+    framebufferDirty=FALSE;
+}
 
 - (void)setFramebuffer
 {
-    if (context)
+   if (framebufferDirty)
+            [self deleteFramebuffer];
+   if (metalDevice||context)
     {
+        if (metalDevice) {
+        }
+    if (context)
         [EAGLContext setCurrentContext:context];
         
-        if (!defaultFramebuffer)
+        if (context&&(!defaultFramebuffer))
+            [self createFramebuffer];
+        if (metalDevice&&(!metalDrawable))
             [self createFramebuffer];
         
+        if (context)
         glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebuffer);
         
-        glViewport(0, 0, framebufferWidth, framebufferHeight);
+        //glViewport(0, 0, framebufferWidth, framebufferHeight);
     }
 }
 
@@ -140,22 +267,53 @@
 {
     BOOL success = FALSE;
     
-    if (context)
+    if (metalDevice||context)
     {
+        if (metalDevice) {
+            metalShaderEnginePresent(metalDrawable);
+            [metalDrawable release];
+            metalDrawable=nil;
+            if (@available (iOS 11, tvOS 11, macOS 10.13, *))
+                [[MTLCaptureManager sharedCaptureManager].defaultCaptureScope endScope];
+            
+            [self createFramebuffer];
+            success= TRUE;
+        }
+        else {
         [EAGLContext setCurrentContext:context];
         
         glBindRenderbuffer(GL_RENDERBUFFER, colorRenderbuffer);
         
         success = [context presentRenderbuffer:GL_RENDERBUFFER];
     }
+     }
     
     return success;
 }
 
 - (void)layoutSubviews
 {
+    if (@available (iOS 11,*)) {
+        UIEdgeInsets sa=[[self superview] safeAreaInsets];
+        safeArea.origin.x=sa.left;
+        safeArea.origin.y=sa.top;
+        safeArea.size.height=sa.bottom;
+        safeArea.size.width=sa.right;
+    }
+    else
+        safeArea=CGRectMake(0,0,0,0);
+    
     // The framebuffer will be re-created at the beginning of the next setFramebuffer method call.
-    [self deleteFramebuffer];
+    CGSize drawableSize = self.bounds.size;
+    drawableSize.width *= self.contentScaleFactor;
+    drawableSize.height *= self.contentScaleFactor;
+    metalLayer.drawableSize = drawableSize;
+    framebufferDirty=TRUE;
+}
+
+- (void) getSafeArea:(CGRect *) sa
+{
+    *sa=safeArea;
 }
 
 - (void)enableRetinaDisplay:(BOOL)enable
@@ -177,7 +335,11 @@
 		self.contentScaleFactor = 1;
 	
     // The framebuffer will be re-created (with the new resolution) at the beginning of the next setFramebuffer method call.
-	[self deleteFramebuffer];
+    CGSize drawableSize = self.bounds.size;
+    drawableSize.width *= self.contentScaleFactor;
+    drawableSize.height *= self.contentScaleFactor;
+    metalLayer.drawableSize = drawableSize;
+    framebufferDirty=TRUE;
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
@@ -210,6 +372,107 @@
 {
     gdr_keyDown(8,0); //Simulate a backspace key press and release
     gdr_keyUp(8,0);
+}
+
+- (BOOL) hasText
+{
+    return TRUE;
+}
+
+- (void) reportLuaError:(NSString *)error
+{
+ @throw [[LuaException alloc] initWithName:@"Lua" reason:error userInfo:nil];
+}
+
+/* Methods for manipulating text. */
+- (nullable NSString *)textInRange:(UITextRange *)range
+{
+    return NULL;
+}
+
+- (void)replaceRange:(UITextRange *)range withText:(NSString *)text
+{
+}
+
+- (void)setMarkedText:(nullable NSString *)markedText selectedRange:(NSRange)selectedRange // selectedRange is a range within the markedText
+{
+    
+}
+- (void)unmarkText
+{
+    
+}
+
+/* Methods for creating ranges and positions. */
+- (nullable UITextRange *)textRangeFromPosition:(UITextPosition *)fromPosition toPosition:(UITextPosition *)toPosition
+{
+    return NULL;
+}
+
+- (nullable UITextPosition *)positionFromPosition:(UITextPosition *)position offset:(NSInteger)offset
+{
+    return NULL;
+}
+
+- (nullable UITextPosition *)positionFromPosition:(UITextPosition *)position inDirection:(UITextLayoutDirection)direction offset:(NSInteger)offset
+{
+    return NULL;
+}
+
+/* Simple evaluation of positions */
+- (NSComparisonResult)comparePosition:(UITextPosition *)position toPosition:(UITextPosition *)other {
+    return 0;
+}
+- (NSInteger)offsetFromPosition:(UITextPosition *)from toPosition:(UITextPosition *)toPosition {
+    return 0;
+}
+
+/* Layout questions. */
+- (nullable UITextPosition *)positionWithinRange:(UITextRange *)range farthestInDirection:(UITextLayoutDirection)direction
+{
+    return NULL;
+}
+
+- (nullable UITextRange *)characterRangeByExtendingPosition:(UITextPosition *)position inDirection:(UITextLayoutDirection)direction
+{
+    return NULL;
+}
+
+/* Writing direction */
+- (UITextWritingDirection)baseWritingDirectionForPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction {
+    return UITextWritingDirectionLeftToRight;
+}
+- (void)setBaseWritingDirection:(UITextWritingDirection)writingDirection forRange:(UITextRange *)range
+{
+    
+}
+
+/* Geometry used to provide, for example, a correction rect. */
+- (CGRect)firstRectForRange:(UITextRange *)range
+{
+    return CGRectMake(0,0,0,0);
+}
+- (CGRect)caretRectForPosition:(UITextPosition *)position
+{
+    return CGRectMake(0,0,0,0);
+}
+- (NSArray *)selectionRectsForRange:(UITextRange *)range NS_AVAILABLE_IOS(6_0)       // Returns an array of UITextSelectionRects
+{
+    return NULL;
+}
+
+/* Hit testing. */
+- (nullable UITextPosition *)closestPositionToPoint:(CGPoint)point
+{
+    return NULL;
+}
+- (nullable UITextPosition *)closestPositionToPoint:(CGPoint)point withinRange:(UITextRange *)range
+{
+    return NULL;
+}
+- (nullable UITextRange *)characterRangeAtPoint:(CGPoint)point
+{
+    return NULL;
 }
 
 @end

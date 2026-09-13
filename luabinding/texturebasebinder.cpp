@@ -9,7 +9,9 @@ TextureBaseBinder::TextureBaseBinder(lua_State* L)
 	static const luaL_Reg functionList[] = {
 		{"getWidth", TextureBaseBinder::getWidth},
 		{"getHeight", TextureBaseBinder::getHeight},
+		{"getSize", TextureBaseBinder::getSize},
 		{"getTexelSize", TextureBaseBinder::getTexelSize},
+		{"update", TextureBaseBinder::update},
 		{NULL, NULL},
 	};
 
@@ -30,6 +32,12 @@ TextureBaseBinder::TextureBaseBinder(lua_State* L)
     lua_setfield(L, -2, "RGBA4444");
     lua_pushstring(L, "rgba5551");
     lua_setfield(L, -2, "RGBA5551");
+    lua_pushstring(L, "y8");
+    lua_setfield(L, -2, "Y8");
+    lua_pushstring(L, "a8");
+    lua_setfield(L, -2, "A8");
+    lua_pushstring(L, "ya8");
+    lua_setfield(L, -2, "YA8");
     lua_pop(L, 1);
 }
 
@@ -57,6 +65,18 @@ int TextureBaseBinder::getHeight(lua_State* L)
 	return 1;
 }
 
+int TextureBaseBinder::getSize(lua_State* L)
+{
+	StackChecker checker(L, "TextureBaseBinder::getSize", 2);
+	
+	Binder binder(L);
+	TextureBase* textureBase = static_cast<TextureBase*>(binder.getInstance("TextureBase"));
+	
+	lua_pushinteger(L, textureBase->data->baseWidth);
+	lua_pushinteger(L, textureBase->data->baseHeight);
+	return 2;
+}
+
 int TextureBaseBinder::getTexelSize(lua_State* L)
 {
 	StackChecker checker(L, "TextureBaseBinder::getTexelSize", 2);
@@ -70,3 +90,31 @@ int TextureBaseBinder::getTexelSize(lua_State* L)
 	return 2;
 }
 
+int TextureBaseBinder::update(lua_State* L)
+{
+	StackChecker checker(L, "TextureBaseBinder::update", 0);
+
+	Binder binder(L);
+	TextureBase* textureBase = static_cast<TextureBase*>(binder.getInstance("TextureBase"));
+
+	size_t datasz=0;
+    const char* data=(const char *) lua_tobuffer(L,2,&datasz);
+    if (!data)
+        data = luaL_checklstring(L,2,&datasz);
+    unsigned int width, height;
+    width=luaL_checkinteger(L,3);
+    height=luaL_checkinteger(L,4);
+    bool raw=lua_toboolean(L,5);
+
+    unsigned char bpp=raw?textureBase->data->parameters.bpp:4;
+
+    if (datasz!=(width*height*bpp))
+	{
+		lua_pushfstring(L, "Image size doesn't match data length");
+		lua_error(L);
+	}
+
+    textureBase->update((const unsigned char *)data,width,height,raw);
+
+	return 0;
+}

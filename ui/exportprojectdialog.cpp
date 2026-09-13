@@ -1,13 +1,13 @@
 #include "exportprojectdialog.h"
 #include "ui_exportprojectdialog.h"
 #include "projectproperties.h"
-#include "pluginschooser.h"
+//#include "pluginschooser.h"
 #include "propertyeditingtable.h"
 
 #include <QDir>
 #include <QFile>
 
-ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, bool licensed, QWidget *parent) :
+ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, QDir projectDir, bool licensed, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::ExportProjectDialog)
 {
@@ -52,8 +52,10 @@ ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, bool lic
     osxCat["Trivia Games"] = "public.app-category.trivia-games";
     osxCat["Word Games"] = "public.app-category.word-games";
 
-    exportTypes << "iOS" << "Android" << "Windows" << "MacOSX"
-    		<< "WinRT" << "GApp" << "Win32" << "Html5";
+    exportTypes << "Apple" << "Desktop"
+            << "WinRT" << "GApp" << "Win32" << "Linux" << "Html5";
+
+    qtPlatforms << "Windows" << "Mac" << "Linux";
 
 	properties_ = properties;
 
@@ -62,27 +64,40 @@ ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, bool lic
     QMap<QString, QString>::iterator i;
     for (i = osxCat.begin(); i != osxCat.end(); ++i){
         ui->osx_category->addItem(i.key(), i.value());
+        ui->macos_category->addItem(i.key(), i.value());
     }
 
 	connect(ui->architecture, SIGNAL(currentIndexChanged(int)), ui->architectureTab, SLOT(setCurrentIndex(int)));
 	connect(ui->architectureTab, SIGNAL(currentChanged(int)), ui->architecture, SLOT(setCurrentIndex(int)));
-	connect(ui->plugins_choose, SIGNAL(clicked()), this, SLOT(onSelectPlugins()));
+	connect(ui->html5_fbinstant, SIGNAL(stateChanged(int)), this, SLOT(actionHtml5FbInstant(int)));
+	//connect(ui->plugins_choose, SIGNAL(clicked()), this, SLOT(onSelectPlugins()));
 
-    ui->android_template->setCurrentIndex(properties_->android_template);
-	ui->exportMode->setCurrentIndex(properties_->exportMode);
+    ui->exportMode->setCurrentIndex(properties_->exportMode);
     ui->ios_bundle->setText(properties_->ios_bundle);
-	ui->packageName->setText(properties_->packageName);
-    ui->osx_org->setText(properties->osx_org);
-    ui->osx_domain->setText(properties->osx_domain);
+    ui->atv_bundle->setText(properties_->atv_bundle);
+    ui->macos_bundle->setText(properties_->macos_bundle);
+    ui->macos_category->setCurrentIndex(properties_->macos_category);
+    ui->qtexp_org->setText(properties->qtexp_org);
+    ui->qtexp_domain->setText(properties->qtexp_domain);
+    ui->qtexp_platform->setCurrentIndex(properties->qtexp_platform);
     ui->osx_bundle->setText(properties_->osx_bundle);
+    ui->osx_signingid->setText(properties_->osx_signingId);
+    ui->osx_installerid->setText(properties_->osx_installerId);
     ui->osx_category->setCurrentIndex(properties_->osx_category);
-    ui->win_org->setText(properties->win_org);
-    ui->win_domain->setText(properties->win_domain);
     ui->winrt_org->setText(properties->winrt_org);
     ui->winrt_package->setText(properties->winrt_package);
+    ui->win32_console->setChecked(properties_->win32_console);
+    ui->win32_gapp->setChecked(properties_->win32_gapp);
     ui->html5_host->setText(properties->html5_host);
-    ui->html5_mem->setText(QString::number(properties->html5_mem));
-    plugins=properties->plugins;
+    ui->html5_crash->setText(properties->html5_crash);
+    //ui->html5_mem->setText(QString::number(properties->html5_mem));
+    ui->html5_pack->setChecked(properties_->html5_pack);
+    ui->html5_symbols->setChecked(properties_->html5_symbols);
+    ui->html5_fbinstant->setChecked(properties_->html5_fbinstant);
+    ui->html5_pwa->setChecked(properties_->html5_pwa);
+    ui->html5_fbload->setValue(properties_->html5_fbload);
+    actionHtml5FbInstant(0);
+    //plugins=properties->plugins;
 
     if (licensed)
     {
@@ -100,8 +115,8 @@ ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, bool lic
     }
 
     //XML based templates
-    xmlTabStart=ui->architectureTab->count();
-    QDir sourceDir("Templates");
+    xmlTabCount=0;
+    QDir sourceDir(TEMPLATES_PATH);
    	QStringList filters;
     filters << "*.gexport";
     sourceDir.setNameFilters(filters);
@@ -121,17 +136,20 @@ ExportProjectDialog::ExportProjectDialog(ProjectProperties* properties, bool lic
 
             QDomElement exporter = doc.documentElement();
             QString exname=exporter.attribute("name");
-            exportTypes << exname;
+            exportTypes.prepend(exname);
             QMap<QString,QString> props;
         	for (QSet<ProjectProperties::Export>::const_iterator it=properties_->exports.begin();it!=properties_->exports.end(); it++)
         		if ((*it).name==exname)
         			props=(*it).properties;
 
-        	PropertyEditingTable *table=new PropertyEditingTable();
-            ui->architectureTab->addTab(table,exname);
-            ui->architecture->addItem(exname);
+            PropertyEditingTable *table=new PropertyEditingTable(projectDir);
+            QString exlabel=exporter.attribute("label");
+            if (exlabel.isEmpty())
+            	exlabel=exname;
+            ui->architectureTab->insertTab(0,table,exlabel);
+            ui->architecture->insertItem(0,exlabel);
             table->fill(exporter,props);
-
+            xmlTabCount++;
 	}
 
 	ui->architecture->setCurrentIndex(properties_->architecture);
@@ -144,6 +162,13 @@ ExportProjectDialog::~ExportProjectDialog()
     delete ui;
 }
 
+void ExportProjectDialog::actionHtml5FbInstant(int)
+{
+	bool en=ui->html5_fbinstant->isChecked();
+	ui->html5_host->setEnabled(!en);
+	ui->html5_fbload->setEnabled(en);
+}
+
 QString ExportProjectDialog::exportType() const
 {
     return exportTypes[ui->architecture->currentIndex()];
@@ -154,24 +179,34 @@ QString ExportProjectDialog::ios_bundle() const
     return ui->ios_bundle->text();
 }
 
-QString ExportProjectDialog::packageName() const
+QString ExportProjectDialog::atv_bundle() const
 {
-    return ui->packageName->text();
+    return ui->atv_bundle->text();
 }
 
-QString ExportProjectDialog::androidTemplate() const
+QString ExportProjectDialog::macos_bundle() const
 {
-    return ui->android_template->currentText();
+    return ui->macos_bundle->text();
 }
 
-QString ExportProjectDialog::osx_org() const
+QString ExportProjectDialog::macos_category() const
 {
-    return ui->osx_org->text();
+    return osxCat[ui->macos_category->currentText()];
 }
 
-QString ExportProjectDialog::osx_domain() const
+QString ExportProjectDialog::qtexp_platform() const
 {
-    return ui->osx_domain->text();
+    return qtPlatforms[ui->qtexp_platform->currentIndex()];
+}
+
+QString ExportProjectDialog::qtexp_org() const
+{
+    return ui->qtexp_org->text();
+}
+
+QString ExportProjectDialog::qtexp_domain() const
+{
+    return ui->qtexp_domain->text();
 }
 
 QString ExportProjectDialog::osx_bundle() const
@@ -179,19 +214,19 @@ QString ExportProjectDialog::osx_bundle() const
     return ui->osx_bundle->text();
 }
 
+QString ExportProjectDialog::osx_signingId() const
+{
+    return ui->osx_signingid->text();
+}
+
+QString ExportProjectDialog::osx_installerId() const
+{
+    return ui->osx_installerid->text();
+}
+
 QString ExportProjectDialog::osx_category() const
 {
     return osxCat[ui->osx_category->currentText()];
-}
-
-QString ExportProjectDialog::win_org() const
-{
-    return ui->win_org->text();
-}
-
-QString ExportProjectDialog::win_domain() const
-{
-    return ui->win_domain->text();
 }
 
 QString ExportProjectDialog::winrt_org() const
@@ -227,27 +262,37 @@ bool ExportProjectDialog::encryptAssets() const
 void ExportProjectDialog::onAccepted()
 {
 	properties_->architecture = ui->architecture->currentIndex();
-    properties_->android_template = ui->android_template->currentIndex();
 	properties_->exportMode = ui->exportMode->currentIndex();
     properties_->ios_bundle = ui->ios_bundle->text();
-	properties_->packageName = ui->packageName->text();
-    properties_->osx_org = ui->osx_org->text();
-    properties_->osx_domain = ui->osx_domain->text();
+    properties_->atv_bundle = ui->atv_bundle->text();
+    properties_->macos_bundle = ui->macos_bundle->text();
+    properties_->macos_category = ui->macos_category->currentIndex();
+    properties_->qtexp_platform = ui->qtexp_platform->currentIndex();
+    properties_->qtexp_org = ui->qtexp_org->text();
+    properties_->qtexp_domain = ui->qtexp_domain->text();
     properties_->osx_bundle = ui->osx_bundle->text();
+    properties_->osx_signingId = ui->osx_signingid->text();
+    properties_->osx_installerId = ui->osx_installerid->text();
     properties_->osx_category = ui->osx_category->currentIndex();
-    properties_->win_org = ui->win_org->text();
-    properties_->win_domain = ui->win_domain->text();
     properties_->winrt_org = ui->winrt_org->text();
     properties_->winrt_package = ui->winrt_package->text();
+    properties_->win32_console = ui->win32_console->isChecked();
+    properties_->win32_gapp = ui->win32_gapp->isChecked();
     properties_->encryptCode = ui->encryptCode->isChecked();
     properties_->encryptAssets = ui->encryptAssets->isChecked();
     properties_->html5_host = ui->html5_host->text();
-    properties_->html5_mem = ui->html5_mem->text().toInt();
-    properties_->plugins=plugins;
+    properties_->html5_crash = ui->html5_crash->text();
+    properties_->html5_mem = 256; //ui->html5_mem->text().toInt();
+    properties_->html5_pack = ui->html5_pack->isChecked();
+    properties_->html5_symbols = ui->html5_symbols->isChecked();
+    properties_->html5_fbinstant = ui->html5_fbinstant->isChecked();
+    properties_->html5_pwa = ui->html5_pwa->isChecked();
+    properties_->html5_fbload = ui->html5_fbload->value();
+    //properties_->plugins=plugins;
 
-    for (int tab=xmlTabStart;tab<ui->architectureTab->count();tab++)
+    for (int tab=0;tab<xmlTabCount;tab++)
     {
-    	QString exname=ui->architectureTab->tabText(tab);
+    	QString exname=exportTypes[tab];
     	PropertyEditingTable *table=(PropertyEditingTable *)ui->architectureTab->widget(tab);
      	for (QSet<ProjectProperties::Export>::iterator it=properties_->exports.begin();it!=properties_->exports.end();)
         		if ((*it).name==exname)
@@ -261,6 +306,7 @@ void ExportProjectDialog::onAccepted()
     }
 }
 
+/*
 void ExportProjectDialog::onSelectPlugins()
 {
     PluginsChooser dialog(plugins, this);
@@ -269,3 +315,4 @@ void ExportProjectDialog::onSelectPlugins()
 		plugins=dialog.selection();
 	}
 }
+*/

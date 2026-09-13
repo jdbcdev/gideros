@@ -14,7 +14,7 @@ include $(PREBUILT_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE            := lua
-LOCAL_SRC_FILES         := ../../../lua/libs/$(TARGET_ARCH_ABI)/liblua.so
+LOCAL_SRC_FILES         := ../../../$(LUA_ENGINE)/libs/$(TARGET_ARCH_ABI)/liblua.so
 
 include $(PREBUILT_SHARED_LIBRARY)
 
@@ -23,86 +23,197 @@ include $(PREBUILT_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE			:= openal
 
-LOCAL_OPENAL_VERSION=1.17.2
+LOCAL_OPENAL_PATH:=../../../libgid/external/openal-soft
 
 LOCAL_C_INCLUDES += \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/Include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/include \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/core \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/common \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/alc \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)
 
 # openal (24 files)
-LOCAL_CFLAGS += -DAL_BUILD_LIBRARY -DAL_ALEXT_PROTOTYPES -DOPENAL_SUBDIR_AL -std=c99
+LOCAL_CFLAGS += -DAL_BUILD_LIBRARY -DAL_ALEXT_PROTOTYPES -DOPENAL_SUBDIR_AL -DRESTRICT=__restrict -DHAVE_OPENSL 
+LOCAL_CPPFLAGS = -std=c++14
 #openal Common FILES
 LOCAL_SRC_FILES  := \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alAuxEffectSlot.c \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alBuffer.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alEffect.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alError.c         \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alExtension.c     \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alFilter.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alListener.c      \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alSource.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alState.c         \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alThunk.c         \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/ALc.c                  \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcConfig.c            \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcRing.c              \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/ALu.c                  \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/bs2b.c                 \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/mixer.c                \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/panning.c              
-
-#1.13 files
-#LOCAL_SRC_FILES  += \ 
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/alDatabuffer.c    \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcEcho.c              \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcModulator.c         \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcReverb.c            \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/alcThread.c            \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/android.c              \
-#	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/null.c
-#LOCAL_SRC_FILES += audiodevice.cpp
-
-#1.17 files
-LOCAL_SRC_FILES  += \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/bsinc.c                 \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/helpers.c                 \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/hrtf.c                 \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/mixer_c.c                 \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/autowah.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/chorus.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/compressor.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/dedicated.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/distortion.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/echo.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/equalizer.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/flanger.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/modulator.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/null.c       \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/effects/reverb.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends/base.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends/opensl.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends/null.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends/loopback.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/sample_cvt.c         \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/common/atomic.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/common/rwlock.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/common/threads.c        \
-	../../openal-soft-$(LOCAL_OPENAL_VERSION)/common/uintmap.c        
+        $(LOCAL_OPENAL_PATH)/al/auxeffectslot.cpp \
+        $(LOCAL_OPENAL_PATH)/al/buffer.cpp        \
+        $(LOCAL_OPENAL_PATH)/al/effect.cpp        \
+        $(LOCAL_OPENAL_PATH)/al/error.cpp         \
+        $(LOCAL_OPENAL_PATH)/al/event.cpp      \
+        $(LOCAL_OPENAL_PATH)/al/extension.cpp     \
+        $(LOCAL_OPENAL_PATH)/al/filter.cpp        \
+        $(LOCAL_OPENAL_PATH)/al/listener.cpp      \
+        $(LOCAL_OPENAL_PATH)/al/source.cpp        \
+        $(LOCAL_OPENAL_PATH)/al/state.cpp         \
+        $(LOCAL_OPENAL_PATH)/al/effects/autowah.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/chorus.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/compressor.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/convolution.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/dedicated.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/distortion.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/echo.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/effects.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/equalizer.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/fshifter.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/modulator.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/null.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/pshifter.cpp       \
+        $(LOCAL_OPENAL_PATH)/al/effects/reverb.cpp        \
+        $(LOCAL_OPENAL_PATH)/al/effects/vmorpher.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/alc.cpp                  \
+        $(LOCAL_OPENAL_PATH)/alc/alconfig.cpp            \
+        $(LOCAL_OPENAL_PATH)/alc/alu.cpp                  \
+        $(LOCAL_OPENAL_PATH)/alc/context.cpp            \
+        $(LOCAL_OPENAL_PATH)/alc/device.cpp            \
+        $(LOCAL_OPENAL_PATH)/alc/panning.cpp            \
+        $(LOCAL_OPENAL_PATH)/alc/effects/autowah.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/chorus.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/compressor.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/convolution.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/dedicated.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/distortion.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/echo.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/equalizer.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/fshifter.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/modulator.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/null.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/pshifter.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/effects/reverb.cpp        \
+        $(LOCAL_OPENAL_PATH)/alc/effects/vmorpher.cpp       \
+        $(LOCAL_OPENAL_PATH)/alc/backends/base.cpp        \
+        $(LOCAL_OPENAL_PATH)/alc/backends/opensl.cpp        \
+        $(LOCAL_OPENAL_PATH)/alc/backends/null.cpp        \
+        $(LOCAL_OPENAL_PATH)/alc/backends/loopback.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/alcomplex.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/alfstream.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/almalloc.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/alstring.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/dynload.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/polyphase_resampler.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/ringbuffer.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/strutils.cpp        \
+        $(LOCAL_OPENAL_PATH)/common/threads.cpp    \
+        $(LOCAL_OPENAL_PATH)/core/ambdec.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/ambidefs.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/bformatdec.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/bs2b.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/bsinc_tables.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/buffer_storage.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/context.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/converter.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/cpu_caps.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/devformat.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/device.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/effectslot.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/except.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/fmt_traits.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/fpu_ctrl.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/helpers.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/hrtf.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/logging.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/mastering.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/mixer.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/uhjfilter.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/uiddefs.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/voice.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/filters/biquad.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/filters/nfc.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/filters/splitter.cpp                 \
+        $(LOCAL_OPENAL_PATH)/core/mixer/mixer_c.cpp
 
 include $(BUILD_STATIC_LIBRARY)
 
+#### MP3
+
 include $(CLEAR_VARS)
 
+LOCAL_MODULE            := mpg123
+LOCAL_SRC_FILES += \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/compat.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/dct64.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/dither.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/equalizer.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/feature.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/format.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/frame.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/icy.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/icy2utf8.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/id3.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/index.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/layer1.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/layer2.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/layer3.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/libmpg123.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/ntom.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/optimize.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/parse.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/readers.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/stringbuf.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/synth.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/synth_8bit.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/synth_real.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/synth_s32.c \
+	../../../libgid/external/mpg123-1.15.3/src/libmpg123/tabinit.c
+
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/../../../libgid/external/mpg123-1.15.3/src \
+	$(LOCAL_PATH)/../../../libgid/external/mpg123-1.15.3/src/libmpg123 \
+	$(LOCAL_PATH)/../../../libgvfs
+
+LOCAL_CFLAGS+=-DOPT_GENERIC -DREAL_IS_FLOAT
+
+include $(BUILD_STATIC_LIBRARY)
+
+##### XMP
+include $(CLEAR_VARS)
+
+LOCAL_MODULE            := libxmp
+LOCAL_CFLAGS+=-D_REENTRANT -DLIBXMP_CORE_PLAYER
+XMP_SRC=virtual period player read_event dataio lfo envelope \
+		scan control filter effects mixer mix_all load_helpers load \
+		hio smix memio
+XMP_HDR=common effects envelope format lfo list mixer period player \
+		virtual precomp_lut hio memio mdataio tempfile 
+XMP_LOADERS=xm_load s3m_load it_load \
+			common itsex sample
+XMP_LOADERS_HDR=it loader mod s3m xm
+LOCAL_SRC_FILES += $(addprefix ../../../libgid/external/libxmp-4.3/src/,$(addsuffix .c,$(XMP_SRC)))
+LOCAL_SRC_FILES += $(addprefix ../../../libgid/external/libxmp-4.3/src/loaders/,$(addsuffix .c,$(XMP_LOADERS)))
+LOCAL_SRC_FILES += \
+	../../../libgid/external/libxmp-4.3/lite/src/format.c \
+	../../../libgid/external/libxmp-4.3/lite/src/loaders/mod_load.c
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/src \
+					$(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/src/loaders \
+					$(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/include \
+					$(LOCAL_PATH)/../../../libgvfs
+
+include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(OCULUS),)
+include $(CLEAR_VARS)
+LOCAL_MODULE := vrapi-prebuilt
+LOCAL_SRC_FILES := $(LOCAL_PATH)/../oculus/Libs/$(TARGET_ARCH_ABI)/Release/libvrapi.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := xrloader-prebuilt
+LOCAL_SRC_FILES := $(LOCAL_PATH)/../oculus/Libs/$(TARGET_ARCH_ABI)/Release/libopenxr_loader.so
+include $(PREBUILT_SHARED_LIBRARY)
+endif
+
+include $(CLEAR_VARS)
+
+ifneq ($(OCULUS),)
+LOCAL_MODULE := giderosvr
+else
 LOCAL_MODULE := gideros
+endif
 
 LOCAL_CFLAGS := -O2
 
 LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES
-
-LOCAL_OPENAL_VERSION=1.17.2
 
 LOCAL_CFLAGS += -DAL_BUILD_LIBRARY -DAL_ALEXT_PROTOTYPES -DOPENAL_SUBDIR_AL 
 
@@ -112,7 +223,8 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../../../libnetwork \
 	$(LOCAL_PATH)/../../../external/glu \
 	$(LOCAL_PATH)/../../../libpvrt \
-	$(LOCAL_PATH)/../../../lua/src \
+	$(LOCAL_PATH)/../../../$(LUA_INCLUDE) \
+	$(addprefix $(LOCAL_PATH)/../../../,$(LUA_INCLUDE_CORE)) \
 	$(LOCAL_PATH)/../../../luabinding \
 	$(LOCAL_PATH)/../../../libgid/include \
 	$(LOCAL_PATH)/../../../libgid/include/private \
@@ -121,16 +233,17 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../../../libgvfs \
 	$(LOCAL_PATH)/../../../libgideros \
 	$(LOCAL_PATH)/../../../libpystring \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/OpenAL32/Include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/include \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc \
-	$(LOCAL_PATH)/../../openal-soft-$(LOCAL_OPENAL_VERSION)/Alc/backends \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/include \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/OpenAL32/Include \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/include \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/Alc \
+	$(LOCAL_PATH)/$(LOCAL_OPENAL_PATH)/Alc/backends \
 	$(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/include \
+	$(LOCAL_PATH)/../../../libgid/external/mpg123-1.15.3/src \
+	$(LOCAL_PATH)/../../../libgid/external/mpg123-1.15.3/src/libmpg123 \
 	$(LOCAL_PATH)/../../../libgid/external/jpeg-9
 
 LOCAL_SRC_FILES += gideros.cpp
-
 
 LOCAL_SRC_FILES += \
     ../../../libgid/src/gimage-png.cpp \
@@ -143,10 +256,11 @@ LOCAL_SRC_FILES += \
 	../../../libgid/src/gaudio.cpp \
 	../../../libgid/src/gaudio-loader-wav.cpp \
 	../../../libgid/src/gaudio-loader-xmp.cpp \
+	../../../libgid/src/gaudio-loader-mp3.cpp \
 	../../../libgid/src/gaudio-sample-openal.cpp \
 	../../../libgid/src/gaudio-stream-openal.cpp \
     ../../../libgid/src/android/ginput-android.cpp \
-    ../../../libgid/src/android/gvfs-android.cpp \
+    ../../../libgid/src/gvfs-native.cpp \
 	../../../libgid/src/android/ggeolocation-android.cpp \
     ../../../libgid/src/android/gui-android.cpp \
     ../../../libgid/src/android/gapplication-android.cpp \
@@ -163,30 +277,33 @@ LOCAL_SRC_FILES += \
 
 # modified from http://source-android.frandroid.com/external/freetype/Android.mk
 # also ftmodule.h should be configured like http://source-android.frandroid.com/external/freetype/include/freetype/config/ftmodule.h
+#FREETYPE_VER=2.4.12
+FREETYPE_VER=2.7.1
 LOCAL_CFLAGS += -DFT2_BUILD_LIBRARY
 LOCAL_CFLAGS += -DDARWIN_NO_CARBON
 LOCAL_C_INCLUDES += \
-	$(LOCAL_PATH)/../../../libgid/external/freetype-2.4.12/include \
-	$(LOCAL_PATH)/../../../libgid/external/freetype-2.4.12/src
+	$(LOCAL_PATH)/../../../libgid/external/freetype-$(FREETYPE_VER)/include \
+	$(LOCAL_PATH)/../../../libgid/external/freetype-$(FREETYPE_VER)/src
 LOCAL_SRC_FILES += \
-	../../../libgid/external/freetype-2.4.12/src/base/ftbbox.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftbitmap.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftglyph.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftlcdfil.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftstroke.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftxf86.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftbase.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftsystem.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftinit.c \
-	../../../libgid/external/freetype-2.4.12/src/base/ftgasp.c \
-	../../../libgid/external/freetype-2.4.12/src/raster/raster.c \
-	../../../libgid/external/freetype-2.4.12/src/sfnt/sfnt.c \
-	../../../libgid/external/freetype-2.4.12/src/smooth/smooth.c \
-	../../../libgid/external/freetype-2.4.12/src/autofit/autofit.c \
-	../../../libgid/external/freetype-2.4.12/src/truetype/truetype.c \
-	../../../libgid/external/freetype-2.4.12/src/cff/cff.c \
-	../../../libgid/external/freetype-2.4.12/src/psnames/psnames.c \
-	../../../libgid/external/freetype-2.4.12/src/pshinter/pshinter.c
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftbbox.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftbitmap.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftglyph.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftlcdfil.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftstroke.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftbase.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftsystem.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftinit.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftgasp.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/raster/raster.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/sfnt/sfnt.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/smooth/smooth.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/autofit/autofit.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/truetype/truetype.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/cff/cff.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/gzip/ftgzip.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/psnames/psnames.c \
+    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/pshinter/pshinter.c
+#2.4.12    ../../../libgid/external/freetype-$(FREETYPE_VER)/src/base/ftxf86.c
 
 # jpeg-9
 LOCAL_SRC_FILES += \
@@ -296,8 +413,11 @@ LOCAL_SRC_FILES += \
     ../../../2dsg/paths/ft-path.c \
     ../../../2dsg/paths/svg-path.c \
     ../../../2dsg/viewport.cpp \
+    ../../../2dsg/screen.cpp \
 	../../../2dsg/pixel.cpp \
 	../../../2dsg/particles.cpp \
+	../../../2dsg/layoutevent.cpp \
+	../../../2dsg/gridbaglayout.cpp \
 	../../../libgideros/luautil.cpp
 	
 # LOCAL_SRC_FILES += ../../../2dsg/clipper.cpp
@@ -389,64 +509,6 @@ LOCAL_SRC_FILES += \
 	../../../libpvrt/PVRTString.cpp \
 	../../../libpvrt/PVRTTexture.cpp
 
-# liquidfun (53 files)
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../external/liquidfun-1.0.0/liquidfun/Box2D
-LOCAL_SRC_FILES += \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2BroadPhase.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2CollideCircle.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2CollideEdge.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2CollidePolygon.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2Collision.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2Distance.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2DynamicTree.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/b2TimeOfImpact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/b2ChainShape.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/b2CircleShape.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/b2EdgeShape.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/b2PolygonShape.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2BlockAllocator.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2Draw.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2FreeList.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2Math.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2Settings.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2StackAllocator.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2Stat.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2Timer.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/b2TrackedBlock.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2Body.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2ContactManager.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2Fixture.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2Island.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2World.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/b2WorldCallbacks.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2ChainAndCircleContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2ChainAndPolygonContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2CircleContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2Contact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2ContactSolver.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2EdgeAndCircleContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2EdgeAndPolygonContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2PolygonAndCircleContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/b2PolygonContact.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2DistanceJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2FrictionJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2GearJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2Joint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2MotorJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2MouseJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2PrismaticJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2PulleyJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2RevoluteJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2RopeJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2WeldJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/b2WheelJoint.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/b2Particle.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/b2ParticleGroup.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/b2ParticleSystem.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/b2VoronoiDiagram.cpp \
-	../../../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Rope/b2Rope.cpp
-
-	
 # luabinding (35 files)
 LOCAL_SRC_FILES += \
 	../../../luabinding/accelerometerbinder.cpp \
@@ -454,7 +516,6 @@ LOCAL_SRC_FILES += \
 	../../../luabinding/binder.cpp \
 	../../../luabinding/bitmapbinder.cpp \
 	../../../luabinding/bitmapdatabinder.cpp \
-	../../../luabinding/box2dbinder2.cpp \
 	../../../luabinding/dibbinder.cpp \
 	../../../luabinding/eventbinder.cpp \
 	../../../luabinding/eventdispatcherbinder.cpp \
@@ -485,36 +546,44 @@ LOCAL_SRC_FILES += \
 	../../../luabinding/meshbinder.cpp \
 	../../../luabinding/audiobinder.cpp \
 	../../../luabinding/zlibbinder.cpp \
+	../../../luabinding/gmathbinder.cpp \
 	../../../luabinding/cryptobinder.cpp \
 	../../../luabinding/shaderbinder.cpp \
 	../../../luabinding/path2dbinder.cpp \
 	../../../luabinding/viewportbinder.cpp \
 	../../../luabinding/pixelbinder.cpp \
+	../../../luabinding/screenbinder.cpp \
 	../../../luabinding/particlesbinder.cpp \
+	../../../luabinding/debugging.cpp \
+	../../../luabinding/bufferbinder.cpp \
 	../../../luabinding/rendertargetbinder.cpp
 
-#XMP
-LOCAL_CFLAGS+=-D_REENTRANT -DLIBXMP_CORE_PLAYER
-XMP_SRC=virtual period player read_event dataio lfo envelope \
-		scan control filter effects mixer mix_all load_helpers load \
-		hio smix memio
-XMP_HDR=common effects envelope format lfo list mixer period player \
-		virtual precomp_lut hio memio mdataio tempfile 
-XMP_LOADERS=xm_load s3m_load it_load \
-			common itsex sample
-XMP_LOADERS_HDR=it loader mod s3m xm
-LOCAL_SRC_FILES += $(addprefix ../../../libgid/external/libxmp-4.3/src/,$(addsuffix .c,$(XMP_SRC)))
-LOCAL_SRC_FILES += $(addprefix ../../../libgid/external/libxmp-4.3/src/loaders/,$(addsuffix .c,$(XMP_LOADERS)))
-LOCAL_SRC_FILES += \
-	../../../libgid/external/libxmp-4.3/lite/src/format.c \
-	../../../libgid/external/libxmp-4.3/lite/src/loaders/mod_load.c
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/src \
-					$(LOCAL_PATH)/../../../libgid/external/libxmp-4.3/src/loaders
-
-LOCAL_LDLIBS := -lGLESv2 -ldl -llog -lOpenSLES
+LOCAL_LDLIBS := -lGLESv3 -ldl -llog -lOpenSLES
 
 LOCAL_SHARED_LIBRARIES := gvfs lua
-LOCAL_STATIC_LIBRARIES := openal
+LOCAL_STATIC_LIBRARIES := openal mpg123 libxmp
+
+ifneq ($(OCULUS),)
+LOCAL_LDLIBS += -lEGL -landroid 
+LOCAL_SRC_FILES += oculus/oculus.cpp \
+	oculus/basexr/graphicsplugin_factory.cpp \
+	oculus/basexr/graphicsplugin_opengles.cpp \
+	oculus/basexr/logger.cpp \
+	oculus/basexr/openxr_program.cpp \
+	oculus/basexr/platformplugin_factory.cpp \
+	oculus/basexr/platformplugin_android.cpp \
+	oculus/basexr/VRExtension.cpp \
+	oculus/basexr/ext/PassthroughFB.cpp \
+	oculus/basexr/ext/SceneFB.cpp \
+	oculus/basexr/ext/HandTrackingFB.cpp
+	 
+LOCAL_CFLAGS += -DOCULUS 
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/oculus \
+	$(LOCAL_PATH)/oculus/Include \
+	$(LOCAL_PATH)/oculus/basexr 
+LOCAL_SHARED_LIBRARIES+=xrloader-prebuilt
+endif
 
 include $(BUILD_SHARED_LIBRARY)
 

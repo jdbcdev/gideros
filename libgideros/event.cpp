@@ -23,3 +23,15 @@ void Event::apply(EventVisitor* v)
 }
 
 int Event::s_uniqueid_ = 0;
+
+OpenUrlEvent::Type OpenUrlEvent::OPEN_URL("openUrl");
+void OpenUrlEvent::apply(EventVisitor* v)
+{
+	v->visit(this);
+}
+
+TextInputEvent::Type TextInputEvent::TEXT_INPUT("textInput");
+void TextInputEvent::apply(EventVisitor* v)
+{
+	v->visit(this);
+}

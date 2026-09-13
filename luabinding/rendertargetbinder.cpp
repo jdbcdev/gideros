@@ -12,6 +12,7 @@ RenderTargetBinder::RenderTargetBinder(lua_State *L)
     static const luaL_Reg functionList[] = {
         {"clear", clear},
         {"draw", draw},
+		{"generateMipmap", generateMipmap},
 		{"getPixel", getPixel},
 		{"getPixels", getPixels},
 		{"save", save},
@@ -31,16 +32,114 @@ int RenderTargetBinder::create(lua_State *L)
     int width = luaL_checkinteger(L, 1);
     int height = luaL_checkinteger(L, 2);
     bool smoothing = lua_toboolean(L, 3);
-    bool repeat = lua_toboolean(L, 4);
+    TextureParameters parameters;
+    if (lua_istable(L,4)) {
+        parameters.wrap = eClamp;
+        parameters.format = eRGBA8888;
+        parameters.pow2=true;
+        parameters.filter = smoothing ? eLinear : eNearest;
+        lua_getfield(L, 4, "wrap");
+        if (!lua_isnil(L, -1))
+        {
+            const char *wrapstr = luaL_checkstring(L, -1);
+            if (strcmp(wrapstr, "clamp") == 0)
+                parameters.wrap = eClamp;
+            else if (strcmp(wrapstr, "repeat") == 0)
+                parameters.wrap = eRepeat;
+            else
+            {
+                GStatus status(2008, "wrap");		// Error #2008: Parameter %s must be one of the accepted values.
+                luaL_error(L, "%s", status.errorString());
+            }
+        }
+        lua_pop(L, 1);
 
-    binder.pushInstance("RenderTarget", new GRenderTarget(application->getApplication(), width, height, smoothing ? eLinear : eNearest, repeat ? eRepeat : eClamp));
+        lua_getfield(L, 4, "format");
+        if (!lua_isnil(L, -1))
+        {
+            const char *formatstr = luaL_checkstring(L, -1);
+            if (strcmp(formatstr, "rgba8888") == 0)
+                parameters.format = eRGBA8888;
+            else if (strcmp(formatstr, "rgb888") == 0)
+                parameters.format = eRGB888;
+            else if (strcmp(formatstr, "rgb565") == 0)
+                parameters.format = eRGB565;
+            else if (strcmp(formatstr, "rgba4444") == 0)
+                parameters.format = eRGBA4444;
+            else if (strcmp(formatstr, "rgba5551") == 0)
+                parameters.format = eRGBA5551;
+            else if (strcmp(formatstr, "y8") == 0)
+                parameters.format = eY8;
+            else if (strcmp(formatstr, "a8") == 0)
+                parameters.format = eA8;
+            else if (strcmp(formatstr, "ya8") == 0)
+                parameters.format = eYA8;
+            else
+            {
+                GStatus status(2008, "format");		// Error #2008: Parameter %s must be one of the accepted values.
+                luaL_error(L, "%s", status.errorString());
+            }
+        }
+        lua_pop(L, 1);
+        lua_getfield(L, 4, "extend");
+        if (!lua_isnil(L, -1))
+          parameters.pow2=lua_toboolean(L,-1);
+        lua_pop(L, 1);
+        lua_getfield(L, 4, "mipmap");
+        if (!lua_isnil(L, -1))
+          parameters.filter=eLinearMipmap;
+        lua_pop(L, 1);
+    }
+    else {
+        bool repeat = lua_toboolean(L, 4);
+
+        Format format = eRGBA8888;
+        const char *formatstr = luaL_optstring(L, 7, "rgba8888");
+        if (strcmp(formatstr, "rgba8888") == 0)
+            format = eRGBA8888;
+        else if (strcmp(formatstr, "rgb888") == 0)
+            format = eRGB888;
+        else if (strcmp(formatstr, "rgb565") == 0)
+            format = eRGB565;
+        else if (strcmp(formatstr, "rgba4444") == 0)
+            format = eRGBA4444;
+        else if (strcmp(formatstr, "rgba5551") == 0)
+            format = eRGBA5551;
+        else if (strcmp(formatstr, "y8") == 0)
+            format = eY8;
+        else if (strcmp(formatstr, "a8") == 0)
+            format = eA8;
+        else if (strcmp(formatstr, "ya8") == 0)
+            format = eYA8;
+        else
+        {
+            GStatus status(2008, "format");		// Error #2008: Parameter %s must be one of the accepted values.
+            luaL_error(L, "%s", status.errorString());
+        }
+        bool extend= true;
+        if (!lua_isnoneornil(L,8))
+            extend = lua_toboolean(L, 8);
+
+        parameters.filter = smoothing ? eLinear : eNearest;
+        parameters.wrap = repeat ? eRepeat : eClamp;
+        parameters.format = format;
+        parameters.pow2 = extend;
+    }
+    bool selectScale = lua_toboolean(L, 5);
+    bool depth = lua_toboolean(L, 6);
+
+    //Ensure requested size is never negative
+    if (width <= 0) width = 0;
+    if (height <= 0) height = 0;
+
+    binder.pushInstance("RenderTarget", new GRenderTarget(application->getApplication(), width, height, parameters ,selectScale,depth));
 
     return 1;
 }
 
-int RenderTargetBinder::destruct(lua_State *L)
+int RenderTargetBinder::destruct(void *p)
 {
-    void* ptr = *(void**)lua_touserdata(L, 1);
+    void* ptr = GIDEROS_DTOR_UDATA(p);
     GReferenced* refptr = static_cast<GReferenced*>(ptr);
     refptr->unref();
 
@@ -90,6 +189,15 @@ int RenderTargetBinder::draw(lua_State *L)
     return 0;
 }
 
+int RenderTargetBinder::generateMipmap(lua_State *L)
+{
+    Binder binder(L);
+
+    GRenderTarget *renderTarget = static_cast<GRenderTarget*>(binder.getInstance("RenderTarget", 1));
+	renderTarget->generateMipmap();
+	return 0;
+}
+
 int RenderTargetBinder::getPixels(lua_State *L)
 {
     Binder binder(L);
@@ -99,7 +207,7 @@ int RenderTargetBinder::getPixels(lua_State *L)
     int y = luaL_optinteger(L, 3, 0);
     unsigned int w = luaL_optinteger(L, 4, renderTarget->data->width);
     unsigned int h = luaL_optinteger(L, 5, renderTarget->data->height);
-    size_t bsize=w*h*4;
+    size_t bsize=w*h*renderTarget->data->parameters.bpp;
 
     void *buffer=malloc(bsize);
     memset(buffer,0xFF,bsize);
@@ -116,9 +224,10 @@ int RenderTargetBinder::getPixels(lua_State *L)
     if ((w>0)&&(h>0))
     	renderTarget->getPixels(x,y,w,h,buffer);
     lua_pushlstring(L,(char *)buffer,bsize);
+    lua_pushinteger(L,renderTarget->data->parameters.bpp);
     free(buffer);
 
-    return 1;
+    return 2;
 }
 
 int RenderTargetBinder::getPixel(lua_State *L)
@@ -129,12 +238,11 @@ int RenderTargetBinder::getPixel(lua_State *L)
     int x = luaL_checkinteger(L, 2);
     int y = luaL_checkinteger(L, 3);
 
-    unsigned char pixel[4]={0xFF,0xFF,0xFF,0xFF};
+    unsigned char pixel[4]={0xFF,0xFF,0xFF,0xFF}; //Only works for RGBA textures
 
     if ((x>=0)&&(y>=0))
     	renderTarget->getPixels(x,y,1,1,pixel);
-
-    lua_pushnumber(L,(pixel[0]<<16)|(pixel[1]<<8)|(pixel[2]<<0));
+    lua_pushinteger(L,(pixel[0]<<16)|(pixel[1]<<8)|(pixel[2]<<0));
     lua_pushnumber(L,((float)pixel[3])/255.0);
 
     return 2;

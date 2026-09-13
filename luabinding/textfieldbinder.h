@@ -10,7 +10,7 @@ public:
 	
 private:
 	static int create(lua_State* L);
-	static int destruct(lua_State* L);
+	static int destruct(void *p);
 
     static int setFont(lua_State* L);
 
@@ -27,6 +27,15 @@ private:
 
     static int getSample(lua_State* L);
     static int setSample(lua_State* L);
+
+    static int getLayout(lua_State* L);
+    static int setLayout(lua_State* L);
+
+    static int getPointFromTextPosition(lua_State *L);
+    static int getTextPositionFromPoint(lua_State *L);
+
+    static int updateStyle(lua_State* L);
+    static int __parseGhosts(lua_State* L);
 };
 
 #endif

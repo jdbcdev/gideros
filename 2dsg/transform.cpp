@@ -29,23 +29,304 @@ static void rotation(float angle, float result[2][2])
  result[1][1] = std::cos(angle);
 }
 
+void Transform::quaternionToEuler(float w,float x,float y,float z,float &rx,float &ry,float &rz)
+{
+    float test = x * y + z * w;
+    if (test>0.499) {
+        rx=0;
+        ry=-2*atan2f(x,w)*180/M_PI;
+        rz=-90;
+    }
+    else if (test<-0.499)
+    {
+        rx=0;
+        ry=2*atan2f(x,w)*180/M_PI;
+        rz=90;
+    }
+    else
+    {
+        rx=-atan2f(2*x*w-2*y*z,1-2*x*x-2*z*z)*180/M_PI;
+        ry=-atan2f(2*y*w-2*x*z,1-2*y*y-2*z*z)*180/M_PI;
+        rz=-asinf(2*x*y+2*z*w)*180/M_PI;
+    }
+}
+
+void Transform::toQuaternion(float &w,float &x,float &y,float &z)
+{
+	const float *m=matrix_.data();
+
+	float sx=sqrtf(m[0]*m[0]+m[1]*m[1]+m[2]*m[2]);
+	float sy=sqrtf(m[4]*m[4]+m[5]*m[5]+m[6]*m[6]);
+	float sz=sqrtf(m[8]*m[8]+m[9]*m[9]+m[10]*m[10]);
+	float det=matrix_.getDeterminant();
+
+	if ( det < 0 ) sx = - sx;
+
+	w = sqrtf( fmaxf( 0, 1 + m[0]/sx + m[5]/sy + m[10]/sz ) ) / 2;
+	x = sqrtf( fmaxf( 0, 1 + m[0]/sx - m[5]/sy - m[10]/sz ) ) / 2;
+	y = sqrtf( fmaxf( 0, 1 - m[0]/sx + m[5]/sy - m[10]/sz ) ) / 2;
+	z = sqrtf( fmaxf( 0, 1 - m[0]/sx - m[5]/sy + m[10]/sz ) ) / 2;
+	x *= copysignf(1.0, x * ( m[6]/sy - m[9]/sz ) );
+	y *= copysignf(1.0, y * ( m[8]/sz - m[2]/sx ) );
+	z *= copysignf(1.0, z * ( m[1]/sx - m[4]/sy ) );
+
+}
+
+
+void Transform::setMatrix(const Matrix4 &mm)
+{
+    matrix_ = mm;
+    const float *m = matrix_.data();
+
+    // scale
+    scaleX_ = sqrtf(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]);
+    scaleY_ = sqrtf(m[4]*m[4] + m[5]*m[5] + m[6]*m[6]);
+    scaleZ_ = sqrtf(m[8]*m[8] + m[9]*m[9] + m[10]*m[10]);
+
+    // normalized rotation matrix
+    float m00 = m[0] / scaleX_;
+    float m01 = m[1] / scaleX_;
+    float m02 = m[2] / scaleX_;
+
+    float m10 = m[4] / scaleY_;
+    float m11 = m[5] / scaleY_;
+    float m12 = m[6] / scaleY_;
+
+    float m20 = m[8] / scaleZ_;
+    float m21 = m[9] / scaleZ_;
+    float m22 = m[10] / scaleZ_;
+
+    // quaternion from matrix (stable version)
+    float qw, qx, qy, qz;
+    float trace = m00 + m11 + m22;
+
+    if (trace > 0.0f) {
+        float s = sqrtf(trace + 1.0f) * 2.0f;
+        qw = 0.25f * s;
+        qx = (m21 - m12) / s;
+        qy = (m02 - m20) / s;
+        qz = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+        float s = sqrtf(1.0f + m00 - m11 - m22) * 2.0f;
+        qw = (m21 - m12) / s;
+        qx = 0.25f * s;
+        qy = (m01 + m10) / s;
+        qz = (m02 + m20) / s;
+    } else if (m11 > m22) {
+        float s = sqrtf(1.0f + m11 - m00 - m22) * 2.0f;
+        qw = (m02 - m20) / s;
+        qx = (m01 + m10) / s;
+        qy = 0.25f * s;
+        qz = (m12 + m21) / s;
+    } else {
+        float s = sqrtf(1.0f + m22 - m00 - m11) * 2.0f;
+        qw = (m10 - m01) / s;
+        qx = (m02 + m20) / s;
+        qy = (m12 + m21) / s;
+        qz = 0.25f * s;
+    }
+
+    // no need to normalize quaternion
+
+    quaternionToEuler(qw, qx, qy, qz, rotationX_, rotationY_, rotationZ_);
+
+    // translation
+    tx_ = m[12];
+    ty_ = m[13];
+    tz_ = m[14];
+
+    refX_ = refY_ = refZ_ = 0;
+}
+
 void Transform::setMatrix(const float *m)
 {
 	matrix_.set(m);
-	rotationZ_=0;
-	rotationX_=0;
-	rotationY_=0;
-	scaleX_=1.0;
-	scaleY_=1.0;
-	scaleZ_=1.0;
 
-	tx_=m[12];
-	ty_=m[13];
-	tz_=m[14];
+    // scale
+    scaleX_ = sqrtf(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]);
+    scaleY_ = sqrtf(m[4]*m[4] + m[5]*m[5] + m[6]*m[6]);
+    scaleZ_ = sqrtf(m[8]*m[8] + m[9]*m[9] + m[10]*m[10]);
 
-    refX_=0;
-	refY_=0;
-	refZ_=0;
+    // normalized rotation matrix
+    float m00 = m[0] / scaleX_;
+    float m01 = m[1] / scaleX_;
+    float m02 = m[2] / scaleX_;
+
+    float m10 = m[4] / scaleY_;
+    float m11 = m[5] / scaleY_;
+    float m12 = m[6] / scaleY_;
+
+    float m20 = m[8] / scaleZ_;
+    float m21 = m[9] / scaleZ_;
+    float m22 = m[10] / scaleZ_;
+
+    // quaternion from matrix (stable version)
+    float qw, qx, qy, qz;
+    float trace = m00 + m11 + m22;
+
+    if (trace > 0.0f) {
+        float s = sqrtf(trace + 1.0f) * 2.0f;
+        qw = 0.25f * s;
+        qx = (m21 - m12) / s;
+        qy = (m02 - m20) / s;
+        qz = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+        float s = sqrtf(1.0f + m00 - m11 - m22) * 2.0f;
+        qw = (m21 - m12) / s;
+        qx = 0.25f * s;
+        qy = (m01 + m10) / s;
+        qz = (m02 + m20) / s;
+    } else if (m11 > m22) {
+        float s = sqrtf(1.0f + m11 - m00 - m22) * 2.0f;
+        qw = (m02 - m20) / s;
+        qx = (m01 + m10) / s;
+        qy = 0.25f * s;
+        qz = (m12 + m21) / s;
+    } else {
+        float s = sqrtf(1.0f + m22 - m00 - m11) * 2.0f;
+        qw = (m10 - m01) / s;
+        qx = (m02 + m20) / s;
+        qy = (m12 + m21) / s;
+        qz = 0.25f * s;
+    }
+
+    // no need to normalize quaternion
+
+    quaternionToEuler(qw, qx, qy, qz, rotationX_, rotationY_, rotationZ_);
+
+    // translation
+    tx_ = m[12];
+    ty_ = m[13];
+    tz_ = m[14];
+
+    refX_ = refY_ = refZ_ = 0;
+}
+
+void Transform::setSRT(struct _SRT &srt, bool rev) {
+    if (!rev) {
+        float *mm=matrix_.raw();
+        tx_ = srt.t[0];
+        ty_ = srt.t[1];
+        tz_ = srt.t[2];
+        mm[3] = mm[7] = mm[11] = 0.0f;
+        mm[12]=tx_; mm[13]=ty_; mm[14]=tz_; mm[15]=1.0f;
+        if ((!srt.hasR)&&(!srt.hasS)) {
+            refX_ = refY_ = refZ_ = 0;
+            scaleX_=scaleY_=scaleZ_=1.0;
+            rotationZ_=0;
+            rotationX_=0;
+            rotationY_=0;
+
+            mm[2] = mm[6] = mm[8] = mm[9] = 0.0f;
+            mm[0]=1; mm[1]=0; mm[4]=0; mm[5]=1; mm[10]=1.0f;
+            matrix_.type=Matrix4::TRANSLATE;
+            return;
+        }
+        else {
+            Matrix4 mt;
+            bool rot2D=(srt.r[0]==0 && srt.r[1]==0);
+            scaleX_=srt.s[0]; scaleY_=srt.s[1]; scaleZ_=srt.s[2];
+            if (rot2D&&(srt.s[2]==1)) {
+                const float qz=srt.r[2];
+                const float qw=srt.r[3];
+                const float s2 = 2.0f * qz * qw;     // sin(a)
+                const float c2 = 1.0f - 2.0f * qz*qz; // cos(a)
+
+                // M2D : rotation + scale XY
+                mm[0] =  c2 * scaleX_;
+                mm[1] =  s2 * scaleX_;
+                mm[2] =  0;
+                mm[4] = -s2 * scaleY_;
+                mm[5] =  c2 * scaleY_;
+                mm[6] =  0;
+                mm[8]  = 0;
+                mm[9]  = 0;
+                mm[10] = 1;
+
+                rotationZ_=-asinf(s2)*180/M_PI;
+                rotationX_=0;
+                rotationY_=0;
+
+                matrix_.type=Matrix4::M2D;
+                return;
+            }
+            const float qx=srt.r[0];
+            const float qy=srt.r[1];
+            const float qz=srt.r[2];
+            const float qw=srt.r[3];
+            const float xx = qx * qx;
+            const float yy = qy * qy;
+            const float zz = qz * qz;
+            const float xy = qx * qy;
+            const float xz = qx * qz;
+            const float yz = qy * qz;
+            const float wx = qw * qx;
+            const float wy = qw * qy;
+            const float wz = qw * qz;
+
+            // Colonnes = rot * scale
+            mm[0] = (1 - 2*(yy + zz)) * scaleX_;
+            mm[1] = (2*(xy + wz))     * scaleX_;
+            mm[2] = (2*(xz - wy))     * scaleX_;
+
+            mm[4] = (2*(xy - wz))     * scaleY_;
+            mm[5] = (1 - 2*(xx + zz)) * scaleY_;
+            mm[6] = (2*(yz + wx))     * scaleY_;
+
+            mm[8]  = (2*(xz + wy))     * scaleZ_;
+            mm[9]  = (2*(yz - wx))     * scaleZ_;
+            mm[10] = (1 - 2*(xx + yy)) * scaleZ_;
+
+            quaternionToEuler(qw, qx, qy, qz, rotationX_, rotationY_, rotationZ_);
+
+            matrix_.type=Matrix4::M3D;
+        }
+    }
+    else {
+        Matrix4 mt;
+        if (srt.hasT)
+            mt.translate(srt.t[0],srt.t[1],srt.t[2]);
+        if (srt.hasR) {
+            float X=srt.r[0];
+            float Y=srt.r[1];
+            float Z=srt.r[2];
+            float W=srt.r[3];
+
+            float L=sqrt(X*X+Y*Y+Z*Z+W*W);
+            X/=L; Y/=L; Z/=L; W/=L;
+            float xx,xy,xz,xw,yy,yz,yw,zz,zw;
+            float m00,m01,m02,m10,m11,m12,m20,m21,m22;
+            xx      = X * X;
+            xy      = X * Y;
+            xz      = X * Z;
+            xw      = X * W;
+
+            yy      = Y * Y;
+            yz      = Y * Z;
+            yw      = Y * W;
+
+            zz      = Z * Z;
+            zw      = Z * W;
+
+            m00  = 1 - 2 * ( yy + zz );
+            m01  =     2 * ( xy - zw );
+            m02 =     2 * ( xz + yw );
+            m10  =     2 * ( xy + zw );
+            m11  = 1 - 2 * ( xx + zz );
+            m12  =     2 * ( yz - xw );
+            m20  =     2 * ( xz - yw );
+            m21  =     2 * ( yz + xw );
+            m22 = 1 - 2 * ( xx + yy );
+
+            Matrix4 rm(m00,m10,m20,0,m01,m11,m21,0,m02,m12,m22,0,0,0,0,1,Matrix4::M3D);
+            mt=rm*mt;
+        }
+
+        if (srt.hasS) {
+            mt.scale(srt.s[0],srt.s[1],srt.s[2]);
+        }
+        setMatrix(mt);
+    }
 }
 
 void Transform::setMatrix(float m11,float m12,float m21,float m22,float tx,float ty)
@@ -77,7 +358,7 @@ void Transform::setMatrix(float m11,float m12,float m21,float m22,float tx,float
 	ty_=ty;
 	tz_=0;
 
-        refX_=0;
+    refX_=0;
 	refY_=0;
 	refZ_=0;
 
@@ -183,7 +464,6 @@ void Transform::compose()
 	}
 	//matrix_.translate(tx_,ty_,tz_); //12 Mult
 	m[12]+=tx_;	m[13]+=ty_;	m[14]+=tz_;
-	isDirty_=false;
 
 #else
 	// optimized version of the code above
@@ -194,4 +474,27 @@ void Transform::compose()
 
 #endif
 
+}
+
+void Transform::lookAt(float eyex, float eyey, float eyez, float centerx,
+      float centery, float centerz, float upx, float upy,
+      float upz)
+{
+    Vector3 pos(eyex,eyey,eyez);
+    Vector3 target(centerx,centery,centerz);
+    Vector3 upDir(upx,upy,upz);
+
+    // compute left/up/forward axis vectors
+    Vector3 forward = (target-pos).normalize();
+    Vector3 left = upDir.cross(forward).normalize();
+    Vector3 up = forward.cross(left);
+
+    float m[16];
+    // compute M = Mr * Mt
+    m[0] = left.x; m[4] = up.x; m[8] = forward.x; m[12]= eyex;
+    m[1] = left.y; m[5] = up.y; m[9] = forward.y; m[13]= eyey;
+    m[2] = left.z; m[6] = up.z; m[10]= forward.z; m[14]= eyez;
+    m[3] = 0.0f;      m[7] = 0.0f;      m[11]= 0.0f;      m[15] = 1.0f;
+
+    setMatrix(m);
 }

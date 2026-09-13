@@ -57,6 +57,8 @@ enum TweenType
 	eEaseCosineCurve,
 };
 
+typedef double  (*TweenFunction)(double);
+
 struct Parameter
 {
 	Parameter() {}
@@ -69,7 +71,7 @@ struct Parameter
 	std::string strParam;
 	int param;
 	float start, end;
-	double (*tweenFunction)(double);
+    TweenFunction tweenFunction;
 };
 
 class MovieClip : public Sprite
@@ -81,7 +83,7 @@ public:
         eTime
     };
 
-    MovieClip(Type type, Application *application);
+    MovieClip(Type type, Application *application, bool holdWhilePlaying);
 	virtual ~MovieClip();
 
 	// start >= 1 && end >= 1 && start <= end
@@ -89,14 +91,19 @@ public:
 
 	void setStopAction(int frame);
 	void setGotoAction(int frame, int destframe);
+	void setReverseAction(int frame);
 	void clearAction(int frame);
 
-	void finalize();
+	void finalize(bool play);
 	
-	void play();
-	void stop();
-	void gotoAndPlay(int frame);
+	void play(bool reverse);
+	bool stop(bool unrefNow=true);
+	void gotoAndPlay(int frame, bool reverse);
 	void gotoAndStop(int frame);
+	int getFrame();
+	bool isPlaying();
+
+    static TweenFunction getTweenFunction(TweenType type);
 
 protected:
 	struct Frame
@@ -115,7 +122,7 @@ private:
 	virtual void extraBounds(float* minx, float* miny, float* maxx, float* maxy) const;
 
 private:
-    void oneFrame();
+    bool oneFrame();
     void nextFrame(EnterFrameEvent* event);
     void gotoFrame(int frame);
 	void interpolateParameters();
@@ -125,11 +132,15 @@ private:
 
 	int frame_;
 	int maxframe_;
+	int minframe_;
 	bool playing_;
+	bool reverse_;
 	bool passoneframe_;
+	bool holdWhilePlaying_;
 
 	std::map<int, std::vector<Frame*> > allFrames_;			// indexed with start
-	std::map<int, std::vector<Frame*> > activeFrames_;		// indexed with end
+	std::map<int, std::vector<Frame*> > revFrames_;			// indexed with end
+	std::map<int, std::vector<Frame*> > activeFrames_;		// indexed with end or start
 
 	std::map<int, int> actions_;
 

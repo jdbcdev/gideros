@@ -1,21 +1,43 @@
 #include "texture.h"
+#include "application.h"
+#include "dib.h"
 
-Texture::Texture(Application* application,
-                 const char* filename, Filter filter, Wrap wrap, Format format,
-				 bool maketransparent/* = false*/, unsigned int transparentcolor/* = 0x00000000*/) :
-    TextureBase(application, filename, filter, wrap, format, maketransparent, transparentcolor)
+Texture::Texture(Application* application) : TextureBase(application)
 {
 }
 
 Texture::Texture(Application* application,
-				 const unsigned char* pixels, unsigned int width, unsigned int height, Filter filter, Wrap wrap, Format format,
-				 bool maketransparent/* = false*/, unsigned int transparentcolor/* = 0x00000000*/) :
-    TextureBase(application, pixels, width, height, filter, wrap, format, maketransparent, transparentcolor)
+                 const char* filename, TextureParameters parameters) :
+    TextureBase(application, filename, parameters)
+{
+}
+
+Texture::Texture(Application* application,
+                 const unsigned char* pixels, unsigned int width, unsigned int height, TextureParameters parameters, float scale, bool raw) :
+    TextureBase(application, pixels, width, height, parameters, scale, raw)
 {
 }
 
 Texture::~Texture()
 {
 
+}
+
+void Texture::loadAsync(Application* application,
+                const char* filename, TextureParameters parameters, std::function<void(Texture *,std::exception_ptr)> callback)
+{
+    auto future = application->getTextureManager()->createTextureFromFile(filename, parameters,
+                  [=](TextureData *data, std::exception_ptr e){
+        if (e) {
+            callback(NULL,e);
+        }
+        else {
+            Texture *tex=new Texture(application);
+            tex->data=data;
+            tex->uvscalex = (float)data->width / (float)data->baseWidth;
+            tex->uvscaley = (float)data->height / (float)data->baseHeight;
+            callback(tex,nullptr);
+        }
+       });
 }
 

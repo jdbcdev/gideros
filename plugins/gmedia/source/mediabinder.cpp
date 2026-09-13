@@ -161,11 +161,23 @@ public:
         gmedia_getPicture();
     }
 
+
+    void getFile(const char* extensions, const char* initialPath)
+    {
+        gmedia_getFile(extensions, initialPath);
+    }
+
+
     void savePicture(const char* path)
     {
         gmedia_savePicture(path);
     }
 
+    void saveFile(const char* path, const char* initialPath)
+    {
+        gmedia_saveFile(path, initialPath);
+    }
+    
     void playVideo(const char* path, bool force)
     {
         gmedia_playVideo(path, force);
@@ -570,9 +582,9 @@ public:
     cimg_library::CImg<unsigned char> image;
 };
 
-static int destructManager(lua_State* L)
+static int destructManager(void *p)
 {
-    void *ptr = *(void**)lua_touserdata(L, 1);
+    void *ptr = GIDEROS_DTOR_UDATA(p);
     GReferenced* object = static_cast<GReferenced*>(ptr);
     GMediaManager *g = static_cast<GMediaManager*>(object->proxy());
 
@@ -581,9 +593,9 @@ static int destructManager(lua_State* L)
     return 0;
 }
 
-static int destructMedia(lua_State* L)
+static int destructMedia(void *p)
 {
-    void *ptr = *(void**)lua_touserdata(L, 1);
+    void *ptr = GIDEROS_DTOR_UDATA(p);
     GReferenced* object = static_cast<GReferenced*>(ptr);
     GMedia *g = static_cast<GMedia*>(object->proxy());
 
@@ -636,6 +648,18 @@ static int getPicture(lua_State *L)
     return 0;
 }
 
+static int getFile(lua_State *L)
+{
+    GMediaManager *g = getInstance(L, 1);
+    const char* extensions = luaL_checkstring(L, 2);
+    const char* initialPath = g_pathForFile(luaL_checkstring(L, 3));    
+    g->getFile(extensions,initialPath);
+    return 0;
+  
+  
+}
+
+
 static int savePicture(lua_State *L)
 {
     GMediaManager *g = getInstance(L, 1);
@@ -647,6 +671,22 @@ static int savePicture(lua_State *L)
         if(drive == 0)
             path = copyFile(path);
         g->savePicture(g_pathForFile(path.c_str()));
+    }
+    return 0;
+}
+
+static int saveFile(lua_State *L)
+{
+    GMediaManager *g = getInstance(L, 1);
+    const char* originalPath = luaL_checkstring(L, 2);
+    const char* initialPath = luaL_checkstring(L, 3);
+    std::string path(g_pathForFile(originalPath));
+    if(file_exists(path.c_str()))
+    {
+        int drive = gpath_getPathDrive(originalPath);
+        if(drive == 0)
+            path = copyFile(path);
+        g->saveFile(g_pathForFile(path.c_str()),initialPath);
     }
     return 0;
 }
@@ -985,7 +1025,9 @@ static int loader(lua_State *L)
         {"takeScreenshot", takeScreenshot},
         {"takePicture", takePicture},
         {"getPicture", getPicture},
+        {"getFile", getFile},
         {"postPicture", savePicture},
+        {"saveFile", saveFile},
         {"playVideo", playVideo},
         {"deleteFile", deleteFile},
         {NULL, NULL},
@@ -1053,7 +1095,7 @@ static void g_initializePlugin(lua_State *L)
     lua_getglobal(L, "package");
     lua_getfield(L, -1, "preload");
 
-    lua_pushcfunction(L, loader);
+    lua_pushcnfunction(L, loader,"plugin_init_media");
     lua_setfield(L, -2, "media");
 
     lua_pop(L, 2);

@@ -7,16 +7,14 @@
 
 #include "gl2Shaders.h"
 
-static const char *hdrShaderCode =
-#ifdef OPENGL_ES
-		"#version 100\n"
-		"#define GLES2\n";
-#else
-		"#version 120\n"
-				"#define highp\n"
-				"#define mediump\n"
-				"#define lowp\n";
-#endif
+static const char *hdrShaderCode_DK =
+        "#version 120\n"
+                "#define highp\n"
+                "#define mediump\n"
+                "#define lowp\n";
+static const char *hdrShaderCode_ES =
+        "#version 100\n"
+        "#define GLES2\n";
 
 static const char *vs_codeFC =
 "uniform highp mat4 mvp;                                                      \n"
@@ -68,6 +66,7 @@ static const char *vs_codeSC =
 "attribute highp vec4 data0;                                                  \n"
 "attribute highp vec4 data1;                                                  \n"
 "attribute highp vec4 data2;                                                  \n"
+"attribute highp vec4 linepos;                                                  \n"
 "                                                                       \n"
 "varying highp vec2 pos;                                                      \n"
 "varying highp float p, q;                                                    \n"
@@ -151,6 +150,7 @@ static const char *vs_codeSL =
 "uniform highp mat4 xform;                                                    \n"
 "                                                                       \n"
 "attribute highp vec4 data0;                                                  \n"
+"attribute highp vec4 linepos;                                                  \n"
 "                                                                       \n"
 "varying mediump vec2 uv;                                                       \n"
 "                                                                       \n"
@@ -177,7 +177,7 @@ static const char *fs_codeSL =
 "  gl_FragColor = frag;				         \n"
 "}                                          \n";
 
-void pathShadersInit()
+void pathShadersInit(bool isGLES)
 {
 	const ShaderProgram::ConstantDesc pathUniforms[] = {
 			{ "mvp",ShaderProgram::CMATRIX, 1,ShaderProgram::SysConst_WorldViewProjectionMatrix, true, 0, NULL },
@@ -201,19 +201,22 @@ void pathShadersInit()
 			{ "", ShaderProgram::CFLOAT, 0, ShaderProgram::SysConst_None,false, 0, NULL } };
 
 	const ShaderProgram::DataDesc pathAttributesFillC[] = {
-			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0 },
-			{ "", ShaderProgram::DFLOAT, 0, 0, 0 } };
+			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0,0 },
+			{ "", ShaderProgram::DFLOAT, 0, 0, 0,0 } };
 
 	const ShaderProgram::DataDesc pathAttributesStrokeC[] = {
-			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0 },
-			{ "data1", ShaderProgram::DFLOAT, 4, 1, 0 },
-			{ "data2", ShaderProgram::DFLOAT, 4, 2, 0 },
-			{ "", ShaderProgram::DFLOAT, 0, 0, 0 } };
+			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0,0 },
+			{ "data1", ShaderProgram::DFLOAT, 4, 1, 0,0 },
+            { "data2", ShaderProgram::DFLOAT, 4, 2, 0,0 },
+            { "linepos", ShaderProgram::DFLOAT, 4, 3, 0,0 },
+            { "", ShaderProgram::DFLOAT, 0, 0, 0,0 } };
 
 	const ShaderProgram::DataDesc pathAttributesStrokeSL[] = {
-			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0 },
-			{ "", ShaderProgram::DFLOAT, 0, 0, 0 } };
+			{ "data0",ShaderProgram::DFLOAT, 4, 0, 0,0 },
+            { "linepos", ShaderProgram::DFLOAT, 4, 1, 0,0 },
+            { "", ShaderProgram::DFLOAT, 0, 0, 0,0 } };
 
+    const char *hdrShaderCode=isGLES?hdrShaderCode_ES:hdrShaderCode_DK;
 	ShaderProgram::pathShaderFillC = new ogl2ShaderProgram(hdrShaderCode,
 			vs_codeFC, hdrShaderCode, fs_codeFC, pathUniforms,
 			pathAttributesFillC);

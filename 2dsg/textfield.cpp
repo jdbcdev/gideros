@@ -3,66 +3,50 @@
 #include <utf8.h>
 #include <application.h>
 
-TextField::TextField(Application *application) : TextFieldBase(application)
+TextField::TextField(Application *application, BMFontBase* font, const char* text, const char* sample, FontBase::TextLayoutParameters *params) : TextFieldBase(application)
 {
-	font_ = 0;
+	if (text) {
+		text_ = text;
+	}
 
-	setTextColor(0x000000);
-
-	letterSpacing_ = 0;
+	bulk=false;
+    font_ = NULL;
 
     sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
+    minx_ = 0, miny_ = 0, maxx_ = 0, maxy_ = 0;
 
-	createGraphics();
+	if (params)
+        layout_=*params;
+
+    setTextColor(0,0,0,1);
+
+    setFont(font);
+
+    if (sample)
+        setSample(sample);
 }
 
-TextField::TextField(Application *application, BMFontBase* font) : TextFieldBase(application)
+void TextField::cloneFrom(TextField *s)
 {
-	font_ = font;
-	if (font_ != 0)
-		font_->ref();
-
-	setTextColor(0x000000);
-
-	letterSpacing_ = 0;
-
-    sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
-
-	createGraphics();
-}
-
-TextField::TextField(Application *application, BMFontBase* font, const char* text) : TextFieldBase(application)
-{
-    text_ = text;
-    updateWide();
-
-    font_ = font;
+    TextFieldBase::cloneFrom(s);
+    font_ = s->font_;
     if (font_ != 0)
         font_->ref();
-
-    setTextColor(0x000000);
-
-    letterSpacing_ = 0;
-
-    sminx = 0, sminy = 0, smaxx = 0, smaxy = 0;
-
-    createGraphics();
-}
-
-TextField::TextField(Application *application, BMFontBase* font, const char* text, const char* sample) : TextFieldBase(application)
-{
-	text_ = text;
-	updateWide();
-
-	font_ = font;
-	if (font_ != 0)
-		font_->ref();
-
-	setTextColor(0x000000);
-
-	letterSpacing_ = 0;
-
-    setSample(sample);
+    a_=s->a_;
+    r_=s->r_;
+    g_=s->g_;
+    b_=s->b_;
+    graphicsBase_=s->graphicsBase_;
+    for (std::vector<GraphicsBase>::iterator it=graphicsBase_.begin();it!=graphicsBase_.end();it++)
+        it->cloned();
+    minx_=s->minx_;
+    miny_=s->miny_;
+    maxx_=s->maxx_;
+    maxy_=s->maxy_;
+    sminx=s->sminx;
+    sminy=s->sminy;
+    smaxx=s->smaxx;
+    smaxy=s->smaxy;
 }
 
 /*
@@ -72,9 +56,16 @@ Font* TextField::font()
 }
 */
 
+void TextField::bulkUpdate(bool en)
+{
+	bulk=en;
+	if ((!bulk)&&dirty)
+		createGraphics();
+}
+
 void TextField::setFont(FontBase *font)
 {
-    if (font->getType() == FontBase::eTTFont) return;
+    if (font&&(font->getType() == FontBase::eTTFont)) return;
 
     if (font_ == font) return;
 
@@ -83,17 +74,18 @@ void TextField::setFont(FontBase *font)
 	if (font_ != 0)
 		font_->unref();
     font_ = static_cast<BMFontBase*>(font);
+    prefWidth_=prefHeight_=-1;
 
 	createGraphics();
 }
 
 void TextField::setText(const char* text)
 {
-	if (strcmp(text, text_.c_str()) == 0)
+    if (text_==text)
 		return;
 
 	text_ = text;
-	updateWide();
+    prefWidth_=prefHeight_=-1;
 
 	createGraphics();
 }
@@ -118,36 +110,46 @@ void TextField::extraBounds(float* minx, float* miny, float* maxx, float* maxy) 
         *maxy = maxy_;
 }
 
-void TextField::setTextColor(unsigned int color)
+void TextField::setTextColor(float r,float g,float b,float a)
 {
-	textColor_ = color;
 
-	int r = (color >> 16) & 0xff;
-	int g = (color >> 8) & 0xff;
-	int b = color & 0xff;
+    a_ = a;
+    r_ = r;
+    g_ = g;
+    b_ = b;
 
-	r_ = r / 255.f;
-	g_ = g / 255.f;
-	b_ = b / 255.f;
-
-	createGraphics();
+    if (!text_.empty()) {
+        int oflags = textlayout_.styleFlags;
+        if (oflags&TEXTSTYLEFLAG_COLOR) {
+            if (!(layout_.flags&FontBase::TLF_DISPOSELAYOUT))
+                textlayout_.styleFlags |= TEXTSTYLEFLAG_SKIPLAYOUT; //Don't relayout when color changed
+            createGraphics();
+            textlayout_.styleFlags = oflags;
+        }
+        else {
+            for (auto it=graphicsBase_.begin(); it!=graphicsBase_.end(); it++)
+                if (!it->isSecondary) it->setColor(r,g,b,a);
+            invalidate(INV_GRAPHICS);
+        }
+    }
 }
 
-unsigned int TextField::textColor() const
+void TextField::textColor(float &r,float &g,float &b,float &a)
 {
-	return textColor_;
+    r=r_; g=g_; b=b_; a=a_;
 }
 
 void TextField::setLetterSpacing(float letterSpacing)
 {
-	letterSpacing_ = letterSpacing;
-	
+	layout_.letterSpacing = letterSpacing;
+    prefWidth_=prefHeight_=-1;
+
 	createGraphics();
 }
 
 float TextField::letterSpacing() const
 {
-	return letterSpacing_;
+    return layout_.letterSpacing;
 }
 
 float TextField::lineHeight() const
@@ -167,13 +169,20 @@ void TextField::setSample(const char* sample)
 
     graphicsBase_.clear();
 
-    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
-    wsample_.resize(wsize);
-    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
-
-    font_->drawText(&graphicsBase_, wsample_.c_str(), r_, g_, b_, letterSpacing_, false, 0, 0);
+    FontBase::TextLayoutParameters empty;
+    FontBase::TextLayout l;
+    font_->drawText(&graphicsBase_, sample, r_, g_, b_, a_, &empty, false, 0, 0, l);
     float minx, miny, maxx, maxy;
-    graphicsBase_.getBounds(&minx, &miny, &maxx, &maxy);
+    minx = 1e30;    miny = 1e30;    maxx = -1e30;    maxy = -1e30;
+	for (std::vector<GraphicsBase>::iterator it=graphicsBase_.begin();it!=graphicsBase_.end();it++)
+	{
+		float lminx_, lminy_, lmaxx_, lmaxy_;
+		(*it).getBounds(&lminx_, &lminy_, &lmaxx_, &lmaxy_);
+		minx = std::min(minx, lminx_);
+		miny = std::min(miny, lminy_);
+		maxx = std::max(maxx, lmaxx_);
+		maxy = std::max(maxy, lmaxy_);
+	}
 
     sminx = (int) minx;
     sminy = (int) miny;
@@ -188,17 +197,60 @@ const char* TextField::sample() const
     return sample_.c_str();
 }
 
+#define FDIF_EPSILON 0.01 //This assumes that logical space coordinates is similar to pixel space, which may not be true at all
+#define FDIF(a,b) (((a>b)?(a-b):(b-a))>FDIF_EPSILON)
 void TextField::createGraphics()
 {
-    if (font_ == NULL)
-        graphicsBase_.clear();
-    else
-        font_->drawText(&graphicsBase_, wtext_.c_str(), r_, g_, b_, letterSpacing_, !sample_.empty(), sminx, sminy);
+    if (font_ == NULL) return;
+    if (bulk) { dirty=true; return; }
+    dirty=false;
 
-    graphicsBase_.getBounds(&minx_, &miny_, &maxx_, &maxy_);
+    scaleChanged(); //Mark current scale as graphics scale
+    graphicsBase_.clear();
+	invalidate(INV_GRAPHICS|INV_BOUNDS);
+    bool layoutSizeChanged=false;
+	float lmw=textlayout_.mw;
+	float lbh=textlayout_.bh;
+    float lw=textlayout_.w;
+    float lh=textlayout_.h;
+    font_->drawText(&graphicsBase_, text_.c_str(), r_, g_, b_, a_, &layout_, !sample_.empty(), sminx, sminy, textlayout_);
+    layoutSizeChanged=FDIF(textlayout_.mw,lmw)||FDIF(textlayout_.bh,lbh)||FDIF(textlayout_.h,lh)||FDIF(textlayout_.w,lw);
+
+    minx_ = 1e30;    miny_ = 1e30;    maxx_ = -1e30;    maxy_ = -1e30;
+	for (std::vector<GraphicsBase>::iterator it=graphicsBase_.begin();it!=graphicsBase_.end();it++)
+	{
+		float lminx_, lminy_, lmaxx_, lmaxy_;
+		(*it).getBounds(&lminx_, &lminy_, &lmaxx_, &lmaxy_);
+		minx_ = std::min(minx_, lminx_);
+		miny_ = std::min(miny_, lminy_);
+		maxx_ = std::max(maxx_, lmaxx_);
+		maxy_ = std::max(maxy_, lmaxy_);
+	}
+    if (layoutSizeChanged)
+        layoutSizesChanged();
+    if (layout_.flags&FontBase::TLF_DISPOSELAYOUT)
+        textlayout_.dispose();
 }
 
 void TextField::doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey)
 {
-	graphicsBase_.draw(shader_);
+    G_UNUSED(sx);
+    G_UNUSED(sy);
+    G_UNUSED(ex);
+    G_UNUSED(ey);
+    if (scaleChanged()) createGraphics();
+    if (font_ != NULL)
+        font_->preDraw();
+    for (std::vector<GraphicsBase>::iterator it=graphicsBase_.begin();it!=graphicsBase_.end();it++)
+        (*it).draw(getShader((*it).getShaderType()));
+}
+
+void TextField::setLayout(FontBase::TextLayoutParameters *l)
+{
+	if (l)
+	{
+        prefWidth_=prefHeight_=-1;
+        layout_=*l;
+		createGraphics();
+	}
 }

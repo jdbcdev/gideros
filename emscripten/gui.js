@@ -29,7 +29,7 @@ Module.gui_displayDialog=function(gid,title,message,text,cancelButton,Button1,Bu
     messageEl.innerHTML = message || "";
     dialog.appendChild(messageEl);
     
-    if(text){
+    if(text!=null){
         var input = document.createElement("input");
         input.className = "gid_dialog_input";
         input.value = text || "";
@@ -48,7 +48,7 @@ Module.gui_displayDialog=function(gid,title,message,text,cancelButton,Button1,Bu
         if(callback){
             callback(gid, parseInt(this.getAttribute("id").replace("index_", "")), this.value, (input) ? input.value : null);
         }
-        document.body.removeChild(container);
+        Module.gui_hideDialog(gid); //Redundant normally
     };
     
     var cancel = document.createElement("input");

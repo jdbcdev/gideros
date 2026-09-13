@@ -104,6 +104,7 @@ static void preinit_state (lua_State *L, global_State *g) {
   L->base_ci = L->ci = NULL;
   L->savedpc = NULL;
   L->errfunc = 0;
+  L->profilerHook = NULL;
   setnilvalue(gt(L));
 }
 
@@ -241,4 +242,9 @@ LUA_API void lua_setprintfunc(lua_State* L, lua_PrintFunc printfunc, void* data)
 LUA_API int lua_isjit()
 {
   return 0;
+}
+
+LUA_API int lua_isclosing(lua_State *L)
+{
+	return 0;
 }

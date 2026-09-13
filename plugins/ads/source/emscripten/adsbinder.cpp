@@ -4,12 +4,8 @@
 #include <map>
 #include <string>
 #include <vector>
-
-#include <typeinfo>
-#include <emscripten/bind.h>
-#include <emscripten/emscripten.h>
-using namespace emscripten;
-using namespace emscripten::internal;
+#include "gtexture.h"
+#include "sprite.h"
 
 // some Lua helper functions
 #ifndef abs_index
@@ -126,12 +122,16 @@ static const char *AD_INITIALIZED = "adInitialized";
 
 static char keyWeak = ' ';
 
-class Ads : public GEventDispatcherProxy
+class Ads : public GReferenced
 {
 public:
+	GEventDispatcherProxy *edis;
     Ads(lua_State *L, const char *ad)
     {
-		ad_ = strdup(ad);
+    	edis=gtexture_get_spritefactory()->createEventDispatcher(this);
+    	ad_=(char *) malloc(strlen(ad)+1);
+    	strcpy(ad_,ad);
+		//ad_ = strdup(ad);
         gads_initialize(ad);
 		gads_addCallback(callback_s, this);
     }
@@ -141,6 +141,7 @@ public:
 		gads_destroy(ad_);
 		gads_removeCallback(callback_s, this);
 		free((char*)ad_);
+		delete edis;
     }
 	
 	void setKey(gads_Parameter *params)
@@ -326,12 +327,12 @@ private:
 	}
     
 private:
-	const char* ad_;
+	char* ad_;
 };
 
-static int destruct(lua_State* L)
+static int destruct(void *p)
 {
-	void *ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	GReferenced* object = static_cast<GReferenced*>(ptr);
 	Ads *ads = static_cast<Ads*>(object->proxy());
 	
@@ -353,7 +354,7 @@ static int init(lua_State *L)
     
     const char *ad = luaL_checkstring(L, 1);
 	Ads *ads = new Ads(L, ad);
-	g_pushInstance(L, "Ads", ads->object());
+	g_pushInstance(L, "Ads", ads->edis->object());
     
 	luaL_rawgetptr(L, LUA_REGISTRYINDEX, &keyWeak);
 	lua_pushvalue(L, -2);
@@ -598,13 +599,10 @@ static void g_initializePlugin(lua_State *L)
 {
 	::L = L;
 
-    _embind_register_std_string(TypeID<std::string>::get(), "std::string");
-    _embind_register_emval(TypeID<val>::get(), "emscripten::val");
-
     lua_getglobal(L, "package");
 	lua_getfield(L, -1, "preload");
 	
-	lua_pushcfunction(L, loader);
+	lua_pushcnfunction(L, loader,"plugin_init_ads");
 	lua_setfield(L, -2, "ads");
 	
 	lua_pop(L, 2);

@@ -1,0 +1,14 @@
+<plugin
+ name="StoreKit"
+ description="StoreKit support for iOS">
+ <target name="iOS">
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.exportPluginFiles("storekit",
+	"[[[sys.pluginDir]]]/source/iOS",
+	{ "storekit.mm" },
+	false,
+	true,true,false)
+	]]></lua>
+ </target>
+</plugin>

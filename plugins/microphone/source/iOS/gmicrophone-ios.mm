@@ -4,6 +4,9 @@
 #include <glog.h>
 #include <gapplication.h>
 #include <AVFoundation/AVFoundation.h>
+#if !TARGET_OS_OSX
+#import <UIKit/UIKit.h>
+#endif
 
 #define BUFFER_COUNT 4
     
@@ -54,7 +57,11 @@ class GMicrophoneManager
 public:
     GMicrophoneManager()
     {
+#if !TARGET_OS_OSX
         active_ = [UIApplication sharedApplication].applicationState == UIApplicationStateActive;
+#else
+        active_ = true;
+#endif
 
         microphoneCount_ = 0;
         currentAudioSessionCategory_ = nil;
@@ -68,6 +75,11 @@ public:
         
         while (!microphones_.empty())
             Delete(microphones_.begin()->first);
+    }
+    
+    void GetDeviceList(std::vector<std::string> &list)
+    {
+     	list.push_back("Default");
     }
 
     g_id Create(const char *deviceName, int numChannels, int sampleRate, int bitsPerSample, gmicrophone_Error *error)
@@ -92,6 +104,38 @@ public:
                 *error = GMICROPHONE_UNSUPPORTED_FORMAT;
             return 0;
         }
+        
+#ifdef TARGET_OS_OSX        
+        // Request permission to access the camera and microphone.
+		switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio])
+		{
+		    case AVAuthorizationStatusAuthorized:
+		    {
+		        break;
+		    }
+		    case AVAuthorizationStatusNotDetermined:
+		    {
+		        // The app hasn't yet asked the user for camera access.
+		        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+		        }];
+	            if (error)
+	                *error = GMICROPHONE_PROMPTING_PERMISSION;
+	            return 0;
+		    }
+		    case AVAuthorizationStatusDenied:
+		    {
+	           if (error)
+	                *error = GMICROPHONE_CANNOT_OPEN_DEVICE;
+	 		   return 0;
+		    }
+		    case AVAuthorizationStatusRestricted:
+		    {
+	           if (error)
+	                *error = GMICROPHONE_CANNOT_OPEN_DEVICE;
+ 		        return 0;
+		    }
+		}
+ #endif
 
         Microphone *microphone = new Microphone;
 
@@ -335,7 +379,7 @@ private:
                 
                 event->microphone = gid;
                 event->data = (char*)event + structSize;
-                event->sampleCount = dataSize / format.mBytesPerFrame;
+                event->sampleCount = (int) (dataSize / format.mBytesPerFrame);
                 
                 memcpy(event->data, inBuffer->mAudioData, dataSize);
                 
@@ -375,9 +419,11 @@ private:
         
         if (++microphoneCount_ == 1)
         {
+#if !TARGET_OS_OSX
             AVAudioSession *audioSession = [AVAudioSession sharedInstance];
             currentAudioSessionCategory_ = audioSession.category;
             [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
+#endif
         }
 
         for (int i = 0; i < BUFFER_COUNT; ++i)
@@ -405,7 +451,9 @@ private:
 
         if (--microphoneCount_ == 0)
         {
+#if !TARGET_OS_OSX
             [[AVAudioSession sharedInstance] setCategory:currentAudioSessionCategory_ error:nil];
+#endif
         }
     }
 };
@@ -460,4 +508,9 @@ void gmicrophone_RemoveCallbackWithId(g_id microphone, g_id callback)
     s_manager->RemoveCallbackWithId(microphone, callback);
 }
 
+}
+
+void gmicrophone_GetDeviceList(std::vector<std::string> &list)
+{
+    s_manager->GetDeviceList(list);
 }

@@ -23,6 +23,8 @@ public interface GameInterface {
 	
 	public void login(final Object parameters);
 	
+	public boolean loggedin();
+	
 	public void logout();
 	
 	public void showLeaderboard(String id);
@@ -31,6 +33,8 @@ public interface GameInterface {
 	
 	public void showAchievements();
 	
+	public void getPlayerInfo();
+	
 	public void reportAchievement(String id, int numSteps, int immediate);
 	
 	public void revealAchievement(String id, int immediate);
@@ -38,9 +42,25 @@ public interface GameInterface {
 	public void loadAchievements();
 	
 	public void loadScores(String id, int span, int collection, int maxResults);
+	public void loadPlayerScores(String id, int span, int collection, int maxResults);
 	
 	public void loadState(int key);
 	public void updateState(int key, byte[] state, int immediate);
 	public void resolveState(int key, String version, byte[] state);
 	public void deleteState(int key);
+	
+	//Multiplayer
+    public void autoMatch(int minPlayers, int maxPlayers);
+    public void invitePlayers(int minPlayers, int maxPlayers);
+    public void joinRoom(String id);
+    public void showInvitations();
+    public void showWaitingRoom(int minPlayers);
+    public void sendTo(String id, byte[] message, int isReliable);
+    public void sendToAll(byte[] message, int isReliable);
+    public String getCurrentPlayer();
+    public String getCurrentPlayerId();
+    public String getCurrentPlayerPicture(int highRes);
+    public void getCurrentPlayerScore(String leaderboardId, int span, int leaderboardCollection);
+    public Object getAllPlayers();
+
 }

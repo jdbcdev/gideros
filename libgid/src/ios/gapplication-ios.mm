@@ -1,6 +1,12 @@
 #include <gapplication.h>
 #include <gapplication-ios.h>
+#if !TARGET_OS_OSX
 #import <UIKit/UIKit.h>
+#else
+#import <Cocoa/Cocoa.h>
+#endif
+extern NSString* getSysInfoByName(const char* typeSpecifier);
+extern float gdr_ScaleFactor;
 
 class GGApplicationManager
 {
@@ -18,13 +24,54 @@ public:
     
     int getScreenDensity()
     {
-        UIViewController *rootViewController = [[UIApplication sharedApplication].delegate viewController];
-        UIView *glView = [rootViewController glView];
+#if TARGET_OS_OSX
+        NSScreen *screen = [NSScreen mainScreen];
+        NSDictionary *description = [screen deviceDescription];
+        NSSize displayPixelSize = [[description objectForKey:NSDeviceSize] sizeValue];
+        CGSize displayPhysicalSize = CGDisplayScreenSize(
+                                                         [[description objectForKey:@"NSScreenNumber"] unsignedIntValue]);
+        
+        float fdpi=(displayPixelSize.width / displayPhysicalSize.width) * 25.4f;
+        fdpi=fdpi*[screen backingScaleFactor];
+        int dpi=fdpi;
+#else
+        float scale = gdr_ScaleFactor;
+            
+         NSDictionary *modelDpi = @{
+            @"iPhone7,1": @133, //6+ x3=401
+            @"iPhone8,2": @133, //6S+
+            @"iPhone9,2": @133, //7+
+            @"iPhone9,4": @133, //7+
+            @"iPhone10,2": @133, //8+            
+            @"iPhone10,5": @133, //8+            
+            @"iPhone10,3": @153, //X x3=458            
+            @"iPhone10,6": @153, //X           
+            @"iPad2,5": @163, //Mini
+            @"iPad2,6": @163, //Mini
+            @"iPad2,7": @163, //Mini
+            @"iPad4,4": @163, //Mini2 x2=326
+            @"iPad4,5": @163, //Mini2
+            @"iPad4,6": @163, //Mini2
+            @"iPad4,7": @163, //Mini3
+            @"iPad4,8": @163, //Mini3
+            @"iPad4,9": @163, //Mini3
+            @"iPad5,1": @163, //Mini4
+            @"iPad5,2": @163, //Mini4
+		};
 
-        float scale = 1;
-        if ([glView respondsToSelector:@selector(contentScaleFactor)])
-            scale = glView.contentScaleFactor;
-
+        NSString *model=getSysInfoByName("hw.machine");
+		id mdpi=modelDpi[model];
+		if (mdpi)
+			return [mdpi integerValue]*scale;
+        if ([model hasPrefix:@"iPhone"]) {
+            NSArray<NSString *>* ca=[[model substringFromIndex:6] componentsSeparatedByString:@","];
+            NSString *major=[ca firstObject];
+            if (major) {
+                int mm=[major intValue];
+                if (mm>10) return 153*scale;
+            }
+        }
+		
         int dpi;
         if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
         {
@@ -38,7 +85,7 @@ public:
         {
             dpi = 160 * scale;
         }
-        
+#endif
         return dpi;
     }
     
@@ -102,14 +149,16 @@ void gapplication_removeCallbackWithGid(g_id gid)
     s_manager->removeCallbackWithGid(gid);
 }
 
-int gapplication_getScreenDensity()
+int gapplication_getScreenDensity(int *ldpi)
 {
     return s_manager->getScreenDensity();
 }
 
 void gapplication_exit()
 {
-        
+#if TARGET_OS_OSX
+    [[NSApplication sharedApplication] terminate:nil];
+#endif
 }
 
 void gapplication_enqueueEvent(int type, void *event, int free)

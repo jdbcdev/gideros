@@ -6,7 +6,13 @@
 class Transform
 {
 public:
-	Transform()
+    struct _SRT {
+        float s[3];
+        float r[4];
+        float t[3];
+        bool hasS,hasR,hasT;
+    };
+    Transform()
 	{
 		scaleX_=1;
 		scaleY_=1;
@@ -22,7 +28,14 @@ public:
         refX_ = 0;
         refY_ = 0;
         refZ_ = 0;
-        isDirty_=false;
+    }
+
+	void setRotation(float x, float y, float z)
+	{
+		rotationX_ = x;
+		rotationY_ = y;
+		rotationZ_ = z;
+		compose();
 	}
 
 	void setRotationZ(float r)
@@ -96,36 +109,61 @@ public:
     }
 
 	void setX(float x)
-	{
-		matrix_[12]+=(x-tx_);
-		tx_=x;
-	}
+    {
+        if (matrix_.type==Matrix4::TRANSLATE)
+            matrix_[12]=x-refX_;
+        else
+            matrix_[12]+=(x-tx_);
+        tx_=x;
+    }
 
 	void setY(float y)
 	{
-		matrix_[13]+=(y-ty_);
+        if (matrix_.type==Matrix4::TRANSLATE)
+            matrix_[13]=y-refY_;
+        else
+            matrix_[13]+=(y-ty_);
 		ty_=y;
 	}
 
 	void setZ(float z)
 	{
-		matrix_[14]+=(z-tz_);
+        if (matrix_.type==Matrix4::TRANSLATE)
+            matrix_[14]=z-refZ_;
+        else
+            matrix_[14]+=(z-tz_);
 		tz_=z;
 	}
 
 	void setXY(float x, float y)
 	{
-		matrix_[12]+=(x-tx_);
-		matrix_[13]+=(y-ty_);
+        if (matrix_.type==Matrix4::TRANSLATE)
+        {
+            matrix_[12]=x-refX_;
+            matrix_[13]=y-refY_;
+        }
+        else {
+            matrix_[12]+=(x-tx_);
+            matrix_[13]+=(y-ty_);
+        }
 		tx_=x;
 		ty_=y;
 	}
 
 	void setXYZ(float x, float y, float z)
 	{
-		matrix_[12]+=(x-tx_);
-		matrix_[13]+=(y-ty_);
-		matrix_[14]+=(z-tz_);
+        if (matrix_.type==Matrix4::TRANSLATE)
+        {
+            matrix_[12]=x-refX_;
+            matrix_[13]=y-refY_;
+            matrix_[14]=z-refZ_;
+        }
+        else
+        {
+            matrix_[12]+=(x-tx_);
+            matrix_[13]+=(y-ty_);
+            matrix_[14]+=(z-tz_);
+        }
 		tx_=x;
 		ty_=y;
 		tz_=z;
@@ -239,7 +277,14 @@ public:
 		return matrix_;
 	}
 	void setMatrix(float m11,float m12,float m21,float m22,float tx,float ty);
-	void setMatrix(const float *m);
+    void setMatrix(const float *m);
+    void setMatrix(const Matrix4 &mat);
+    void setSRT(struct _SRT &srt, bool rev);
+    static void quaternionToEuler(float w,float x,float y,float z,float &rx,float &ry,float &rz);
+    void lookAt(float eyex, float eyey, float eyez, float centerx,
+                float centery, float centerz, float upx, float upy,
+                float upz);
+    void toQuaternion(float &w,float &x,float &y,float &z);
 private:
 	Matrix4 matrix_;
 
@@ -255,8 +300,7 @@ private:
     float refX_;
     float refY_;
     float refZ_;
-	mutable bool isDirty_;
-	void compose();
+    void compose();
 };
 
 

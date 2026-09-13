@@ -91,7 +91,11 @@ public:
         return sound2->length;
     }
 
-    g_id SoundPlay(g_id sound, bool paused)
+    void SoundListener(float x,float y,float z,float vx,float vy,float vz,float dx,float dy,float dz,float ux,float uy,float uz)
+    {
+    }
+
+    g_id SoundPlay(g_id sound, bool paused, bool streaming)
     {
         std::map<g_id, Sound*>::iterator iter = sounds_.find(sound);
         if (iter == sounds_.end())
@@ -132,6 +136,11 @@ public:
 			source->Stop();
 
         return gid;
+    }
+
+    bool SoundHasEffect(const char *effect)
+    {
+    	return false;
     }
 
     void ChannelStop(g_id channel)
@@ -230,9 +239,10 @@ public:
 
 		XAUDIO2_VOICE_STATE state;
 		channel2->source->GetState(&state);
-		int offset = (channel2->samPosition + state.SamplesPlayed) / (wf->nSamplesPerSec);
+		uint64_t offset = (channel2->samPosition + state.SamplesPlayed);
+		offset=(offset*1000)/ (wf->nSamplesPerSec);  // milliseconds
 
-		return offset * 1000.0;  // milliseconds
+		return (unsigned int)offset;
     }
 
     void ChannelSetPaused(g_id channel, bool paused)
@@ -270,7 +280,7 @@ public:
         return channel2->paused;
     }
 
-    bool ChannelIsPlaying(g_id channel)
+    bool ChannelIsPlaying(g_id channel, int *bufferSize, float *bufferSeconds)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
         if (iter == channels_.end())
@@ -294,7 +304,7 @@ public:
 	        return false;
     }
 
-    void ChannelSetVolume(g_id channel, float volume)
+    void ChannelSetVolume(g_id channel, float volume, float balance)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
         if (iter == channels_.end())
@@ -404,6 +414,10 @@ public:
 
         return channel2->looping;
     }
+
+    void ChannelSetWorldPosition(g_id channel, float x, float y, float z, float vx,float vy,float vz)
+    {
+	}
 
     g_id ChannelAddCallback(g_id channel, gevent_Callback callback, void *udata)
     {

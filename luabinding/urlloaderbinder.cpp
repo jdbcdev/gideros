@@ -6,6 +6,7 @@
 #include <ghttp.h>
 #include <string>
 
+static lua_State *L = NULL;
 static inline bool ishex(char c)
 {
     return	('0' <= c && c <= '9') ||
@@ -81,13 +82,15 @@ static char keyStrong = ' ';
 static Event::Type COMPLETE("complete");
 static Event::Type ERROR("error");
 static Event::Type PROGRESS("progress");
+static Event::Type HEADER("header");
 
 class GGUrlLoader : public EventDispatcher
 {
 public:
-    GGUrlLoader(lua_State *L) : L(L)
+    GGUrlLoader()
     {
         id_ = 0;
+        streaming=false;
     }
 
     ~GGUrlLoader()
@@ -99,29 +102,31 @@ public:
     {
         close();
         std::string eurl = encode(url);
-        id_ = ghttp_Get(eurl.c_str(), headers, callback_s, this);
+        id_ = ghttp_Get(eurl.c_str(), headers, streaming, callback_s, this);
     }
 
     void post(const char *url, ghttp_Header *headers, const void *body, size_t size)
     {
         close();
         std::string eurl = encode(url);
-        id_ = ghttp_Post(eurl.c_str(), headers, body, size, callback_s, this);
+        id_ = ghttp_Post(eurl.c_str(), headers, body, size, streaming, callback_s, this);
     }
 
     void put(const char *url, ghttp_Header *headers, const void *body, size_t size)
     {
         close();
         std::string eurl = encode(url);
-        id_ = ghttp_Put(eurl.c_str(), headers, body, size, callback_s, this);
+        id_ = ghttp_Put(eurl.c_str(), headers, body, size, streaming, callback_s, this);
     }
 
     void deleteResource(const char *url, ghttp_Header *headers)
     {
         close();
         std::string eurl = encode(url);
-        id_ = ghttp_Delete(eurl.c_str(), headers, callback_s, this);
+        id_ = ghttp_Delete(eurl.c_str(), headers, streaming, callback_s, this);
     }
+
+    void setStreaming(bool stream) { streaming=stream; }
 
     void close()
     {
@@ -162,7 +167,7 @@ private:
     {
         if (type == GHTTP_RESPONSE_EVENT || type == GHTTP_ERROR_EVENT)
         {
-            id_ = 0;
+            close();
         }
 
         luaL_rawgetptr(L, LUA_REGISTRYINDEX, &keyWeak);
@@ -185,6 +190,7 @@ private:
 
         if ((type == GHTTP_RESPONSE_EVENT && !hasEventListener(COMPLETE)) ||
             (type == GHTTP_ERROR_EVENT && !hasEventListener(ERROR)) ||
+	        (type == GHTTP_HEADER_EVENT && !hasEventListener(HEADER)) ||
             (type == GHTTP_PROGRESS_EVENT && !hasEventListener(PROGRESS)))
         {
             lua_pop(L, 2);
@@ -195,13 +201,18 @@ private:
 
         lua_pushvalue(L, -2);
 
-        if (type == GHTTP_RESPONSE_EVENT)
+        if (type == GHTTP_RESPONSE_EVENT || type == GHTTP_HEADER_EVENT)
         {
-            getOrCreateEvent("complete", "__completeEvent");
+        	if (type == GHTTP_RESPONSE_EVENT)
+        		getOrCreateEvent("complete", "__completeEvent");
+        	else
+        		getOrCreateEvent("header", "__headerEvent");
 
             ghttp_ResponseEvent* d = (ghttp_ResponseEvent*)data;
-            lua_pushlstring(L, (char*)d->data, d->size);
-            lua_setfield(L, -2, "data");
+            if (d->data) {
+				lua_pushlstring(L, (char*)d->data, d->size);
+				lua_setfield(L, -2, "data");
+            }
             if (d->httpStatusCode != -1)
             {
                 lua_pushinteger(L, d->httpStatusCode);
@@ -219,7 +230,12 @@ private:
         }
         else if (type == GHTTP_ERROR_EVENT)
         {
+            ghttp_ErrorEvent* d = (ghttp_ErrorEvent*)data;
             getOrCreateEvent("error", "__errorEvent");
+            if (d->error) {
+				lua_pushstring(L, d->error);
+				lua_setfield(L, -2, "error");
+            }
         }
         else if (type == GHTTP_PROGRESS_EVENT)
         {
@@ -230,25 +246,37 @@ private:
             lua_setfield(L, -2, "bytesLoaded");
             lua_pushinteger(L, d->bytesTotal);
             lua_setfield(L, -2, "bytesTotal");
+            if (d->chunk) {
+				lua_pushlstring(L, (char*)d->chunk, d->chunkSize);
+				lua_setfield(L, -2, "chunk");
+            }
         }
 
         lua_call(L, 2, 0);
 
         lua_pop(L, 2);
+
+        if (type == GHTTP_PROGRESS_EVENT) {
+            ghttp_ProgressEvent* d = (ghttp_ProgressEvent*)data;
+            ghttp_StreamAdvanced(id_,d->chunkSize);
+        }
+
     }
 
 private:
-    lua_State *L;
     int id_;
+    int streaming;
 };
 
 UrlLoaderBinder::UrlLoaderBinder(lua_State* L)
 {
+	::L=L;
     Binder binder(L);
 
     static const luaL_Reg functionList[] = {
         {"load", load},
         {"close", close},
+        {"setStreaming", setStreaming},
         {"ignoreSslErrors", ignoreSslErrors},
         {"setProxy", setProxy},
         {NULL, NULL},
@@ -297,7 +325,7 @@ static void load(lua_State* L,
             else
             {
                 GStatus status(2010, "method");	// Error #2010 "Field %s must be one of the accepted values."
-                luaL_error(L, status.errorString());
+                luaL_error(L, "%s", status.errorString());
             }
         }
 
@@ -375,7 +403,7 @@ int UrlLoaderBinder::create(lua_State* L)
 
     ::load(L, NULL, 1);     // error checking before creating GGUrlLoader
 
-    GGUrlLoader* urlloader = new GGUrlLoader(L);
+    GGUrlLoader* urlloader = new GGUrlLoader();
     ::load(L, urlloader, 1);
 
     binder.pushInstance("UrlLoader", urlloader);
@@ -410,9 +438,9 @@ int UrlLoaderBinder::create(lua_State* L)
     return 1;
 }
 
-int UrlLoaderBinder::destruct(lua_State* L)
+int UrlLoaderBinder::destruct(void *p)
 {
-    void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
     GGUrlLoader* urlloader = static_cast<GGUrlLoader*>(ptr);
     urlloader->unref();
 
@@ -435,9 +463,17 @@ int UrlLoaderBinder::load(lua_State* L)
     return 0;
 }
 
-int UrlLoaderBinder::ignoreSslErrors(lua_State* L)
+int UrlLoaderBinder::ignoreSslErrors(lua_State* /*L*/)
 {
 	ghttp_IgnoreSSLErrors();
+	return 0;
+}
+
+int UrlLoaderBinder::setStreaming(lua_State* L)
+{
+    Binder binder(L);
+    GGUrlLoader* urlloader = static_cast<GGUrlLoader*>(binder.getInstance("UrlLoader", 1));
+	urlloader->setStreaming(lua_toboolean(L,2));
 	return 0;
 }
 

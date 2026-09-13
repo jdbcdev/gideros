@@ -1,49 +1,154 @@
 <export name="APK" 
+    label="Android"
 	description="Export as an Android APK file">
 	<property name="packageName" type="string" title="Package name" description="" default="com.yourdomain.yourapp" />
-	<property name="androidPath" type="dir" title="Android SDK Directory" description="Directory of your Android SDK" default="" />
-	<property name="javaPath" type="dir" title="JDK Directory" description="Directory of your JDK installation" default="" />
-	<property name="androidTarget" type="string" title="Android Target Version" description="The android SDK version you wish to compile with" default="19" />
-	<property name="androidSdk" type="string" title="Android SDK Version" description="The android SDK version to be used for compiling" default="23" />
-	<property name="androidTools" type="string" title="Android Tools Version" description="The android tools version to be used for compiling" default="23.0.2" />
-	<property name="keyStore" type="file" title="Key store" description="Path to keystore for signing" default="" />
+	<property name="forOculus" type="boolean" title="Build for Meta Quest" default="0" />	
+	<property name="oculusHT" type="boolean" title="- Support hand tracking (Meta Quest)" default="0" />	
+	<property name="oculusHTR" type="boolean" title="- Require hand tracking (Meta Quest)" default="0" />
+	<property name="oculusPT" type="boolean" title="- Support passthrough layer (Meta Quest)" default="0" />
+	<property name="oculusPTR" type="boolean" title="- Require passthrough layer (Meta Quest)" default="0" />
+	<property name="androidTarget" type="string" title="Android Target Version" description="The android SDK version you wish to compile with" default="36" />
+	<property name="buildAab" type="boolean" title="Build Android bundle (.aab file, no APK)" description="Build the android bundle file directly, no APK will be generated nor installed" default="1" />	
+	<property name="buildApk" type="boolean" title="Build APK file" description="Build the APK file directly, otherwise outputs the Android Studio project" default="0" />	
+	<property name="deployApk" type="boolean" title="Install APK to device" description="Try to deploy APK to connected device" default="0" />	
+	<property name="keyStore" type="afile" title="Key store" description="Path to keystore for signing" default="" />
 	<property name="keyAlias" type="string" title="Key alias" description="Alias of the key to use" default="" />
+	<property name="timestampApk" type="boolean" title="Timestamp" description="Include time and version code in generated APK name" default="0" />
+	<property name="androidPath" type="adir" title="Android SDK Directory (optional)" description="Directory of your Android SDK (optional)" default="" />
+	<property name="javaPath" type="adir" title="JDK Directory (optional)" description="Directory of your JDK installation (optional)" default="" />
+	<property name="androidSdk" type="string" title="Android SDK Version (optional)" description="The android SDK version to be used for compiling (optional)" default="" />
 	<rules>
-		<ask key="local.keyStorePass" type="string" title="Key store password" question="Enter your key store password:" default="" />
-		<set key="local.noSigning" value="//"/>
-		<set key="local.isUnsigned" value="-unsigned"/>
-		<if condition="[[[neq:[[[local.keyStorePass]]]:]]]">
-			<ask key="local.keyAliasPass" type="string" title="Key alias password" question="Enter your key alias password:" default="[[[local.keyStorePass]]]" />
-			<set key="local.noSigning" value=""/>
-			<set key="local.isUnsigned" value=""/>
-		</if>
-		<mkdir>tmp</mkdir>
-		<cd>tmp</cd>
-		<if condition="[[[project.autorotation]]]">
-			<set key="local.orientation" value="sensorPortrait"/>
-			<if condition="[[[band:[[[project.orientation]]]:1]]]">
-				<set key="local.orientation" value="sensorLandscape"/>
+	<lua>
+local appName=Export.getProperty("project.app_name")
+appName=string.gsub(appName,"'","\\'")
+Export.setProperty("local.app_name",appName)
+
+
+require "lfs"
+local java=Export.getProperty("export.javaPath")
+if lfs.attributes(java,"mode")~="directory" then
+	if Export.getProperty("sys.exeExtension")==".exe" then
+		local rPathData,rPathType = nil,nil
+		local function getPathAndroidStudio()
+			require "hkey"
+			local key = windows.hkey.HKEY_LOCAL_MACHINE:open("Software\\Android Studio",windows.hkey.KEY_READ|windows.hkey.KEY_WOW64_64KEY)
+			if key then
+				rPathData,rPathType = key:queryvalue("Path")
+				print("Registry:","AndroidPath:",rPathData)
+			end
+		end
+		if pcall(getPathAndroidStudio) and rPathData then
+		else
+			rPathData="C:/Program Files/Android/Android Studio"
+		end
+		--Check JBR first (new electric eel android studio)
+		java = rPathData.."/jbr"
+		if not lfs.attributes(java) then
+			java = rPathData.."/jre"
+		end
+	else
+		java="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+	end
+	Export.setProperty("export.javaPath",java)
+end
+print("Java Path:"..java)
+
+local home=Export.getProperty("export.androidPath")
+if lfs.attributes(home,"mode")~="directory" then
+	home=Export.getProperty("sys.homeDir")
+	if Export.getProperty("sys.exeExtension")==".exe" then
+    	home=home.."/AppData/Local/Android/sdk"
+	else
+		home=home.."/Library/Android/sdk"
+	end
+	Export.setProperty("export.androidPath",home)
+end
+print("Android SDK Path:"..home)
+
+local platforms=home.."/platforms"
+local sdkVer=Export.getProperty("export.androidSdk")
+if lfs.attributes(platforms.."/android-"..sdkVer,"mode")~="directory" then
+	sdkVer=0
+	for adir in lfs.dir(platforms) do
+		if lfs.attributes(platforms.."/"..adir,"mode")=="directory" then
+		    if adir:lower():sub(1,8)=="android-" then
+				local _,_,ver=adir:sub(9):find("(%d+)")
+	    		sdkVer=math.max(tonumber(ver or 0)//1,sdkVer)
+	    	end
+		end
+	end
+	Export.setProperty("export.androidSdk",sdkVer)
+end
+print("Android SDK Version:"..sdkVer)
+
+local ap=require("Tools/export_android")
+	</lua>
+		<set key="project.package" value="[[[export.packageName]]]"/>
+		<set key="local.noSigning" value=""/>
+		<set key="local.isUnsigned" value="-debug"/>
+		<set key="local.keyStore" value="[[[sys.toolsDir]]]/debug.jks"/>
+		<set key="local.keyAlias" value="debug"/>
+		<set key="secret.keyStorePass" value="gdebug"/>
+		<set key="secret.keyAliasPass" value="gdebug"/>
+		<if condition="[[[neq:[[[export.keyAlias]]]:]]]">
+			<ask key="secret.keyStorePass" uid="[[[export.keyStore]]]" type="string" title="Key store password" question="Enter your key store password:" default="" />
+			<if condition="[[[neq:[[[secret.keyStorePass]]]:]]]">
+				<ask key="secret.keyAliasPass" uid="[[[export.keyAlias]]]@[[[export.keyStore]]]" type="string" title="Key alias password" question="Enter your key alias password:" default="[[[secret.keyStorePass]]]" />
+				<set key="local.noSigning" value=""/>
+				<set key="local.isUnsigned" value=""/>
+				<set key="local.keyStore" value="[[[export.keyStore]]]"/>
+				<set key="local.keyAlias" value="[[[export.keyAlias]]]"/>
 			</if>
 		</if>
-		<if condition="[[[not:[[[project.autorotation]]]]]]">
-			<set key="local.orientation" value="portrait"/>
-			<if condition="[[[eq:[[[project.orientation]]]:1]]]">
-				<set key="local.orientation" value="landscape"/>
-			</if>
-			<if condition="[[[eq:[[[project.orientation]]]:2]]]">
-				<set key="local.orientation" value="reversePortrait"/>
-			</if>
-			<if condition="[[[eq:[[[project.orientation]]]:3]]]">
-				<set key="local.orientation" value="reverseLandscape"/>
-			</if>
-		</if>		
+		<if condition="[[[not:[[[export.timestampApk]]]]]]">
+			<set key="local.noRename" value="//"/>
+		</if>
+		<if condition="[[[or:[[[export.buildAab]]]:[[[export.buildApk]]]]]]">
+			<rmdir>tmp</rmdir>
+			<mkdir>tmp</mkdir>
+			<cd>tmp</cd>
+			<set key="local.noRename" value="//"/>
+		</if>
+		<lua>
+		   	local autorotation=tonumber(Export.getProperty("project.autorotation")) or 0
+		   	local rotation=tonumber(Export.getProperty("project.orientation")) or 0
+		   	local so="portrait"
+		   	if autorotation==1 then
+		   		if rotation==0 or rotation==2 then
+		   			so="sensorPortrait"
+		   		else
+		   			so="sensorLandscape"
+		   		end
+		   	elseif autorotation==2 then
+		   		so="fullSensor"
+		   	elseif autorotation==3 then
+		   		so="nosensor"
+		   	else
+		   		if rotation==0 then
+		   			so="portrait"
+		   		elseif rotation==1 then
+		   			so="landscape"
+		   		elseif rotation==2 then
+		   			so="reversePortrait"
+		   		elseif rotation==3 then
+		   			so="reverseLandscape"
+				end
+			end
+			Export.setProperty("local.orientation",so) 
+		</lua>		
 		<set key="local.showSplash" value="true"/>
+		<set key="local.splashTheme" value="@style/Theme.Splash"/>
 		<if condition="[[[eq:[[[project.disableSplash]]]:1]]]">
 			<set key="local.showSplash" value="false"/>
+			<set key="local.splashTheme" value="@style/Theme"/>
 		</if>
+		<if condition="[[[export.forOculus]]]">
+			<set key="local.orientation" value="landscape"/>
+		</if>		
 		<template name="Android Template" path="[[[sys.giderosDir]]]/Templates/AndroidStudio/Android Template">
 			<replacelist wildcards="*.xml;*.java;*.gradle">
 				<replace orig="AndroidTemplate" by="[[[project.namews]]]"/>
+		        <replace orig="Android Template App Name" by="[[[local.app_name]]]"/>
 				<replace orig="Android Template" by="[[[project.name]]]"/>
 				<replace orig="com.giderosmobile.androidtemplate" by="[[[export.packageName]]]"/>
         		<replace orig="android:targetSdkVersion=&quot;19&quot;" by="android:targetSdkVersion=&quot;[[[export.androidTarget]]]&quot;"/>
@@ -51,21 +156,74 @@
         		<replace orig="android:versionName=&quot;1.0&quot;" by="android:versionName=&quot;[[[project.version]]]&quot;"/>
         		<replace orig="android:screenOrientation=&quot;portrait&quot;" by="android:screenOrientation=&quot;[[[local.orientation]]]&quot;"/>
         		<replace orig="boolean showSplash = true;" by="boolean showSplash = [[[local.showSplash]]];"/>
+        		<replace orig="android:theme=&quot;@style/Theme&quot;" by="android:theme=&quot;[[[local.splashTheme]]]&quot;"/>
+        		<replace orig="android:color=&quot;#123456&quot;" by="android:color=&quot;[[[project.backgroundColor]]]&quot;"/>
         		<replace orig="Color.parseColor(&quot;#ffffff&quot;)" by="Color.parseColor(&quot;[[[project.backgroundColor]]]&quot;)"/>
-        		<replace orig="compileSdkVersion 23" by="compileSdkVersion [[[export.androidSdk]]]" />
-        		<replace orig="buildToolsVersion &quot;23.0.2&quot;" by="buildToolsVersion &quot;[[[export.androidTools]]]&quot;" />
-				<replace orig="targetSdkVersion 19" by="targetSdkVersion [[[export.androidTarget]]]"/>
-				<replace orig="jksgid_StoreFile" by="[[[export.keyStore]]]"/>
-				<replace orig="jksgid_KeyAlias" by="[[[export.keyAlias]]]"/>
-				<replace orig="jksgid_StorePass" by="[[[local.keyStorePass]]]"/>
-				<replace orig="jksgid_KeyPass" by="[[[local.keyAliasPass]]]"/>
+        		<replace orig="compileSdk 23" by="compileSdkVersion [[[export.androidSdk]]]" />
+ 				<replace orig="targetSdkVersion 19" by="targetSdkVersion [[[export.androidTarget]]]"/>
+				<replace orig="jksgid_StoreFile" by="[[[local.keyStore]]]"/>
+				<replace orig="jksgid_KeyAlias" by="[[[local.keyAlias]]]"/>
+				<replace orig="jksgid_StorePass" by="[[[secret.keyStorePass]]]"/>
+				<replace orig="jksgid_KeyPass" by="[[[secret.keyAliasPass]]]"/>
 				<replace orig="//signingConfig" by="[[[local.noSigning]]]signingConfig"/>
 				<replace orig="//storeFile" by="[[[local.noSigning]]]storeFile"/>
+        		<replace orig="versionCode 1" by="versionCode [[[project.version_code]]]"/>
+        		<replace><orig>archivesName=</orig><by>[[[local.noRename]]]archivesName=</by></replace>
         	</replacelist>		
 		</template>
+		<if condition="[[[eq:[[[sys.exportType]]]:player]]]">
+		    <lua>
+		    	local ap=require("Tools/export_android")
+		    	ap.usePermission("android.permission.WRITE_EXTERNAL_STORAGE")
+		    </lua>
+		</if>
+		<if condition="[[[export.forOculus]]]">
+	    	<template name="$MANIFEST$" path="">
+		        <replacelist wildcards="GiderosSettings.java">
+		            <replace>
+	            		<orig>oculusNative=false</orig>
+	        	    	<by>oculusNative=true</by>
+	    	        </replace>
+	    	    </replacelist>
+		    </template>
+	    	<template name="$MANIFEST$" path="">
+	        	<replacelist wildcards="AndroidManifest.xml">
+	        		<append>
+	        			<orig><![CDATA[<application ]]></orig>
+	        			<by><![CDATA[android:hardwareAccelerated="true" android:isGame="true" ]]></by>
+	        		</append>
+		            <append>
+	            		<orig><![CDATA[<!-- TAG:INTENT-FILTER-EXTRA -->]]></orig>
+	        	    	<by><![CDATA[<meta-data android:name="com.oculus.vr.focusaware" android:value="true"/>
+	        	    	]]></by>
+	    	        </append>
+		            <append>
+	            		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
+	        	    	<by><![CDATA[<meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
+        <meta-data android:name="com.oculus.supportedDevices" android:value="all" />
+        				]]></by>
+	    	        </append>    
+	        	</replacelist>
+	    	</template>
+		    <lua>
+		    	local ap=require("Tools/export_android")
+			    ap.useFeature("android.hardware.vr.headtracking",true)
+		    	if Export.isSet("export.oculusHT") or Export.isSet("export.oculusHTR") then
+			    	ap.usePermission("com.oculus.permission.HAND_TRACKING")
+			    	ap.useFeature("oculus.software.handtracking",Export.isSet("export.oculusHTR"))
+			   end
+		    	if Export.isSet("export.oculusPT") or Export.isSet("export.oculusPTR") then
+			    	ap.useFeature("com.oculus.feature.PASSTHROUGH",Export.isSet("export.oculusPTR"))
+			   end
+			    ap.usePermission("com.oculus.permission.USE_ANCHOR_API")
+			    ap.usePermission("com.oculus.permission.USE_SCENE")
+		    </lua>
+	    </if>
+		
 		<mkdir>app/src/main/assets/assets</mkdir>
 		<cd>app/src/main/assets/assets</cd>
-		<exportAssets jet="mp3;mp4;png;jpg;jpeg;wav" compile="1" />
+		<initPlugins/>
+		<exportAssets jet="mp3;mp4;png;jpg;jpeg;wav" compile="1" dontEncryptExts="mp3" />
 		<exportAllfilesTxt/>
 		<exportLuafilesTxt/>
 		<exportPropertiesBin/>
@@ -74,8 +232,14 @@
 		<appIcon width="48" height="48" dest="app/src/main/res/drawable-mdpi/icon.png"/>
 		<appIcon width="72" height="72" dest="app/src/main/res/drawable-hdpi/icon.png"/>
 		<appIcon width="96" height="96" dest="app/src/main/res/drawable-xhdpi/icon.png"/>
+		<appIcon width="96" height="96" dest="app/src/main/res/drawable/icon.png"/>
 		<appIcon width="144" height="144" dest="app/src/main/res/drawable-xxhdpi/icon.png"/>
 		<appIcon width="192" height="192" dest="app/src/main/res/drawable-xxxhdpi/icon.png"/>
+		<tvIcon width="732" height="412" dest="app/src/main/res/drawable-xhdpi/ouya_icon.png"/>
+		<tvIcon width="320" height="180" alpha="0" dest="app/src/main/res/drawable/banner.png"/>
+		<tvIcon width="160" height="90" alpha="0" dest="app/src/main/res/drawable-mdpi/banner.png"/>
+		<tvIcon width="240" height="135" alpha="0" dest="app/src/main/res/drawable-hdpi/banner.png"/>
+		<tvIcon width="320" height="180" alpha="0" dest="app/src/main/res/drawable-xhdpi/banner.png"/>
 		<if condition="[[[not:[[[band:[[[project.orientation]]]:1]]]]]]">
 			<splashVertical width="200" height="320" dest="app/src/main/res/drawable-ldpi/splash.png"/>
 			<splashVertical width="320" height="480" dest="app/src/main/res/drawable-mdpi/splash.png"/>
@@ -93,17 +257,84 @@
 			<splashHorizontal width="1920" height="1280" dest="app/src/main/res/drawable-xxxhdpi/splash.png"/>
 		</if>
 		<applyPlugins/>
-		<set key="local.gradleCmd" value="gradlew"/>
-		<if condition="[[[eq:[[[sys.exeExtension]]]:.exe]]]">
-			<set key="local.gradleCmd" value="&quot;cmd.exe&quot; /c gradlew.bat"/>
+		<lua><![CDATA[
+			local bdir=Export.getProperty("sys.exportDir")
+			if Export.isSet("export.buildAab") or Export.isSet("export.buildApk") then
+				bdir=bdir.."/tmp"
+			end
+			bdir=bdir.."/app/src/main/jniLibs/"
+			print("OCULUS-LIBS:"..bdir)
+			if Export.isSet("export.forOculus") then
+			 os.remove(bdir.."arm64-v8a/libgideros.so")
+			 os.rename(bdir.."arm64-v8a/libgiderosvr.so",bdir.."arm64-v8a/libgideros.so")
+			 os.remove(bdir.."armeabi-v7a/libgideros.so")
+			 os.rename(bdir.."armeabi-v7a/libgiderosvr.so",bdir.."armeabi-v7a/libgideros.so")
+			else
+			 os.remove(bdir.."arm64-v8a/libgiderosvr.so")
+			 os.remove(bdir.."arm64-v8a/libopenxr_loader.so")
+			 os.remove(bdir.."arm64-v8a/libvrapi.so")
+			 os.remove(bdir.."armeabi-v7a/libgiderosvr.so")
+			 os.remove(bdir.."armeabi-v7a/libopenxr_loader.so")
+			 os.remove(bdir.."armeabi-v7a/libvrapi.so")
+			end
+		]]></lua>
+		<if condition="[[[or:[[[export.buildAab]]]:[[[export.buildApk]]]]]]">		
+			<lua><![CDATA[
+				local ap=require("Tools/export_android")
+				local apkName=Export.getProperty("project.namews")
+				if Export.isSet("export.timestampApk") then
+					apkName=apkName.."_"..os.date("%Y%m%d-%H%M%S").."_"..Export.getProperty("project.version_code")
+				end
+				Export.setProperty("local.apkname",apkName)
+				local gradleTarget="assembleRelease"
+				local apkExt="apk"
+				local apkBuilt="apk/release/app-release.apk"
+				local apkInstall=Export.getProperty("export.deployApk")
+				if Export.isSet("export.buildAab") then
+					gradleTarget="bundleRelease"
+					apkExt="aab"
+					apkBuilt="bundle/release/app-release.aab"
+					apkInstall=0
+				end				
+				Export.setProperty("local.gradleTarget",gradleTarget)
+				Export.setProperty("local.apkext",apkExt)
+				Export.setProperty("local.apkbuilt",apkBuilt)
+				Export.setProperty("local.install",apkInstall)
+				Export.setProperty("local.gradleExtra",ap.gradleExtraTarget or "")
+			]]></lua> 
+    	    <if condition="[[[neq:[[[sys.exeExtension]]]:.exe]]]">
+				<exec cmd="bash">
+					<env key="JAVA_HOME" value="[[[export.javaPath]]]"/>
+					<env key="ANDROID_HOME" value="[[[export.androidPath]]]"/>
+					<arg>gradlew</arg>
+					<arg>[[[local.gradleTarget]]]</arg>
+					<oarg>[[[local.gradleExtra]]]</oarg>
+				</exec>			
+        	</if>
+    	    <if condition="[[[eq:[[[sys.exeExtension]]]:.exe]]]">
+				<exec cmd="cmd.exe">
+					<env key="JAVA_HOME" value="[[[export.javaPath]]]"/>
+					<env key="ANDROID_HOME" value="[[[export.androidPath]]]"/>					
+					<arg>/c</arg>
+					<arg>gradlew.bat</arg> 
+					<arg>[[[local.gradleTarget]]]</arg>
+					<oarg>[[[local.gradleExtra]]]</oarg>
+				</exec>			
+        	</if>
+			<cp src="app/build/outputs/[[[local.apkbuilt]]]" dst="../[[[local.apkname]]][[[local.isUnsigned]]].[[[local.apkext]]]"/>
+			<cd>..</cd>
+			<rmdir>tmp</rmdir>
+			<if condition="[[[local.install]]]">
+				<set key="local.adbCmd" value="[[[export.androidPath]]]\\platform-tools\\adb.exe"/>
+	    	    <if condition="[[[neq:[[[sys.exeExtension]]]:.exe]]]">
+					<set key="local.adbCmd" value="[[[export.androidPath]]]/platform-tools/adb"/>
+        		</if>
+				<exec cmd="[[[local.adbCmd]]]">					
+					<arg>install</arg>
+					<arg>-r</arg>
+					<arg>[[[local.apkname]]][[[local.isUnsigned]]].[[[local.apkext]]]</arg>
+				</exec>
+			</if>
 		</if>
-		<exec>
-			<env key="JAVA_HOME" value="[[[export.javaPath]]]"/>
-			<env key="ANDROID_HOME" value="[[[export.androidPath]]]"/>
-			[[[local.gradleCmd]]] assembleRelease
-		</exec>
-		<cp src="app/build/outputs/apk/app-release[[[local.isUnsigned]]].apk" dst="../[[[project.namews]]][[[local.isUnsigned]]].apk"/>
-		<cd>..</cd>
-		<rmdir>tmp</rmdir>
 	</rules>
 </export>

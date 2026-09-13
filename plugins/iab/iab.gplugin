@@ -1,0 +1,113 @@
+<plugin
+ name="Iab"
+ description="Generic IAB interface">
+ <property name="iabAmazon" type="boolean" title="Enable Amazon support (Android)"/>
+ <property name="iabAmazonKey" type="file" title="AppstoreAuthenticationKey.pem" description="AppstoreAuthenticationKey.pem for Amazon IAP"/>
+ <property name="iabGoogle" type="boolean" title="Enable Google support (Android)"/>
+ <property name="iabiOS" type="boolean" title="Enable Apple support (iOS)"/>
+  <target name="AndroidStudio,APK">
+    <template name="sources" path="[[[sys.pluginDir]]]/bin/Android/src/com/giderosmobile" dest="app/src/main/java/com/giderosmobile" exclude="frameworks"/>
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/Android/libs" dest="app/src/main/jniLibs"/>
+    <template name="Activity" path="">
+        <replacelist wildcards="[[[project.namews]]]Activity.java">
+            <append orig="//GIDEROS-STATIC-INIT//" by="		System.loadLibrary(&quot;iab&quot;);"/>
+            <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.iab.Iab&quot;,"/>
+        </replacelist>		
+    </template>
+    <set key="local.iabfwd" value="app/src/main/java/com/giderosmobile/android/plugins/iab/frameworks"/>
+    <set key="local.iabfws" value="[[[sys.pluginDir]]]/bin/Android/src/com/giderosmobile/android/plugins/iab/frameworks"/>
+	<if condition="[[[plugin.iabAmazon]]]">
+		<template name="Amazon" path="[[[local.iabfws]]]" dest="[[[local.iabfwd]]]" include="IabAmazon.java" />
+		<template name="Activity" path="">
+			<replacelist wildcards="build.gradle">
+				<append>
+					<orig>//TAG-DEPENDENCIES//</orig>								
+					<by>
+					implementation 'com.amazon.device:amazon-appstore-sdk:3.+'
+					</by>
+				</append>
+			</replacelist>
+			
+		</template>
+		<template name="AndroidManifest" path="">
+        	<replacelist wildcards="AndroidManifest.xml">
+            	<append>
+            		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
+            		<by><![CDATA[
+		<receiver android:name="com.amazon.device.iap.ResponseReceiver" 
+					android:exported="true"
+					android:permission="com.amazon.inapp.purchasing.Permission.NOTIFY" >
+            <intent-filter>
+                <action
+                    android:name="com.amazon.inapp.purchasing.NOTIFY"
+                 />
+            </intent-filter>
+        </receiver>]]></by>
+    	        </append>
+            	<append>
+            		<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
+            		<by><![CDATA[
+<queries>
+    <package android:name="com.amazon.venezia" />
+    <package android:name="com.amazon.sdktestclient" />
+</queries>]]></by>
+    	        </append>
+        	</replacelist>
+    	</template>
+		<cp src="[[[sys.projectDir]]]/[[[plugin.iabAmazonKey]]]" dst="app/src/main/assets/AppstoreAuthenticationKey.pem"/>
+ 	</if> 
+	<if condition="[[[plugin.iabGoogle]]]">
+		<template name="Google" path="[[[local.iabfws]]]" dest="[[[local.iabfwd]]]" include="IabGoogle.java" />
+		<template name="Google" path="[[[local.iabfws]]]/google" dest="[[[local.iabfwd]]]/google" />
+		<template name="AndroidManifest" path="">
+			<replacelist wildcards="build.gradle">
+				<append>
+					<orig>//TAG-DEPENDENCIES//</orig>								
+					<by>
+        implementation 'com.android.billingclient:billing:9.1.0'
+		implementation 'androidx.annotation:annotation:1.10.0'
+					</by>
+				</append>
+			</replacelist>			
+		</template>
+	    <lua>
+    	local ap=require("Tools/export_android")
+    	ap.minSdk(21)
+    	</lua>
+	</if> 
+ </target>
+   <target name="iOS">
+   <if condition="[[[plugin.iabiOS]]]">
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.exportPluginFiles("iab",
+	"[[[sys.pluginDir]]]/source/IOS/Plugins/iab",
+	{ "iab.mm", "IabIos.mm", "iabbinder.cpp" },
+	false,
+	true,false,false)
+	]]></lua>
+	</if>
+ </target>
+ <target name="WinRT">
+    <template name="sources" path="[[[sys.pluginDir]]]/source/WinRT"  dest="giderosgame/giderosgame.Shared/Plugins"/>
+    <template name="sources" path="[[[sys.pluginDir]]]/source/Common"  dest="giderosgame/giderosgame.Shared/Plugins/iab"/>
+    <template name="project" path="">
+        <replacelist wildcards="giderosgame.Shared.vcxitems;*.vcxproj">
+        <append>
+            <orig><![CDATA[<!--GIDEROS-PLUGIN-FILES-->]]></orig>
+            <by><![CDATA[
+    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\iab\iab.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\iab\iabbinder.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+    </ClCompile>
+    <ClInclude Include="$(MSBuildThisFileDirectory)Plugins\iab\iab.h" />
+]]></by>
+            </append>
+        </replacelist>
+    </template>
+ </target>
+</plugin>

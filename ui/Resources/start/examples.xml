@@ -42,6 +42,7 @@
 	<example 	name="GTween"
 				description="Tweening example"
 				path="Graphics/GTween/GTween.gproj"
+				image = "gtween.png"
 				/>
 
 	<example 	name="Hierarchy"
@@ -111,19 +112,19 @@
 				path="Graphics/PixelsClown/PixelsClown.gproj"
 				image="clown.png"
 				/>
-    <example 	name="Bird Animation 3D"
-				description="Demonstrates viewport transformations for VR purposes"
-				path="Graphics/Bird Animation 3D/Bird Animation 3D.gproj"
-				image="bird animation.png"
-				/>
     <example 	name="Map Clown"
 				description="Demonstrates building of a tilemap from a texture"
 				path="Graphics/MapClown/MapClown.gproj"
 				image="clown.png"
 				/>
+	<example 	name="Spine animation"
+				description="Procedural skeletal animation using SpineC plugin"
+				path="Graphics/SpineC example/SpineC example.gproj"
+				image="spine.png"
+				/>
 </category>
-
-<category name="Graphics 3D">
+	
+<category name="Graphics 3D 1">
 	<example 	name="3D Cube"
 				description="Drawing and rotating 3D cube using Shape and Mesh"
 				path="Graphics3D/3D-Cube/3D-Cube.gproj"
@@ -137,15 +138,40 @@
 				/>
 
 	<example 	name="3D Horse"
-				description="Drawing and rotating 3D horse created"
+				description="Drawing and rotating a 3D horse"
 				path="Graphics3D/3D-Horse/3D-Horse.gproj"
 				image="3dhorse.png"
 				/>
+
+	<example 	name="3D Animation"
+				description="Loading and animating a 3D model"
+				path="Graphics3D/3D-Anim/3D-Anim.gproj"
+				image="3danim.png"
+				/>
 	
-	<example 	name="3D Maps"
-				description="Drawing and rotating 3D map by fetching Google Maps images"
-				path="Graphics3D/3D-Env/3D-Env.gproj"
-				image="3denv.png"
+	<example 	name="3D Instancing"
+				description="Demonstrate instancing capabilities"
+				path="Graphics3D/3D-Instancing/3D-Instancing.gproj"
+				image="3dinstancing.png"
+				/>
+	
+</category>
+
+<category name="Graphics 3D 2">
+	<example 	name="VR Dungeon"
+				description="Oculus Quest support demonstration"
+				path="Graphics/VR Oculus/VR Oculus.gproj"
+				image="dungeon.png"
+				/>
+    <example 	name="Bird Animation 3D"
+				description="Demonstrates viewport transformations for VR purposes"
+				path="Graphics/Bird Animation 3D/Bird Animation 3D.gproj"
+				image="bird animation.png"
+				/>
+	<example 	name="3D Particles"
+				description="Demonstrate 3D particles"
+				path="Graphics3D/3D-Particles/3D-Particles.gproj"
+				image="3d-fire.png"
 				/>
 </category>
 
@@ -173,6 +199,12 @@
 				path="Shaders/Bloom/Bloom.gproj"
 				image="shd_bloom.png"
 				/>
+				
+	<example 	name="Lua Shaders"
+				description="Demonstrate how to write shaders in lua"
+				path="Shaders/LuaShaders/LuaShaders.gproj"
+				image="shd_lua.png"
+				/>
 </category>
 
 <category name="Audio">
@@ -190,6 +222,16 @@
 				description="Positionnal sounds demo"
 				path="Audio/Moving sound/Moving sound.gproj"
 				image="touch explorer.png" 
+				/>
+	<example 	name="Procedural Sound Effects"
+				description="Demonstrate GSFXR plugin"
+				path="Audio/Procedural Sound Effects/ProceduralSoundEffects.gproj"
+				image="music_player.png" 
+				/>
+	<example 	name="Shoutcast Player"
+				description="Demonstrate Buffer and HTTP streaming capabilities"
+				path="Audio/Shoutcast Player/Shoutcast Player.gproj"
+				image="shoutcast_player.png" 
 				/>
 </category>
 
@@ -221,6 +263,24 @@
 				description="Demonstrates the displaying and printing of all touches"
 				path="Hardware/Touch Explorer/Touch Explorer.gproj"
 				image = "touch explorer.png"
+				/>
+</category>
+	
+<category name="Hardware 2">
+	<example 	name="Detecting Swipe Gestures"
+				description="Using GestureStack class"
+				path="Hardware/Detecting Swipe Gestures/Detecting Swipe Gestures.gproj"
+				image = "swipe.png"
+				/>
+	<example 	name="Measure functions perfomance"
+				description="Using Core.Profiler"
+				path="Hardware/Benchmark functions perfomance/benchmarkFunctions.gproj"
+				image = "benchmark.png"
+				/>
+	<example 	name="Controller Plugin Demo"
+				description="Demonstration of the controller plugin"
+				path="Hardware/ControllerDemo/controllers.gproj"
+				image = "joypad.png"
 				/>
 </category>
 
@@ -272,9 +332,9 @@
 </category>
 
 <category name="Physics 2">
-	<example 	name="Sleeping bodies"
+	<example 	name="Sleeping Bodies"
 				description="Using isSleeping() function"
-				path="Physics/Sleeping bodies/Sleeping bodies.gproj"
+				path="Physics/Sleeping Bodies/Sleeping Bodies.gproj"
 				image = "sleeping bodies.png"
 				/>
 				
@@ -289,8 +349,19 @@
 				path="Physics/Particles/Particles.gproj"
 				image="particles.png"
 				/>
+				
+	<example 	name="3D Collisions"
+				description="3D Collisions detection"
+				path="Physics3D/3D Collisions/3D Collisions.gproj"
+				image = "collision detection.png"
+				/>
+				
+	<example 	name="Cute C2"
+				description="Cute C2 plugin Demo"
+				path="Collision/CuteC2/CuteC2_demo.gproj"
+				image = "cute_c2.png"
+				/>
 </category>
-
 
 <category name="Scheduling">
 	<example 	name="Timers"
@@ -302,6 +373,25 @@
 				description="Demonstrates how to make progress bar while loading texture asynchronously"
 				path="Graphics/AsyncTextureLoading/AsyncTextureLoading.gproj"
 				image="bar.png"
+				/>
+    <example 	name="Async Tasking"
+				description="Demonstrates how to use async calls for turn-based tasks"
+				path="Graphics/AsyncTasking/AsyncTasking.gproj"
+				image="tasks.png"
+				/>
+</category>
+
+
+<category name="Add-ons">
+	<example 	name="Addon Base"
+				description="Basic support code"
+				path="Misc/Addon/AddonSample.gproj"
+				image="addon.png"
+				/>
+	<example 	name="Addon Sample"
+				description="Example of tilemap viewer addon"
+				path="Misc/TAME/TAME.gproj"
+				image="addon.png"
 				/>
 </category>
 

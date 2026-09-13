@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QMap>
 #include <QDomDocument>
+#include <QXmlStreamWriter>
 
 struct ProjectProperties
 {
@@ -14,11 +15,13 @@ struct ProjectProperties
 		QString name;
 		bool enabled;
 		QMap<QString,QString> properties;
+		bool operator <(const struct Plugin &p) const { return name<p.name; }
 	};
 	struct Export
 	{
 		QString name;
 		QMap<QString,QString> properties;
+		bool operator <(const struct Export &p) const { return name<p.name; }
 	};
 	ProjectProperties()
 	{
@@ -26,7 +29,8 @@ struct ProjectProperties
 	}
 
 	void loadXml(QDomElement xml);
-	void toXml(QDomDocument doc,QDomElement xml) const;
+    void toXml(QXmlStreamWriter &out) const;
+	static QMap<QString, QString> availablePlugins();
 
 	void clear()
 	{
@@ -39,6 +43,7 @@ struct ProjectProperties
 		imageScales.clear();
 		orientation = 0;
 		fps = 60;
+		vsync = 0;
 
 		// iOS options
         retinaDisplay = 0;
@@ -50,24 +55,38 @@ struct ProjectProperties
         mouseTouchOrder = 0;
 
         // export options
+        app_name="";
 		architecture = 0;
-        android_template = 0;
-        exportMode = 0;
+         exportMode = 0;
 		iosDevice = 0;
         version = "1.0";
         version_code = 1;
-        ios_bundle = "com.yourdomain.";
-		packageName = "com.yourdomain.yourapp";
-        osx_org = "GiderosMobile";
-        osx_domain = "giderosmobile.com";
+        build_number = 1;
+
+        ios_bundle = "com.yourdomain.yourapp-ios";
+        atv_bundle = "com.yourdomain.yourapp-atv";
+        macos_bundle = "com.yourdomain.yourapp-macos";
+        macos_category = 5;
+        qtexp_platform = 0;
+        qtexp_org = "GiderosMobile";
+        qtexp_domain = "giderosmobile.com";
         osx_bundle = "com.yourdomain.";
+        osx_signingId = "";
+        osx_installerId = "";
         osx_category = 5;
-        win_org = "GiderosMobile";
-        win_domain = "giderosmobile.com";
         winrt_org = "GiderosMobile";
         winrt_package = "com.yourdomain.yourapp";
+        win32_console=false;
+        win32_gapp = false;
         html5_host = "";
+        html5_crash = "";
         html5_mem = 256;
+        html5_pack = false;
+        html5_wasm = false;
+        html5_symbols = false;
+        html5_fbinstant = false;
+        html5_fbload = 100;
+        html5_pwa = false;
         encryptCode = false;
         encryptAssets = false;
         app_icon="";
@@ -76,6 +95,8 @@ struct ProjectProperties
         splash_v_image="";
         disableSplash = false;
         backgroundColor = "#ffffff";
+        splashScaleMode = 0;
+        mainluaOnly = false;
         plugins.clear();
         exports.clear();
     }
@@ -89,6 +110,7 @@ struct ProjectProperties
 	std::vector<std::pair<QString, double> > imageScales;
 	int orientation;
 	int fps;
+	int vsync;
 
 	// iOS options
     int retinaDisplay;
@@ -101,23 +123,36 @@ struct ProjectProperties
 
     // export options
 	int architecture;
-    int android_template;
 	int exportMode;
 	int iosDevice;
+	QString app_name;
     int version_code;
     QString version;
+    int build_number;
     QString ios_bundle;
-	QString packageName;
-    QString osx_org;
-    QString osx_domain;
+    QString atv_bundle;
+    QString macos_bundle;
+    int macos_category;
+    int qtexp_platform;
+    QString qtexp_org;
+    QString qtexp_domain;
     QString osx_bundle;
+    QString osx_signingId;
+    QString osx_installerId;
     int osx_category;
-    QString win_org;
-    QString win_domain;
     QString winrt_org;
     QString winrt_package;
+    bool win32_console;
+    bool win32_gapp;
     QString html5_host;
     int html5_mem;
+    bool html5_pack;
+    bool html5_wasm;
+    bool html5_symbols;
+    bool html5_fbinstant;
+    int html5_fbload;
+    bool html5_pwa;
+    QString html5_crash;
     QString app_icon;
     QString tv_icon;
     QString splash_h_image;
@@ -128,6 +163,8 @@ struct ProjectProperties
     QSet<Export> exports;
     bool encryptCode;
     bool encryptAssets;
+    bool mainluaOnly; //Assume all files are 'exclude from execution' except main.lua
+    int splashScaleMode;
 };
 
 inline bool operator==(const ProjectProperties::Plugin &p1, const ProjectProperties::Plugin &p2) { return (p1.name==p2.name)&&(p1.properties==p2.properties); };

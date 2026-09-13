@@ -194,7 +194,7 @@ public:
         return channel2->paused;
     }
 
-    virtual bool BackgroundChannelIsPlaying(g_id backgroundChannel)
+    virtual bool BackgroundChannelIsPlaying(g_id backgroundChannel, int *bufferSize, float *bufferSeconds)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(backgroundChannel);
         if (iter == channels_.end())
@@ -393,7 +393,7 @@ public:
         if (channel2->interrupted == true)
         {
             if (channel2->player != nil)
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
                 if (flags & AVAudioSessionInterruptionFlags_ShouldResume)
                     [channel2->player play];
 #endif

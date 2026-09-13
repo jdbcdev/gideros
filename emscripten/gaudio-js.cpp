@@ -1,5 +1,4 @@
 #include <gaudio.h>
-#include <mpg123.h>
 #include "ggaudiomanager.h"
 
 #if defined(OPENAL_SUBDIR_OPENAL)
@@ -7,6 +6,7 @@
 #include <OpenAL/alc.h>
 #elif defined(OPENAL_SUBDIR_AL)
 #include <AL/al.h>
+#include <AL/alext.h>
 #include <AL/alc.h>
 #else
 #include <al.h>
@@ -37,7 +37,6 @@ void GGAudioManager::systemInit()
 
     alcMakeContextCurrent(systemData_->context);
 
-    mpg123_init();
 }
 
 void GGAudioManager::systemCleanup()
@@ -45,8 +44,6 @@ void GGAudioManager::systemCleanup()
     alcMakeContextCurrent(NULL);
     alcDestroyContext(systemData_->context);
     alcCloseDevice(systemData_->device);
-
-    mpg123_exit();
 
     free(systemData_);
 }
@@ -71,7 +68,6 @@ void GGAudioManager::endInterruption()
 void GGSoundManager::interfacesInit()
 {
     loaders_["wav"] = GGAudioLoader(gaudio_WavOpen, gaudio_WavClose, gaudio_WavRead, gaudio_WavSeek, gaudio_WavTell);
-    loaders_["mp3"] = GGAudioLoader(gaudio_Mp3Open, gaudio_Mp3Close, gaudio_Mp3Read, gaudio_Mp3Seek, gaudio_Mp3Tell);
 
     sampleInterface_ = GGSampleOpenALManagerCreate();
     streamInterface_ = GGStreamOpenALManagerCreate();
@@ -86,6 +82,7 @@ void GGSoundManager::interfacesCleanup()
 void GGAudioManager::AdvanceStreamBuffers()
 {
     soundManager_->AdvanceStreamBuffers();
+	alcDeviceTickSOFT(systemData_->device);
 }
 
 void GGSoundManager::AdvanceStreamBuffers()

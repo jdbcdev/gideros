@@ -1,10 +1,16 @@
+#ifndef __ANDROID__
+#include "zlib.h"
+#endif
+
 #include "luaapplication.h"
 
 #include "eventdispatcher.h"
 
+#include "permissionevent.h"
 #include "platform.h"
 
 #include "application.h"
+#include "stage.h"
 
 #include "luautil.h"
 #include "stackchecker.h"
@@ -27,7 +33,6 @@
 #include "ttfontbinder.h"
 #include "textfieldbinder.h"
 #include "accelerometerbinder.h"
-#include "box2dbinder2.h"
 #include "dibbinder.h"
 #include "applicationbinder.h"
 #include "tilemapbinder.h"
@@ -48,7 +53,8 @@
 #include "viewportbinder.h"
 #include "pixelbinder.h"
 #include "particlesbinder.h"
-
+#include "screenbinder.h"
+#include "bufferbinder.h"
 #include "keys.h"
 
 #include "ogl.h"
@@ -57,6 +63,7 @@
 
 #include <gfile.h>
 #include <gfile_p.h>
+#include <gstdio.h>
 
 #include <pluginmanager.h>
 
@@ -67,10 +74,60 @@
 #include <gevent.h>
 #include <ginput.h>
 #include <gapplication.h>
+#include "debugging.h"
 
 #include "tlsf.h"
+#include "CoreRandom.cpp.inc"
+#include "memcache.cpp.inc"
+#include <mutex>
+#include <functional>
+
+
+#ifdef LUAU_ENABLE_CODEGEN
+#include "luacodegen.h"
+#endif
+
+
+#ifdef LUA_IS_LUAU
+static void yieldHook(lua_State* L, int gc);
+#else
+static void yieldHook(lua_State *L,lua_Debug *ar);
+#endif
 
 std::deque<LuaApplication::AsyncLuaTask> LuaApplication::tasks_;
+int LuaApplication::debuggerBreak=0;
+std::map<int,bool> LuaApplication::breakpoints;
+void (*LuaApplication::debuggerHook)(void *context,lua_State *L,lua_Debug *ar)=NULL;
+void *LuaApplication::debuggerContext=NULL;
+std::mutex LuaApplication::taskLock;
+std::condition_variable LuaApplication::frameWake;
+bool LuaApplication::taskStopping=false;
+bool LuaApplication::taskSuspend=false;
+static void profilerYielded(lua_State *L,double time);
+
+static g_id luaCbGid=g_NextId();
+static lua_State *globalLuaState=NULL;
+
+static void LuaCallback_s(int type, void *event, void *udata)
+{
+	lua_State* L = globalLuaState;
+	if (L == NULL)
+		return;
+
+	lua_getref(L,type);
+	lua_unref(L,type);
+	if (lua_type(L,-1)==LUA_TFUNCTION) {
+		int nret=((gapplication_LuaArgPusher)udata)(L,event);
+		lua_call(L, nret, 0);
+	}
+	else
+		lua_pop(L,1);
+}
+
+void gapplication_luaCallback(int luaFuncRef,void *data,gapplication_LuaArgPusher pusher)
+{
+	gevent_EnqueueEvent(luaCbGid, LuaCallback_s, luaFuncRef, data,1,(void *)pusher);
+}
 
 const char* LuaApplication::fileNameFunc_s(const char* filename, void* data)
 {
@@ -224,6 +281,80 @@ static int get_base(lua_State* L){
 }
 
 void registerModules(lua_State* L);
+ProjectProperties ProjectProperties::current;
+void ProjectProperties::load(const std::vector<char> &data, bool skipFirst)
+{
+	ByteBuffer buffer(&data[0], data.size());
+
+	if (skipFirst) {
+		char chr;
+		buffer >> chr;
+	}
+
+	buffer >> scaleMode;
+	buffer >> logicalWidth;
+	buffer >> logicalHeight;
+
+	int scaleCount;
+	buffer >> scaleCount;
+	imageScales.resize(scaleCount);
+	for (int i = 0; i < scaleCount; ++i)
+	{
+		buffer >> imageScales[i].first;
+		buffer >> imageScales[i].second;
+	}
+
+	buffer >> orientation;
+	buffer >> fps;
+	buffer >> retinaDisplay;
+	buffer >> autorotation;
+	buffer >> mouseToTouch;
+	buffer >> touchToMouse;
+	buffer >> mouseTouchOrder;
+
+    if (!buffer.eob()) {
+        buffer >> windowWidth;
+        buffer >> windowHeight;
+    }
+
+    if (!buffer.eob()) {
+        buffer >> app_name;
+        buffer >> version;
+        buffer >> version_code;
+        buffer >> build_number;
+        buffer >> build_timestamp;
+    }
+
+    current=*this;
+}
+
+int LuaApplication::Core_getScriptPath(lua_State* L)
+{
+    lua_Debug ar;
+    if (!lua_getinfo(L, 1, "S", &ar))
+        return 0;
+    if (ar.source==NULL)
+        return 0;
+    const char *s=ar.source;
+    if ((*s)=='@')
+        s++;
+    const char *lsep=nullptr;
+    const char *r=s;
+    while ((*r)!=0) {
+        if (((*r)=='/')||((*r)=='\\'))
+            lsep=r;
+        r++;
+    }
+    if (lsep!=nullptr) {
+        lua_pushlstring(L,s,lsep+1-s);
+        lua_pushstring(L,lsep+1);
+    }
+    else {
+        lua_pushnil(L);
+        lua_pushstring(L,s);
+    }
+    return 2;
+}
 
 double LuaApplication::meanFrameTime_; //Average frame duration
 double LuaApplication::meanFreeTime_; //Average time available for async tasks
@@ -241,56 +372,672 @@ int LuaApplication::Core_frameStatistics(lua_State* L)
 	return 1;
 }
 
-int LuaApplication::Core_yield(lua_State* L)
+int LuaApplication::Core_setAutoYield(lua_State* L)
 {
-	for (std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();it!=LuaApplication::tasks_.end();++it)
-		if ((*it).L==L)
-		{
-			if (lua_isboolean(L,1))
-			{
-				if (lua_toboolean(L,1))
-				{
-					(*it).skipFrame=true;
-					(*it).autoYield=false;
-				}
-				else
-				{
-					(*it).autoYield=true;
-				}
-			}
-			else
-			{
-				double sleep=luaL_optnumber(L,1,0);
-				(*it).sleepTime=iclock()+sleep;
-			}
-		}
-	return lua_yield(L,0);
+    bool autoYield=lua_toboolean(L,1);
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    if (it!=LuaApplication::tasks_.end())
+    {
+        lua_callbacks(L)->interrupt=autoYield?yieldHook:nullptr;
+        it->autoYield=autoYield;
+    }
+    taskLock.unlock();
+    return 0;
 }
 
+void LuaApplication::waitForTaskResume() {
+    if (taskStopping) return;
+    while (taskSuspend) {
+        std::unique_lock<std::mutex> lk(taskLock);
+        frameWake.wait(lk);
+    }
+}
 
+int LuaApplication::Core_yieldlock(lua_State* L)
+{
+    int err=0;
+    bool lock=lua_toboolean(L,1);
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    if (it!=LuaApplication::tasks_.end())
+    {
+        if (it->th) err=1;
+        else {
+            if (lock)
+                it->yieldLock++;
+            else {
+                if (it->yieldLock)
+                    it->yieldLock--;
+                else
+                    err=2;
+            }
+        }
+    }
+    taskLock.unlock();
+    if (err) {
+        if (err==1)
+            lua_pushstring(L, "Can't prevent yielding from an asynchronous thread");
+        if (err==1)
+            lua_pushstring(L, "Can't unlock a not locked task");
+        lua_error(L);
+    }
+    return 0;
+}
+
+int LuaApplication::Core_yield(lua_State* L)
+{
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+
+    if ((it!=LuaApplication::tasks_.end())&&(it->th)) {
+        bool shouldStop=taskStopping;
+        taskLock.unlock();
+        if (shouldStop) {
+            lua_pushstring(L,"System stopping");
+            lua_error(L);
+        }
+        //AsyncThread, just sleep
+        if (lua_isboolean(L,1)||lua_isnoneornil(L,1))
+    	{
+    		if (lua_toboolean(L,1))
+    		{
+    			std::unique_lock<std::mutex> lk(taskLock);
+                lua_enableThreads(L,0,-1);
+                frameWake.wait(lk);
+                waitForTaskResume();
+                lua_enableThreads(L,0,1);
+            }
+            else {
+                lua_enableThreads(L,0,-1);
+                std::this_thread::yield();
+                waitForTaskResume();
+                lua_enableThreads(L,0,1);
+            }
+        }
+    	else {
+            long long sleep=1000*luaL_checknumber(L,1);
+            lua_enableThreads(L,0,-1);
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleep));
+            waitForTaskResume();
+            lua_enableThreads(L,0,1);
+        }
+
+        return 0;
+    }
+    taskLock.unlock();
+    //AsyncTask, must be the first of the list anyhow, and shouldn't change
+    it=LuaApplication::tasks_.begin();
+	if ((it==LuaApplication::tasks_.end())||(it->L!=L)) {
+		lua_pushstring(L,"Core.yield must be called from an async Call");
+		lua_error(L);
+		return 0; //Yield only applies to asyncThreads
+	}
+	it->sleepTime=0;
+    lua_callbacks(L)->interrupt=nullptr;
+    it->autoYield=false;
+	it->skipFrame=false;
+	if (lua_isboolean(L,1))
+	{
+		if (lua_toboolean(L,1))
+			it->skipFrame=true;
+        else {
+			it->autoYield=true;
+            lua_callbacks(L)->interrupt=yieldHook;
+            if (lua_toboolean(L,2))
+                return 0;
+        }
+	}
+	else
+	{
+		double sleep=luaL_optnumber(L,1,0);
+		it->sleepTime=iclock()+sleep;
+	}
+    if (it->yieldLock)
+    {
+        lua_pushstring(L,"Task is forbidden to yield at this point");
+        lua_error(L);
+    }
+    return lua_yield(L,0);
+}
+
+int LuaApplication::Core_stopping(lua_State* L)
+{
+    lua_pushboolean(L,taskStopping);
+    return 1;
+}
+
+int LuaApplication::Core_yieldable(lua_State* L)
+{
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    bool isThread=(it!=LuaApplication::tasks_.end());
+    lua_pushboolean(L,lua_isyieldable(L));
+    lua_pushboolean(L,isThread);
+    lua_pushboolean(L,isThread&&(it->autoYield||it->th));
+    lua_pushboolean(L,isThread&&(it->th));
+    lua_pushinteger(L,isThread?it->yieldLock:0);
+    taskLock.unlock();
+    return 5;
+}
+
+#include "lstate.h"
 int LuaApplication::Core_asyncCall(lua_State* L)
 {
 	LuaApplication::AsyncLuaTask t;
-	lua_State *T=lua_newthread(L);
-	lua_pushvalue(L,-1);
+    bool autoYield=true;
+    if (lua_isboolean(L,1)) {
+        autoYield=lua_toboolean(L,1);
+        lua_remove(L,1);
+    }
+    luaL_checktype(L,1,LUA_TFUNCTION);
+    int nargs=lua_gettop(L);
+    lua_State *T=lua_newthread(L);
 	t.taskRef=luaL_ref(L,LUA_REGISTRYINDEX);
+    t.yieldLock=0;
+    t.th=nullptr;
 	t.L=T;
 	t.sleepTime=0;
-	t.autoYield=true;
-	int nargs=lua_gettop(L);
-	luaL_loadstring(T,"local function _start_(fn,...) coroutine.yield() fn(...) end return _start_(...)");
-	lua_xmove(L,T,nargs);
-	if (lua_resume(T,nargs)!=LUA_YIELD)
-	{
-		lua_xmove(T,L,1);
-		lua_error(L);
-	}
-	else
-		LuaApplication::tasks_.push_back(t);
+	t.skipFrame=false;
+    t.autoYield=autoYield;
+    t.nargs=nargs-1;
+    t.terminated=false;
+    t.inError=false;
+    t.profilerYielded=false;
+    T->profilerHook=L->profilerHook;
+    T->profileTableAllocs=L->profileTableAllocs;
+    lua_xmove(L,T,nargs);
+    taskLock.lock();
+    LuaApplication::tasks_.push_back(t);
+    taskLock.unlock();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, t.taskRef);
 	return 1;
 }
 
+struct ThreadCondition {
+    std::condition_variable cv;
+    bool state;
+};
 
+static int Signal_wait(lua_State *L) {
+    ThreadCondition *sig=(ThreadCondition *) luaL_checkudata(L,1,"Signal");
+    double dur=luaL_optnumber(L,2,0);
+    bool hasPredicate=(lua_type(L,3)==LUA_TFUNCTION);
+    LuaApplication::taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    if ((it==LuaApplication::tasks_.end())||(!it->th)) {
+        LuaApplication::taskLock.unlock();
+        lua_pushstring(L,"Only parallel threads can wait on signals");
+        lua_error(L);
+    }
+    bool shouldStop=LuaApplication::taskStopping;
+    LuaApplication::taskLock.unlock();
+    if (shouldStop) {
+        lua_pushstring(L,"System stopping");
+        lua_error(L);
+    }
+    bool ret=true;
+    if (sig) {
+        std::unique_lock<std::mutex> lk(LuaApplication::taskLock);
+        lua_enableThreads(L,0,-1);
+        std::function<bool()> p=[=]{
+    		if (LuaApplication::taskStopping) return true;
+            bool signaled=sig->state;
+            sig->state=false;
+            if (!hasPredicate) return signaled;
+    		lua_pushvalue(L,3);
+    		lua_call(L,0,1);
+    		bool exit=lua_toboolean(L,-1);
+    		lua_pop(L,1);
+    		return exit;
+        };
+        if (dur==0)
+            sig->cv.wait(lk,p);
+        else
+            ret=sig->cv.wait_for(lk,std::chrono::milliseconds((int)(dur*1000)),p);
+        LuaApplication::waitForTaskResume();
+        lua_enableThreads(L,0,1);
+        if (LuaApplication::taskStopping) {
+            lua_pushstring(L,"System stopping");
+            lua_error(L);
+        }
+    }
+    lua_pushboolean(L,ret);
+    return 1;
+}
+
+static int Signal_notify(lua_State *L) {
+    ThreadCondition *sig=(ThreadCondition *) luaL_checkudata(L,1,"Signal");
+    std::unique_lock<std::mutex> lk(LuaApplication::taskLock);
+    sig->state=true;
+    sig->cv.notify_all();
+    return 0;
+}
+
+int LuaApplication::Core_signal(lua_State* L)
+{
+    ThreadCondition *sig=(ThreadCondition *)lua_newuserdata(L,sizeof(ThreadCondition));
+    new (sig) ThreadCondition();
+    sig->state=false;
+    lua_getfield(L, LUA_REGISTRYINDEX, "Signal");
+    lua_setmetatable(L,-2);
+    return 1;
+}
+
+void LuaApplication::runThread(lua_State *L)
+{
+    int nargs=0;
+    taskLock.lock();
+    for(auto it=tasks_.begin();it!=tasks_.end();it++) {
+        if (it->L==L) nargs=it->nargs;
+    }
+    taskLock.unlock();
+    bool err=lua_pcall_traceback(L,nargs, 0, 0);
+    taskLock.lock();
+    for(auto it=tasks_.begin();it!=tasks_.end();it++) {
+        if (it->L==L) {
+            it->inError=err;
+            it->terminated=true;
+        }
+    }
+    taskLock.unlock();
+    lua_enableThreads(L,-1,0);
+}
+
+int LuaApplication::Core_asyncThread(lua_State* L)
+{
+    LuaApplication::AsyncLuaTask t;
+    luaL_checktype(L,1,LUA_TFUNCTION);
+    int nargs=lua_gettop(L);
+    lua_State *T=lua_newthread(L);
+    t.taskRef=luaL_ref(L,LUA_REGISTRYINDEX);
+    t.yieldLock=0;
+    t.L=T;
+    t.sleepTime=0;
+    t.skipFrame=false;
+    t.autoYield=false;
+    t.nargs=nargs-1;
+    t.terminated=false;
+    t.inError=false;
+    t.profilerYielded=false;
+    lua_xmove(L,T,nargs);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, t.taskRef);
+    lua_enableThreads(L,1,0);
+    taskLock.lock();
+    t.th=new std::thread(runThread,T);
+    LuaApplication::tasks_.push_back(t);
+    taskLock.unlock();
+    return 1;
+}
+
+#ifdef __ANDROID__
+#include "zlib.h"
+#endif
+
+//Files
+struct _FileProcess {
+    //In
+    std::string filename;
+    std::string mode;
+    bool comp=false;
+    bool save=false;
+    bool asBuffer=false;
+    size_t offset=0;
+    size_t size=0;
+    //In-Out
+    void *data;
+    size_t dataSize=0;
+    //Out
+    std::string error;
+    int errn=0;
+    bool done=false;
+};
+
+static bool fileCompress(_FileProcess *p)
+{
+    int level = Z_DEFAULT_COMPRESSION;
+    int method = Z_DEFLATED;
+    int windowBits = 15;
+    int memLevel = 8;
+    int strategy = Z_DEFAULT_STRATEGY;
+
+    int ret;
+    void *zbuf;
+    size_t zptr=0;
+    z_stream zs;
+
+    zs.zalloc = Z_NULL;
+    zs.zfree = Z_NULL;
+
+    zs.next_out = Z_NULL;
+    zs.avail_out = 0;
+    zs.next_in = Z_NULL;
+    zs.avail_in = 0;
+
+    ret = deflateInit2(&zs, level, method, windowBits, memLevel, strategy);
+
+    if (ret != Z_OK)
+    {
+        p->error="Compression error";
+        p->errn=ret;
+        return false;
+    }
+
+    zs.next_in = (unsigned char*)p->data;
+    zs.avail_in = p->dataSize;
+
+    zbuf=malloc(65536);
+    for(;;)
+    {
+        zs.next_out = ((unsigned char*)zbuf)+zptr;
+        zs.avail_out = 65536;
+        /* munch some more */
+        ret = deflate(&zs, Z_FINISH);
+
+        /* advance pointer */
+        zptr+=(65536-zs.avail_out);
+
+        /* done processing? */
+        if (ret == Z_STREAM_END)
+            break;
+
+        /* error condition? */
+        if (ret != Z_OK)
+            break;
+
+        /* ensure there is always 64k headroom) */
+        zbuf=realloc(zbuf,zptr+65536);
+    }
+
+    /* cleanup */
+    deflateEnd(&zs);
+
+    free(p->data);
+    p->data=zbuf;
+    p->dataSize=zptr;
+
+    return true;
+}
+
+static bool fileDecompress(_FileProcess *p)
+{
+    int windowBits = 15;
+
+    int ret;
+    void *zbuf;
+    size_t zptr=0;
+    z_stream zs;
+
+    zs.zalloc = Z_NULL;
+    zs.zfree = Z_NULL;
+
+    zs.next_out = Z_NULL;
+    zs.avail_out = 0;
+    zs.next_in = Z_NULL;
+    zs.avail_in = 0;
+
+    ret = inflateInit2(&zs, windowBits);
+
+    if (ret != Z_OK)
+    {
+        p->error="Decompression error";
+        p->errn=ret;
+        return false;
+    }
+
+    zs.next_in = (unsigned char*)p->data;
+    zs.avail_in = p->dataSize;
+
+    zbuf=malloc(65536);
+    for(;;)
+    {
+        zs.next_out = ((unsigned char*)zbuf)+zptr;
+        zs.avail_out = 65536;
+        /* munch some more */
+        ret = inflate(&zs, Z_FINISH);
+
+        /* advance pointer */
+        zptr+=(65536-zs.avail_out);
+
+        /* done processing? */
+        if (ret == Z_STREAM_END)
+            break;
+
+        if (ret != Z_OK && ret != Z_BUF_ERROR) {
+            /* cleanup */
+            inflateEnd(&zs);
+            p->error="Failed to process Zlib stream";
+            p->errn=ret;
+            free(zbuf);
+            return false;
+        }
+
+        /* ensure there is always 64k headroom) */
+        zbuf=realloc(zbuf,zptr+65536);
+    }
+
+    /* cleanup */
+    inflateEnd(&zs);
+
+    free(p->data);
+    p->data=zbuf;
+    p->dataSize=zptr;
+
+    return true;
+}
+
+static void fileProcess(_FileProcess *p)
+{
+    char result[LUA_BUFFERSIZE];
+    G_FILE *pf = g_fopen(p->filename.c_str(), p->mode.c_str());
+    if (pf==NULL) {
+        p->errn=errno;
+        snprintf(result, sizeof(result), "%s: %s", p->filename.c_str(), strerror(p->errn));
+        p->error=result;
+    }
+    else {
+        if (p->save) {
+            g_fseek(pf, p->offset, SEEK_SET);
+            if (p->comp) {
+                if (!fileCompress(p)) {
+                    free(p->data);
+                    p->data=nullptr;
+                }
+                p->comp=false; //Already done
+            }
+            if (p->data)
+                g_fwrite(p->data,p->dataSize,1,pf);
+        }
+        else {
+            g_fseek(pf, 0, SEEK_END);
+            size_t fsize = g_ftell(pf);
+            g_fseek(pf, p->offset, SEEK_SET);
+            if (fsize>p->offset)
+            	fsize-=p->offset;
+            else
+            	fsize=0;
+            if (p->size&&(p->size<fsize))
+            	fsize=p->size;
+
+            p->data = malloc(fsize);
+            p->dataSize=g_fread(p->data, 1, fsize, pf);
+        }
+        if (g_ferror(pf))
+        {
+            free(p->data);
+            p->data=nullptr;
+            p->dataSize=0;
+            p->errn=errno;
+            snprintf(result, sizeof(result), "%s: %s", p->filename.c_str(), strerror(p->errn));
+            p->error=result;
+        }
+        else if (p->comp)
+        {
+            if (!fileDecompress(p)) {
+                free(p->data);
+                p->data=nullptr;
+            }
+        }
+        g_fclose(pf);
+    }
+    if ((p->save)&&(p->data))
+        free(p->data);
+    p->done=true;
+}
+
+static int fileProcessCont(lua_State *L,int status,void *pp)
+{
+    G_UNUSED(status);
+    _FileProcess *p=(_FileProcess *)pp;
+    if (!p->done)
+    {
+        LuaApplication::taskLock.lock();
+        std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+        while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+        it->skipFrame=true;
+        LuaApplication::taskLock.unlock();
+        return lua_yieldk(L,fileProcessCont,p);
+    }
+    if (!p->error.empty())
+    {
+        lua_pushnil(L);
+        lua_pushstring(L,p->error.c_str());
+        lua_pushinteger(L,p->errn);
+        return 3;
+    }
+    if (p->save)
+    {
+        lua_pushboolean(L,true);
+        return 1;
+    }
+    if (p->asBuffer) {
+        void *nb=lua_newbuffer(L,p->dataSize);
+        memcpy(nb,p->data,p->dataSize);
+    }
+    else
+        lua_pushlstring(L,(const char *)(p->data),p->dataSize);
+    free(p->data);
+    return 1;
+}
+
+int LuaApplication::Core_fileLoad(lua_State *L) {
+    _FileProcess *p=new _FileProcess();
+    p->filename = luaL_checkstring(L, 1);
+    p->mode = "rb";
+    p->comp=false;
+    bool async=false;
+    if (lua_istable(L,2))
+    {
+        lua_rawgetfield(L,2,"async");
+        async=lua_toboolean(L,-1);
+        lua_pop(L,1);
+        lua_rawgetfield(L,2,"compression");
+        p->comp=lua_toboolean(L,-1);
+        lua_pop(L,1);
+        lua_rawgetfield(L,2,"buffer");
+        p->asBuffer=lua_toboolean(L,-1);
+        lua_pop(L,1);
+        lua_rawgetfield(L,2,"mode");
+        p->mode = luaL_optstring(L, -1, "rb");
+        lua_pop(L,1);
+        lua_rawgetfield(L,2,"offset");
+        p->offset = luaL_optunsigned(L, -1, 0);
+        lua_pop(L,1);
+        lua_rawgetfield(L,2,"size");
+        p->size = luaL_optunsigned(L, -1, 0);
+        lua_pop(L,1);
+    }
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    bool isThread=(it!=LuaApplication::tasks_.end());
+    if ((!isThread)||(it->th)||(it->yieldLock)) async=false; //Don't yield if not allowed or already in a real thread
+    taskLock.unlock();
+
+    if (async&&lua_isyieldable(L))
+    {
+        async_.enqueue([=]{
+            fileProcess(p);
+        });
+    }
+    else
+        fileProcess(p);
+    return fileProcessCont(L,0,p);
+}
+
+int LuaApplication::Core_fileSave(lua_State *L) {
+    _FileProcess *p=new _FileProcess();
+    p->filename = luaL_checkstring(L, 1);
+    p->save=true;
+    p->comp=false;
+    bool async=false;
+    size_t bsz;
+    const void * buf=lua_tobuffer(L,2,&bsz);
+    if (!buf)
+        buf=luaL_checklstring(L,2,&bsz);
+    p->data=malloc(bsz);
+    p->dataSize=bsz;
+    p->mode="wb";
+    memcpy(p->data,buf,bsz);
+    if (lua_istable(L,3))
+    {
+        lua_rawgetfield(L,3,"async");
+        async=lua_toboolean(L,-1);
+        lua_pop(L,1);
+        lua_rawgetfield(L,3,"compression");
+        p->comp=lua_toboolean(L,-1);
+        lua_pop(L,1);
+        lua_rawgetfield(L,3,"mode");
+        p->mode = luaL_optstring(L, -1, "wb");
+        lua_pop(L,1);
+        lua_rawgetfield(L,3,"offset");
+        p->offset = luaL_optunsigned(L, -1, 0);
+        lua_pop(L,1);
+    }
+    taskLock.lock();
+    std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();
+    while ((it!=LuaApplication::tasks_.end())&&(it->L!=L)) it++;
+    bool isThread=(it!=LuaApplication::tasks_.end());
+    if ((!isThread)||(it->th)||(it->yieldLock)) async=false; //Don't yield if not allowed or already in a real thread
+    taskLock.unlock();
+
+    if (async&&lua_isyieldable(L))
+    {
+        async_.enqueue([=]{
+            fileProcess(p);
+        });
+    }
+    else
+        fileProcess(p);
+    return fileProcessCont(L,0,p);
+}
+
+size_t LuaApplication::token__parent;
+size_t LuaApplication::token__style;
+size_t LuaApplication::token__Reference;
+size_t LuaApplication::token__Parent;
+size_t LuaApplication::token__Cache;
+size_t LuaApplication::token_application;
+size_t LuaApplication::token__styleUpdates;
+size_t LuaApplication::token_updateStyle;
+
+//LUAU color
+static int lua_color(lua_State* L)
+{
+    double r = luaL_checknumber(L, 1);
+    double g = luaL_checknumber(L, 2);
+    double b = luaL_checknumber(L, 3);
+    double a = luaL_optnumber(L, 4,1);
+    lua_pushcolorf(L, float(r), float(g), float(b), float(a));
+    return 1;
+}
+
+#include "luabindings.luac.c"
 static int bindAll(lua_State* L)
 {
 	Application* application = static_cast<Application*>(lua_touserdata(L, 1));
@@ -299,6 +1046,8 @@ static int bindAll(lua_State* L)
 	StackChecker checker(L, "bindAll", 0);
 
 	setEnvironTable(L);
+    Binder binder(L);
+    binder.initializeState();
 
 	{
 		lua_newtable(L);
@@ -327,7 +1076,16 @@ static int bindAll(lua_State* L)
     luaL_newmetatable(L, "Object");
     luaL_register(L, NULL, functionList);
     lua_setglobal(L, "Object");
-	
+
+    LuaApplication::token__parent=lua_newtoken(L,"__parent");
+    LuaApplication::token__style=lua_newtoken(L,"__style");
+    LuaApplication::token__Reference=lua_newtoken(L,"__Reference");
+    LuaApplication::token__Parent=lua_newtoken(L,"__Parent");
+    LuaApplication::token__Cache=lua_newtoken(L,"__Cache");
+    LuaApplication::token_application=lua_newtoken(L,"application");
+    LuaApplication::token__styleUpdates=lua_newtoken(L,"__styleUpdates");
+    LuaApplication::token_updateStyle=lua_newtoken(L,"updateStyle");
+
 	EventBinder eventBinder(L);
 	EventDispatcherBinder eventDispatcherBinder(L);
 	TimerBinder timerBinder(L);
@@ -335,18 +1093,20 @@ static int bindAll(lua_State* L)
 	SpriteBinder spriteBinder(L);
 	TextureBaseBinder textureBaseBinder(L);
 	TextureBinder textureBinder(L);
-	TexturePackBinder texturePackBinder(L);
-	BitmapDataBinder bitmapDataBinder(L);
+    TexturePackBinder texturePackBinder(L);
+    BitmapDataBinder bitmapDataBinder(L);
 	BitmapBinder bitmapBinder(L);
 	StageBinder stageBinder(L, application);
 	FontBaseBinder fontBaseBinder(L);
 	FontBinder fontBinder(L);
+	CompositeFontBinder compositeFontBinder(L);
 	TTFontBinder ttfontBinder(L);
 	TextFieldBinder textFieldBinder(L);
+    TexturePackFontBinder texturePackFontBinder(L);
 #if TARGET_OS_TV == 0
     AccelerometerBinder accelerometerBinder(L);
 #endif
-	Box2DBinder2 box2DBinder2(L);
+	//Box2DBinder2 box2DBinder2(L);
 	DibBinder dibBinder(L);
 	TileMapBinder tileMapBinder(L);
 	ApplicationBinder applicationBinder(L);
@@ -367,6 +1127,22 @@ static int bindAll(lua_State* L)
     ViewportBinder viewportBinder(L);
     PixelBinder pixelbinder(L);
     ParticlesBinder particlesbinder(L);
+    ScreenBinder screenbinder(L);
+    BufferBinder bufferbinder(L);
+
+    int lres=luaL_loadbuffer(L,(const char *)luabinding_luabindings_luac,sizeof(luabinding_luabindings_luac),"internals");
+#ifdef LUA_IS_LUAU
+    if (lres<0) {
+    	for (int k=1;k<=-lres;k++) {
+			lua_rawgeti(L,-1,k);
+	        lua_call(L, 0, 0);
+    	}
+    	lua_pop(L,1);
+    }
+#else
+    if (lres==0)
+        lua_call(L, 0, 0);
+#endif
 
 	PluginManager& pluginManager = PluginManager::instance();
 	for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
@@ -421,10 +1197,6 @@ static int bindAll(lua_State* L)
     lua_call(L, 1, 1);
     lua_remove(L, -2);
     luaL_rawsetptr(L, LUA_REGISTRYINDEX, &key_CompleteEvent);
-
-#include "property.c.in"
-#include "texturepack.c.in"
-#include "compatibility.c.in"
 
 	lua_newtable(L);
 
@@ -528,6 +1300,31 @@ static int bindAll(lua_State* L)
     lua_pushinteger(L, GINPUT_KEY_9);
     lua_setfield(L, -2, "NUM_9");
 
+    lua_pushinteger(L, GINPUT_KEY_F1);
+    lua_setfield(L, -2, "F1");
+    lua_pushinteger(L, GINPUT_KEY_F2);
+    lua_setfield(L, -2, "F2");
+    lua_pushinteger(L, GINPUT_KEY_F3);
+    lua_setfield(L, -2, "F3");
+    lua_pushinteger(L, GINPUT_KEY_F4);
+    lua_setfield(L, -2, "F4");
+    lua_pushinteger(L, GINPUT_KEY_F5);
+    lua_setfield(L, -2, "F5");
+    lua_pushinteger(L, GINPUT_KEY_F6);
+    lua_setfield(L, -2, "F6");
+    lua_pushinteger(L, GINPUT_KEY_F7);
+    lua_setfield(L, -2, "F7");
+    lua_pushinteger(L, GINPUT_KEY_F8);
+    lua_setfield(L, -2, "F8");
+    lua_pushinteger(L, GINPUT_KEY_F9);
+    lua_setfield(L, -2, "F9");
+    lua_pushinteger(L, GINPUT_KEY_F10);
+    lua_setfield(L, -2, "F10");
+    lua_pushinteger(L, GINPUT_KEY_F11);
+    lua_setfield(L, -2, "F11");
+    lua_pushinteger(L, GINPUT_KEY_F12);
+    lua_setfield(L, -2, "F12");
+
 	lua_pushinteger(L, GINPUT_KEY_SHIFT);
 	lua_setfield(L, -2, "SHIFT");
 	lua_pushinteger(L, GINPUT_KEY_SPACE);
@@ -542,6 +1339,53 @@ static int bindAll(lua_State* L)
 	lua_setfield(L, -2, "ESC");
 	lua_pushinteger(L, GINPUT_KEY_TAB);
 	lua_setfield(L, -2, "TAB");
+	lua_pushinteger(L, GINPUT_KEY_DELETE);
+	lua_setfield(L, -2, "DELETE");
+	lua_pushinteger(L, GINPUT_KEY_INSERT);
+	lua_setfield(L, -2, "INSERT");
+	lua_pushinteger(L, GINPUT_KEY_END);
+	lua_setfield(L, -2, "END");
+	lua_pushinteger(L, GINPUT_KEY_HOME);
+	lua_setfield(L, -2, "HOME");
+	lua_pushinteger(L, GINPUT_KEY_PAGEUP);
+	lua_setfield(L, -2, "PAGE_UP");
+	lua_pushinteger(L, GINPUT_KEY_PAGEDOWN);
+	lua_setfield(L, -2, "PAGE_DOWN");
+	lua_pushinteger(L, GINPUT_KEY_ENTER);
+	lua_setfield(L, -2, "ENTER");
+
+	lua_pushinteger(L, GINPUT_KEY_NUM0);
+	lua_setfield(L, -2, "NUM0");
+	lua_pushinteger(L, GINPUT_KEY_NUM1);
+	lua_setfield(L, -2, "NUM1");
+	lua_pushinteger(L, GINPUT_KEY_NUM2);
+	lua_setfield(L, -2, "NUM2");
+	lua_pushinteger(L, GINPUT_KEY_NUM3);
+	lua_setfield(L, -2, "NUM3");
+	lua_pushinteger(L, GINPUT_KEY_NUM4);
+	lua_setfield(L, -2, "NUM4");
+	lua_pushinteger(L, GINPUT_KEY_NUM5);
+	lua_setfield(L, -2, "NUM5");
+	lua_pushinteger(L, GINPUT_KEY_NUM6);
+	lua_setfield(L, -2, "NUM6");
+	lua_pushinteger(L, GINPUT_KEY_NUM7);
+	lua_setfield(L, -2, "NUM7");
+	lua_pushinteger(L, GINPUT_KEY_NUM8);
+	lua_setfield(L, -2, "NUM8");
+	lua_pushinteger(L, GINPUT_KEY_NUM9);
+	lua_setfield(L, -2, "NUM9");
+	lua_pushinteger(L, GINPUT_KEY_NUMDIV);
+	lua_setfield(L, -2, "NUM_DIV");
+	lua_pushinteger(L, GINPUT_KEY_NUMMUL);
+	lua_setfield(L, -2, "NUM_MUL");
+	lua_pushinteger(L, GINPUT_KEY_NUMSUB);
+	lua_setfield(L, -2, "NUM_SUB");
+	lua_pushinteger(L, GINPUT_KEY_NUMADD);
+	lua_setfield(L, -2, "NUM_ADD");
+	lua_pushinteger(L, GINPUT_KEY_NUMDOT);
+	lua_setfield(L, -2, "NUM_DOT");
+	lua_pushinteger(L, GINPUT_KEY_NUMENTER);
+	lua_setfield(L, -2, "NUM_ENTER");
 
     lua_pushinteger(L, GINPUT_NO_BUTTON);
     lua_setfield(L, -2, "MOUSE_NONE");
@@ -552,23 +1396,87 @@ static int bindAll(lua_State* L)
     lua_pushinteger(L, GINPUT_MIDDLE_BUTTON);
     lua_setfield(L, -2, "MOUSE_MIDDLE");
 
+    lua_pushinteger(L, GINPUT_NO_MODIFIER);
+    lua_setfield(L, -2, "MODIFIER_NONE");
+    lua_pushinteger(L, GINPUT_SHIFT_MODIFIER);
+    lua_setfield(L, -2, "MODIFIER_SHIFT");
+    lua_pushinteger(L, GINPUT_CTRL_MODIFIER);
+    lua_setfield(L, -2, "MODIFIER_CTRL");
+    lua_pushinteger(L, GINPUT_ALT_MODIFIER);
+    lua_setfield(L, -2, "MODIFIER_ALT");
+    lua_pushinteger(L, GINPUT_META_MODIFIER);
+    lua_setfield(L, -2, "MODIFIER_META");
+
 	lua_setglobal(L, "KeyCode");
 
 
 	// correct clock function which is wrong in iphone
 	lua_getglobal(L, "os");
-	lua_pushcfunction(L, os_timer);
+	lua_pushcnfunction(L, os_timer, "timer");
 	lua_setfield(L, -2, "timer");
 	lua_pop(L, 1);
 
 	//coroutines helpers
+    luaL_newmetatable(L,"Signal");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index"); // mt.__index = mt
+    lua_pushcnfunction(L, Signal_wait,"wait");
+    lua_setfield(L, -2, "wait");
+    lua_pushcnfunction(L, Signal_notify,"notify");
+    lua_setfield(L, -2, "notify");
+    lua_pop(L, 1);
+
+    //Color type creator
+    lua_pushcfunction(L, lua_color, "ColorValue");
+    lua_setglobal(L, "ColorValue");
+
 	lua_getglobal(L, "Core");
-	lua_pushcfunction(L, LuaApplication::Core_asyncCall);
-	lua_setfield(L, -2, "asyncCall");
-	lua_pushcfunction(L, LuaApplication::Core_yield);
-	lua_setfield(L, -2, "yield");
-	lua_pushcfunction(L, LuaApplication::Core_frameStatistics);
+    lua_pushcnfunction(L, LuaApplication::Core_asyncCall,"Core.asyncCall");
+    lua_setfield(L, -2, "asyncCall");
+#ifdef __EMSCRIPTEN__
+    lua_pushcnfunction(L, LuaApplication::Core_asyncCall,"Core.asyncCall");
+#else
+    lua_pushcnfunction(L, LuaApplication::Core_asyncThread,"Core.asyncThread");
+#endif
+    lua_setfield(L, -2, "asyncThread");
+    lua_pushcnfunction(L, LuaApplication::Core_signal,"Core.signal");
+    lua_setfield(L, -2, "signal");
+    lua_pushcnfunction(L, LuaApplication::Core_setAutoYield,"Core.setAutoYield");
+    lua_setfield(L, -2, "setAutoYield");
+    lua_pushcnfunction(L, LuaApplication::Core_yield,"Core.yield");
+    lua_setfield(L, -2, "yield");
+    lua_pushcnfunction(L, LuaApplication::Core_yieldable,"Core.yieldable");
+    lua_setfield(L, -2, "yieldable");
+    lua_pushcnfunction(L, LuaApplication::Core_yieldlock,"Core.yieldlock");
+    lua_setfield(L, -2, "yieldlock");
+    lua_pushcnfunction(L, LuaApplication::Core_stopping,"Core.stopping");
+    lua_setfield(L, -2, "stopping");
+    lua_pushcnfunction(L, LuaApplication::Core_frameStatistics,"Core.frameStatistics");
 	lua_setfield(L, -2, "frameStatistics");
+	lua_pushcnfunction(L, LuaApplication::Core_profilerStart, "Core.profilerStart");
+	lua_setfield(L, -2, "profilerStart");
+	lua_pushcnfunction(L, LuaApplication::Core_profilerStop,"Core.profilerStop");
+	lua_setfield(L, -2, "profilerStop");
+	lua_pushcnfunction(L, LuaApplication::Core_profilerReset, "Core.profilerReset");
+	lua_setfield(L, -2, "profilerReset");
+    lua_pushcnfunction(L, LuaApplication::Core_profilerReport, "Core.profilerReport");
+    lua_setfield(L, -2, "profilerReport");
+    lua_pushcnfunction(L, LuaApplication::Core_enableAllocationTracking, "Core.enableAllocationTracking");
+    lua_setfield(L, -2, "enableAllocationTracking");
+    lua_pushcnfunction(L, lua_findreferences, "Core.findReferences");
+    lua_setfield(L, -2, "findReferences");
+    lua_pushcnfunction(L, LuaApplication::Core_getScriptPath, "Core.getScriptPath");
+    lua_setfield(L, -2, "getScriptPath");
+
+    lua_pushcnfunction(L, LuaApplication::Core_fileLoad, "Core.fileLoad");
+    lua_setfield(L, -2, "fileLoad");
+    lua_pushcnfunction(L, LuaApplication::Core_fileSave, "Core.fileSave");
+    lua_setfield(L, -2, "fileSave");
+
+	lua_pushcnfunction(L, LuaApplication::Core_random, "Core.random");
+	lua_setfield(L, -2, "random");
+	lua_pushcnfunction(L, LuaApplication::Core_randomSeed, "Core.randomSeed");
+	lua_setfield(L, -2, "randomSeed");
 	lua_pop(L, 1);
 
 	// register collectgarbagelater
@@ -580,6 +1488,7 @@ static int bindAll(lua_State* L)
 	return 0;
 }
 
+ThreadPool LuaApplication::async_(1);
 LuaApplication::LuaApplication(void)
 {
     L = luaL_newstate();
@@ -616,37 +1525,47 @@ void LuaApplication::callback(int type, void *event)
     if (type == GINPUT_MOUSE_DOWN_EVENT)
     {
         ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
-        application_->mouseDown(event2->x, event2->y, event2->button);
+        application_->mouseDown(event2->x, event2->y, event2->button, event2->modifiers, event2->mouseType);
     }
     else if (type == GINPUT_MOUSE_MOVE_EVENT)
     {
         ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
-        application_->mouseMove(event2->x, event2->y, event2->button);
+        application_->mouseMove(event2->x, event2->y, event2->button, event2->modifiers, event2->mouseType);
     }
     else if (type == GINPUT_MOUSE_HOVER_EVENT)
     {
         ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
-        application_->mouseHover(event2->x, event2->y, event2->button);
+        application_->mouseHover(event2->x, event2->y, event2->button, event2->modifiers, event2->mouseType);
     }
     else if (type == GINPUT_MOUSE_UP_EVENT)
     {
         ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
-        application_->mouseUp(event2->x, event2->y, event2->button);
+        application_->mouseUp(event2->x, event2->y, event2->button, event2->modifiers, event2->mouseType);
     }
     else if (type == GINPUT_MOUSE_WHEEL_EVENT)
     {
         ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
-        application_->mouseWheel(event2->x, event2->y, event2->wheel);
+        application_->mouseWheel(event2->x, event2->y, event2->wheel, event2->modifiers);
+    }
+    else if (type == GINPUT_MOUSE_ENTER_EVENT)
+    {
+        ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
+        application_->mouseEnter(event2->x, event2->y, event2->button, event2->modifiers);
+    }
+    else if (type == GINPUT_MOUSE_LEAVE_EVENT)
+    {
+        ginput_MouseEvent *event2 = (ginput_MouseEvent*)event;
+        application_->mouseLeave(event2->x, event2->y, event2->modifiers);
     }
     else if (type == GINPUT_KEY_DOWN_EVENT)
     {
         ginput_KeyEvent *event2 = (ginput_KeyEvent*)event;
-        application_->keyDown(event2->keyCode, event2->realCode);
+        application_->keyDown(event2->keyCode, event2->realCode,event2->modifiers);
     }
     else if (type == GINPUT_KEY_UP_EVENT)
     {
         ginput_KeyEvent *event2 = (ginput_KeyEvent*)event;
-        application_->keyUp(event2->keyCode, event2->realCode);
+        application_->keyUp(event2->keyCode, event2->realCode,event2->modifiers);
     }
     else if (type == GINPUT_KEY_CHAR_EVENT)
     {
@@ -677,7 +1596,7 @@ void LuaApplication::callback(int type, void *event)
     {
         PluginManager& pluginManager = PluginManager::instance();
         for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
-            if (pluginManager.plugins[i].foreground)
+            if (pluginManager.plugins[i].suspend)
                 pluginManager.plugins[i].suspend(L);
 
         TimerContainer *timerContainer = application_->getTimerContainer();
@@ -694,7 +1613,7 @@ void LuaApplication::callback(int type, void *event)
 
         PluginManager& pluginManager = PluginManager::instance();
         for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
-            if (pluginManager.plugins[i].foreground)
+            if (pluginManager.plugins[i].resume)
                 pluginManager.plugins[i].resume(L);
 
         Event event(Event::APPLICATION_RESUME);
@@ -704,7 +1623,7 @@ void LuaApplication::callback(int type, void *event)
     {
         PluginManager& pluginManager = PluginManager::instance();
         for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
-            if (pluginManager.plugins[i].foreground)
+            if (pluginManager.plugins[i].background)
                 pluginManager.plugins[i].background(L);
 
         Event event(Event::APPLICATION_BACKGROUND);
@@ -728,6 +1647,22 @@ void LuaApplication::callback(int type, void *event)
         for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
             if (pluginManager.plugins[i].openUrl)
                 pluginManager.plugins[i].openUrl(L, event2->url);
+        OpenUrlEvent eventg(OpenUrlEvent::OPEN_URL,event2->url);
+        application_->broadcastEvent(&eventg);
+    }
+    else if (type == GAPPLICATION_TEXT_INPUT_EVENT)
+    {
+        gapplication_TextInputEvent *event2 = (gapplication_TextInputEvent*)event;
+        TextInputEvent eventg(TextInputEvent::TEXT_INPUT,event2->text,event2->context,event2->selStart,event2->selEnd);
+        application_->broadcastEvent(&eventg);
+    }
+    else if (type == GAPPLICATION_PERMISSION_EVENT)
+    {
+        gapplication_PermissionEvent *event2 = (gapplication_PermissionEvent*)event;
+        PermissionEvent eventg(PermissionEvent::PERMISSION);
+        for (int i=0;i<event2->count;i++)
+            eventg.permissions[event2->perms[i]]=event2->status[i];
+        application_->broadcastEvent(&eventg);
     }
     else if (type == GAPPLICATION_MEMORY_LOW_EVENT)
     {
@@ -753,6 +1688,382 @@ void LuaApplication::callback(int type, void *event)
         StageOrientationEvent event(StageOrientationEvent::ORIENTATION_CHANGE, event2->orientation);
         application_->broadcastEvent(&event);
     }
+}
+
+void LuaApplication::resetStyleCache()
+{
+    styleCache.unitS=F_NAN;
+    styleCache.unitIs=F_NAN;
+}
+
+struct LuaApplication::_StyleCache LuaApplication::styleCache;
+int LuaApplication::getStyleTable(lua_State *L,int sprIndex)
+{
+    lua_rawgettoken(L,sprIndex,token__style);
+	bool lpop=false;
+	while (lua_isnil(L,-1)) {
+		lua_pop(L,1);
+        lua_rawgettoken(L, sprIndex, token__parent);
+		if (lua_isnil(L,-1))
+			break;
+		if (lpop) lua_remove(L,-2);
+        lua_rawgettoken(L,-1,token__style);
+		sprIndex=-1;
+		lpop=true;
+	}
+	if (lpop) lua_remove(L,-2);
+	return 1;
+}
+
+int LuaApplication::resolveStyle(lua_State *L,const char *key,int luaIndex)
+{
+    //Style table is expected to be at top of stack
+    return resolveStyleInternal(L,key,luaIndex);
+}
+
+static char emptyValue;
+void LuaApplication::cacheComputedStyle(lua_State *L, const char *key, bool empty) { //Tr,val
+    if (lua_rawgettoken(L,-2,token__Cache)==LUA_TTABLE) {
+        if (empty)
+            lua_pushlightuserdata(L,&emptyValue);
+        else
+            lua_pushvalue(L,-2);
+        lua_rawsetfield(L,-2,key);
+    }
+    lua_pop(L,1);
+}
+
+#include "fontbasebinder.h"
+#include <fontbase.h>
+#include <luautil.h>
+int LuaApplication::resolveStyleInternal(lua_State *L,const char *key,int luaIndex, int limit, bool recursed, bool allowPrimary)
+{
+    if (limit>1000) {
+        lua_pushfstringL(L,"Recursion while resolving style: %s",key);
+        lua_error(L);
+        return LUA_TNIL;
+    }
+
+    //Expected callStack: style table
+	if (luaIndex>0) luaIndex=0;
+    if ((!key)&&luaIndex) key=lua_tolstring(L,luaIndex,NULL);
+    if (!key) {
+        lua_pushfstringL(L,"Key is nil in resolveStyle");
+        lua_error(L);
+    }
+    if (!lua_istable(L,-1))
+    {
+        lua_pushfstringL(L,"Style table is invalid (%s), while looking for key: %s",lua_typename(L,lua_type(L,-1)),key);
+        lua_error(L);
+    }
+    lua_checkstack(L,8);
+
+    int rtype;
+    if ((!recursed)||allowPrimary) { //If we're not looking up a reference
+        int klen=strlen(key);
+        if (((*key)=='|')||((klen>3)&&((key[klen-4]=='.')&&(
+                                           ((key[klen-3]=='p')&&(key[klen-2]=='n')&&(key[klen-1]=='g'))||
+                                           ((key[klen-3]=='j')&&(key[klen-2]=='p')&&(key[klen-1]=='g'))
+                                           ))))
+        {
+            //File, return as is
+            lua_pop(L,1);
+            if (luaIndex)
+                lua_pushvalue(L,luaIndex+1);
+            else
+                lua_pushlstring(L,key,klen);
+            return LUA_TSTRING;
+        }
+        const char *kk=key;
+        if ((*key)=='=') { //Maths
+        	kk++;
+            while ((*kk)&&((*kk)!='+')&&((*kk)!='-')&&((*kk)!='/')&&((*kk)!='*')&&((*kk)!=':')) kk++;
+            if ((*kk)&&(kk[1])&&(kk!=(key+1))) {
+                //Basic maths
+            	std::string op1s(key+1,kk-key-1);
+                lua_pushvalue(L,-1);
+                if (resolveStyleInternal(L,op1s.c_str(),0,limit+1,true)==LUA_TNIL)
+                {
+                    lua_pushfstringL(L,"Style not recognized: %s",op1s.c_str());
+                    lua_error(L);
+                }
+                if ((*kk)==':') {
+                    kk++;
+                    const char *ks=kk;
+                    while ((*kk)&&((*kk)!=':')) kk++;
+                    if ((*kk)==0) {
+                        lua_pushfstringL(L,"Operator end not found in function '%s'",key);
+                        lua_error(L);
+                    }
+                    std::string lOp=std::string(ks,kk-ks);
+                    int nargs=1;
+                    while (*kk) { //Push extra args
+                        kk++;
+                        const char *ks=kk;
+                        while ((*kk)&&((*kk)!=':')) kk++;
+                        std::string larg=std::string(ks,kk-ks);
+                        lua_pushvalue(L,-1-nargs);
+                        if (resolveStyleInternal(L,larg.c_str(),0,limit+1,true,true)==LUA_TNIL)
+                        {
+                            lua_pushfstringL(L,"Style not recognized: %s",larg.c_str());
+                            lua_error(L);
+                        }
+                        nargs++;
+                    }
+                    if ((lOp=="alpha")&&(nargs==2)) {
+                        float col[4]={0,0,0,0};
+                        lua_tocolorf(L,-2,col,1);
+                        float c[4]={0,0,0,0};
+                        if (lua_tocolorf(L,-1,c,0))
+                            col[3]=c[3];
+                        else
+                            col[3]=lua_tonumber(L,-1);
+                        lua_pop(L,3);
+                        lua_pushcolorf(L,col[0],col[1],col[2],col[3]);
+                        return LUA_TCOLOR;
+                    }
+                    else if ((lOp=="mix")&&(nargs==3)) {
+                        float c1[4]={0,0,0,0};
+                        lua_tocolorf(L,-3,c1,1);
+                        float c2[4]={0,0,0,0};
+                        lua_tocolorf(L,-2,c2,1);
+                        float a=lua_tonumber(L,-1);
+                        float b=1-a;
+                        lua_pop(L,4);
+                        lua_pushcolorf(L,c1[0]*a+c2[0]*b,c1[1]*a+c2[1]*b,c1[2]*a+c2[2]*b,c1[3]*a+c2[3]*b);
+                        return LUA_TCOLOR;
+                    }
+                    else if ((lOp=="brightness")&&(nargs==2)) {
+                        float col[4]={0,0,0,0};
+                        lua_tocolorf(L,-2,col,1);
+                        float b=lua_tonumber(L,-1);
+                        float o=(b<0)?1:0;
+                        lua_pop(L,3);
+                        col[0]=col[0]*b+o;
+                        col[1]=col[1]*b+o;
+                        col[2]=col[2]*b+o;
+                        if (col[0]<0) col[0]=0;
+                        if (col[0]>1) col[0]=1;
+                        if (col[1]<0) col[1]=0;
+                        if (col[1]>1) col[1]=1;
+                        if (col[2]<0) col[2]=0;
+                        if (col[2]>1) col[2]=1;
+                        lua_pushcolorf(L,col[0],col[1],col[2],col[3]);
+                        return LUA_TCOLOR;
+                    }
+                    else
+                    {
+                        lua_pushfstringL(L,"Unknown Operator '%s' or wrong args (%d) in style function '%s'",lOp.c_str(),nargs,key);
+                        lua_error(L);
+                    }
+                }
+                else {
+                    double op1=lua_tonumber(L,-1);
+                    lua_pop(L,1);
+                    if (resolveStyleInternal(L,kk+1,0,limit+1,true)==LUA_TNIL)
+                    {
+                        lua_pushfstringL(L,"Style not recognized: %s",kk+1);
+                        lua_error(L);
+                    }
+                    double op2=lua_tonumber(L,-1);
+                    lua_pop(L,1);
+                    double num;
+                    switch (kk[0]) {
+                    case '+': num=op1+op2; break;
+                    case '-': num=op1-op2; break;
+                    case '*': num=op1*op2; break;
+                    case '/': num=op1/op2; break;
+                    default: num=0;
+                    }
+                    lua_pushnumber(L,num);
+                    return LUA_TNUMBER;
+                }
+            }
+        }
+        kk=key;
+        while ((((*kk)>='0')&&((*kk)<='9'))||((*kk)=='-')||((*kk)=='.')) kk++;
+        if (kk>key) {
+            //Number-String: check for a unit
+            if (kk[0]==0) {
+                //Not suffix, just convert to number
+                lua_pop(L,1);
+                lua_pushnumber(L,strtod(key,NULL));
+                return LUA_TNUMBER;
+            }
+            else if ((kk[0]=='e')&&(kk[1]=='m')&&(kk[2]==0)) {
+                Binder binder(L);
+                if (resolveStyleInternal(L,"font",0,limit+1,true)==LUA_TNIL)
+                {
+                    lua_pushfstringL(L,"Font not found for computing: %s",key);
+                    lua_error(L);
+                }
+                FontBase *font = static_cast<FontBase*>(binder.getInstance("FontBase", -1));
+                lua_Number num=font->getLineHeight();
+                lua_pop(L,1);
+                lua_pushnumber(L,num*strtod(key,NULL));
+                return LUA_TNUMBER;
+            }
+            else {
+                float num=F_NAN;
+                if ((kk[0]=='s')&&(kk[1]==0)) // Cached-'s'
+                    num=styleCache.unitS;
+                else if ((kk[0]=='i')&&(kk[1]=='s')&&(kk[2]==0)) // Cached-'is'
+                    num=styleCache.unitIs;
+                if (isnan(num)) {
+                    char unitName[32+6]="unit.";
+                    strncpy(unitName+5,kk,32);
+                    unitName[32+5]=0;
+                    if (resolveStyleInternal(L,unitName,0,limit+1,true)==LUA_TNIL)
+                    {
+                        lua_pushfstringL(L,"Unit not recognized: %s",kk);
+                        lua_error(L);
+                    }
+                    num=lua_tonumber(L,-1);
+                    if ((kk[0]=='s')&&(kk[1]==0)) // Cached-'s'
+                        styleCache.unitS=num;
+                    else if ((kk[0]=='i')&&(kk[1]=='s')&&(kk[2]==0)) // Cached-'is'
+                        styleCache.unitIs=num;
+                }
+                lua_pop(L,1);
+                lua_pushnumber(L,num*strtod(key,NULL));
+                return LUA_TNUMBER;
+            }
+        }
+    }
+
+    //Check cache
+    bool hasCache=false;
+    if (lua_rawgettoken(L,-1,token__Cache)==LUA_TTABLE) {
+        hasCache=true;
+        if (luaIndex) {
+            lua_pushvalue(L,luaIndex-1); //Tc,C,key
+            rtype=lua_rawget(L,-2); //Tc,C,Tr
+        }
+        else
+            rtype=lua_rawgetfield(L,-1,key); //Tc,C,Tr
+        if ((rtype==LUA_TLIGHTUSERDATA)&&(lua_tolightuserdata(L,-1)==&emptyValue)) {
+            lua_pop(L,3);
+            lua_pushnil(L);
+            return LUA_TNIL;
+        }
+        if (rtype!=LUA_TNIL) {
+            lua_remove(L,-2);
+            lua_remove(L,-2);
+            return rtype;
+        }
+        lua_pop(L,2);
+    }
+    else
+        lua_pop(L,1);
+
+    //Check if current table is a reference
+    if (lua_rawgettoken(L,-1,token__Reference)==LUA_TSTRING) { //Tc,Tc[Ref]
+        rtype=lua_rawgettoken(L,-2,token__Parent); //Tc,Key,Tc[Parent]
+        if (rtype==LUA_TTABLE)
+            rtype=resolveStyleInternal(L,NULL,-2,limit+1,true); //Tc,Key,Tr
+        if (rtype!=LUA_TTABLE)
+        {
+            lua_pushfstringL(L,"Reference doesn't resolve to a table: %s",lua_tolstring(L,-2,NULL));
+            lua_error(L);
+        }
+        lua_remove(L,-2); //Tc,Tr
+        //Lookup in reference
+        if (luaIndex) {
+            lua_pushvalue(L,luaIndex-1); //Tc,Tr,key
+            rtype=lua_gettable(L,-2); //Tc,Tr,Tr[key]
+        }
+        else
+            rtype=lua_getfield(L,-1,key); //Tc,Tr,Tr[key]
+        lua_remove(L,-2); //Tc,Tr[key]
+    }
+    else {
+        lua_pop(L,1); //Tc
+        rtype=lua_getfield(L,-1,key); //Tc,Tc[key]
+    }
+    //Check Parent if nil
+    if (rtype==LUA_TNIL) {
+        lua_pop(L,1); //Tc
+        rtype=lua_rawgettoken(L,-1,token__Parent); //Tc,Tc[Parent]
+        if (rtype==LUA_TSTRING) {
+            //Parent is a string, look it up
+            lua_pushvalue(L,-2); //Tc,Key,Tc
+            rtype=resolveStyleInternal(L,NULL,-2,limit+1,true); //Tc,Key,Tr
+            lua_remove(L,-2); //Tc,Tr
+        }
+        if (rtype==LUA_TNIL) {
+            //Nothing, return nil
+            lua_remove(L,-2);
+            return rtype;
+        }
+        if (rtype!=LUA_TTABLE)
+        {
+            lua_pushfstringL(L,"Parent style isn't a table while resolving: %s",key);
+            lua_error(L);
+        }
+        //Tc,Tc[parent] or Tr
+        //Recurse in parent
+        rtype=resolveStyleInternal(L,key,luaIndex?luaIndex-1:0,limit+1); //Tc,Tr
+    }
+    while ((rtype==LUA_TSTRING)&&(recursed||!limit)) {
+        //Got a string, re-run full key processing
+        const char *skey=lua_tolstring(L,-1,NULL); //Tc,Key
+        lua_pushvalue(L,-2); //Tc,Key,Tc
+        //Recurse
+        rtype=resolveStyleInternal(L,skey,-2,limit+1); //Tc,Key,Tr
+        lua_remove(L,-2); //Tc,Tr
+    }
+    if (hasCache)
+        cacheComputedStyle(L,key,rtype==LUA_TNIL);
+    lua_remove(L,-2); //Tc[key]
+    return rtype;
+}
+
+void LuaApplication::resolveColor(lua_State *L,int spriteIdx, int colIdx, float *color, std::string &cache)
+{
+    int idx=colIdx;
+    if (colIdx&&(lua_type(L,colIdx)==LUA_TSTRING)) {
+        cache=lua_tolstring(L,colIdx,NULL);
+        colIdx=0;
+    }
+    if (!colIdx) {
+    	getStyleTable(L,spriteIdx);
+        resolveStyle(L,cache.c_str(),0);
+        idx=-1;
+    }
+    switch (lua_type(L,idx)) {
+    case LUA_TVECTOR:
+    case LUA_TNUMBER:
+    case LUA_TCOLOR:
+    {
+        lua_tocolorf(L,idx,color,1);
+        break;
+    }
+    case LUA_TUSERDATA:
+    {
+        int64_t c=luaL_checkint64(L,idx);
+
+        color[0]= (1.0/255)*((c >> 16) & 0xff);
+        color[1]= (1.0/255)*((c >> 8) & 0xff);
+        color[2]= (1.0/255)*((c >> 0) & 0xff);
+        color[3]= (1.0/255)*((c >> 24) & 0xff);
+        break;
+    }
+    case LUA_TNIL:
+    {
+        color[0]=0;
+        color[1]=0;
+        color[2]=0;
+        color[3]=0;
+        break;
+    }
+    default:
+        lua_pushfstringL(L,"Cannot turn %s into a color at index %d with name '%s'",lua_typename(L,lua_type(L,idx)),colIdx,cache.c_str());
+        lua_error(L);
+    }
+
+    //luaL_checkvector(L,idx);
+    if (!colIdx)
+        lua_pop(L,1);
 }
 
 /*
@@ -793,7 +2104,6 @@ static void maxmem()
 }
 */
 
-
 static tlsf_t memory_pool = NULL;
 static void *memory_pool_end = NULL;
 
@@ -802,7 +2112,15 @@ static void g_free(void *ptr)
     if (memory_pool <= ptr && ptr < memory_pool_end)
         tlsf_free(memory_pool, ptr);
     else
-        ::free(ptr);
+        ::free(((char *)ptr)-16);
+}
+
+static size_t g_getsize(void *ptr)
+{
+    if (memory_pool <= ptr && ptr < memory_pool_end)
+        return tlsf_block_size(ptr);
+    else
+    	return *(((size_t *)ptr)-1);
 }
 
 static void *g_realloc(void *ptr, size_t osize, size_t size)
@@ -819,7 +2137,11 @@ static void *g_realloc(void *ptr, size_t osize, size_t size)
             p = tlsf_malloc(memory_pool, size);
 
         if (p == NULL)
-            p = ::malloc(size);
+        {
+            p = ((char *)::malloc(size+16))+16; //Ensure 16B alignment
+            size_t *ps = ((size_t *)p)-1;
+            *ps=size;
+        }
     }
     else
     {
@@ -830,35 +2152,37 @@ static void *g_realloc(void *ptr, size_t osize, size_t size)
 
             if (p == NULL)
             {
-                p = ::malloc(size);
+                p=((char *)::malloc(size+16))+16;
+                size_t *ps = ((size_t *)p)-1;
+                *ps=size;
                 memcpy(p, ptr, osize);
                 tlsf_free(memory_pool, ptr);
             }
         }
         else
         {
-            p = ::realloc(ptr, size);
+            p = ((char *)::realloc(((char*)ptr)-16, size+16))+16;
+            size_t *ps = ((size_t *)p)-1;
+            *ps=size;
         }
     }
 
     return p;
 }
 
-#if EMSCRIPTEN //TLSF has issues with emscripten, disable til I know more...
-static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
+//#define NO_MEMCACHE
+#ifndef NO_MEMCACHE //for testing purposes
+class MemCacheLua : public MemCache
 {
-    (void)ud;
-    (void)osize;
-    if (nsize == 0)
-    {
-        free(ptr);
-        return NULL;
-    }
-    else
-        return realloc(ptr, nsize);
-}
-#else
-static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
+public:
+	MemCacheLua();
+	void *MasterAllocateMemory(size_t Size);
+	void MasterFreeMemory(void *Memory);
+	size_t MasterGetSize(void *Memory);
+	void *MasterResizeMemory(void *Old,size_t Size);
+};
+
+MemCacheLua::MemCacheLua()
 {
     if (memory_pool == NULL)
     {
@@ -867,16 +2191,61 @@ static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
         memory_pool = tlsf_create_with_pool(malloc(mpsize), mpsize);
         memory_pool_end = (char*)memory_pool + mpsize;
     }
+    Reset();
+}
 
+void *MemCacheLua::MasterAllocateMemory(size_t Size)
+{
+	return g_realloc(NULL, 0, Size);
+}
+
+void MemCacheLua::MasterFreeMemory(void *Memory)
+{
+	return g_free(Memory);
+}
+
+void *MemCacheLua::MasterResizeMemory(void *Memory,size_t Size)
+{
+	return g_realloc(Memory,g_getsize(Memory),Size);
+}
+
+
+size_t MemCacheLua::MasterGetSize(void *Memory)
+{
+	return g_getsize(Memory);
+}
+
+static MemCacheLua luamem;
+#endif
+
+static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
+{
+    (void)ud;
+    (void)osize;
+    void *ret=NULL;
+#ifdef NO_MEMCACHE
     if (nsize == 0)
     {
-        g_free(ptr);
-        return NULL;
+    	if (ptr)
+            free(ptr);
     }
+    else if (ptr==NULL)
+        ret=malloc(nsize);
     else
-        return g_realloc(ptr, osize, nsize);
-}
+        ret=realloc(ptr, nsize);
+#else
+    if (nsize == 0)
+    {
+    	if (ptr)
+            luamem.FreeMemory(ptr);
+    }
+    else if (ptr==NULL)
+        ret=luamem.AllocateMemory(nsize);
+    else
+        ret=luamem.ResizeMemory(ptr, nsize);
 #endif
+    return ret;
+}
 
 //int renderScene(lua_State* L);
 //int mouseDown(lua_State* L);
@@ -886,8 +2255,6 @@ static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 //int touchesMoved(lua_State* L);
 //int touchesEnded(lua_State* L);
 //int touchesCancelled(lua_State* L);
-
-
 
 static int callFile(lua_State* L)
 {
@@ -910,9 +2277,16 @@ void LuaApplication::loadFile(const char* filename, GStatus *status)
 
     void *pool = application_->createAutounrefPool();
 
-    lua_pushcfunction(L, ::callFile);
+    lua_pushcnfunction(L, ::callFile, "callFile");
+    std::string chunkname=filename;
+    const char *suffix=".gideros_merged";
+    int filenamesz=chunkname.length();
+    int suffixlen=strlen(suffix);
+    if ((filenamesz>suffixlen)&&(!strcmp(suffix,filename+filenamesz-suffixlen)))
+    	chunkname.resize(filenamesz-suffixlen);
 
-    if (luaL_loadfile(L, filename))
+    int lres=luaL_loadfilenamed(L, filename, chunkname.c_str());
+    if (lres>0)
 	{
 		if (exceptionsEnabled_ == true)
 		{
@@ -923,18 +2297,26 @@ void LuaApplication::loadFile(const char* filename, GStatus *status)
         application_->deleteAutounrefPool(pool);
         return;
 	}
-
-    if (lua_pcall_traceback(L, 1, 0, 0))
-	{
-		if (exceptionsEnabled_ == true)
-		{
-            if (status)
-                *status = GStatus(1, lua_tostring(L, -1));
-		}
-        lua_pop(L, 1);
-        application_->deleteAutounrefPool(pool);
-        return;
-    }
+#ifdef LUA_IS_LUAU
+	for (int k=1;k<=-lres;k++) {
+        lua_pushvalue(L,-2);
+        lua_rawgeti(L,-2,k);
+#endif
+        if (lua_pcall_traceback(L, 1, 0, 0))
+        {
+            if (exceptionsEnabled_ == true)
+            {
+                if (status)
+                    *status = GStatus(1, lua_tostring(L, -1));
+            }
+            lua_pop(L, 1-lres);
+            application_->deleteAutounrefPool(pool);
+            return;
+        }
+#ifdef LUA_IS_LUAU
+	}
+    lua_pop(L,2);
+#endif
     application_->deleteAutounrefPool(pool);
 }
 
@@ -950,6 +2332,7 @@ LuaApplication::~LuaApplication(void)
 
 void LuaApplication::deinitialize()
 {
+	Core_profilerStop(L);
 	/*
 		Application icindeki stage'in iki tane sahibi var.
 		1-Application
@@ -967,17 +2350,35 @@ void LuaApplication::deinitialize()
 
 	application_->releaseView();
 
+    //Interrupt plugins
+    taskStopping=true;
+    PluginManager& pluginManager = PluginManager::instance();
+    for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
+        if (pluginManager.plugins[i].interrupt)
+            pluginManager.plugins[i].interrupt(L);
+
 	//Release all async tasks
-	for (std::deque<LuaApplication::AsyncLuaTask>::iterator it=LuaApplication::tasks_.begin();it!=LuaApplication::tasks_.end();++it)
-		luaL_unref(L,LUA_REGISTRYINDEX,(*it).taskRef);
-	tasks_.clear();
+    taskLock.lock();
+    frameWake.notify_all();
+    while (!tasks_.empty()) {
+        AsyncLuaTask t=tasks_.front();
+        if (t.th) {
+            taskLock.unlock();
+            t.th->join();
+            taskLock.lock();
+        }
+        tasks_.pop_front();
+        luaL_unref(L,LUA_REGISTRYINDEX,t.taskRef);
+    }
+    taskStopping=false;
+    taskLock.unlock();
 
-	PluginManager& pluginManager = PluginManager::instance();
-	for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
-        pluginManager.plugins[i].main(L, 1);
+    for (size_t i = 0; i < pluginManager.plugins.size(); ++i)
+        pluginManager.plugins[i].main(L, 1); //unregister plugins
 
-	lua_close(L);
-	L = NULL;
+    lua_close(L);
+    L = NULL;
+    globalLuaState=NULL;
 
 	delete application_;
     application_ = NULL;
@@ -997,10 +2398,61 @@ void LuaApplication::deinitialize()
 
 static int tick(lua_State *L)
 {
+    G_UNUSED(L);
     gevent_Tick();
     return 0;
 }
 
+static int updateStyles(lua_State *L) {
+    LuaApplication *luaApplication = static_cast<LuaApplication*>(luaL_getdata(L));
+    luaApplication->resetStyleCache();
+
+    /* perform style updating */
+    lua_rawgettoken(L,LUA_GLOBALSINDEX, LuaApplication::token_application);
+    int npop=1;
+    if (!lua_isnil(L,-1))
+    {
+        lua_rawgettoken(L,-1,LuaApplication::token__styleUpdates);
+        npop++;
+        if (!lua_isnil(L,-1))
+        {
+            lua_pushnil(L);
+            lua_rawsettoken(L,-3,LuaApplication::token__styleUpdates);
+            int iter=0;
+            while ((iter=lua_rawiter(L,-1,iter))>=0) {
+                lua_pop(L,1); //No need for sprite itself
+                lua_gettoken(L,-1,LuaApplication::token_updateStyle);
+                lua_insert(L,-2);
+                lua_call(L,1,0);
+            }
+        }
+    }
+    lua_pop(L,npop);
+    return 0;
+}
+
+void LuaApplication::applyStyles()
+{
+    updateStyles(globalLuaState);
+}
+
+static int updateLayout(lua_State *L) {
+    LuaApplication *luaApplication = static_cast<LuaApplication*>(luaL_getdata(L));
+    Application *application = luaApplication->getApplication();
+    application->stage()->validateLayout();
+    return 0;
+}
+
+static int updateEffects(lua_State *L) {
+    LuaApplication *luaApplication = static_cast<LuaApplication*>(luaL_getdata(L));
+    Application *application = luaApplication->getApplication();
+    RENDER_DO([=] {
+        application->stage()->validateEffects();
+    });
+    return 0;
+}
+
+bool LuaApplication::hasStyleUpdate=false;
 static int enterFrame(lua_State* L)
 {
     StackChecker checker(L, "enterFrame", 0);
@@ -1023,7 +2475,24 @@ static int enterFrame(lua_State* L)
 
     application->enterFrame();
 
-	return 0;
+
+    if (LuaApplication::hasStyleUpdate) {
+        LuaApplication::hasStyleUpdate=false;
+        lua_pushcnfunction(L,updateStyles,"gideros_updateStyles");
+        lua_call(L,0,0);
+    }
+
+    if (application->stage()->needLayout) {
+        lua_pushcnfunction(L,updateLayout,"gideros_updateLayout");
+        lua_call(L,0,0);
+    }
+
+    if (application->stage()->spriteWithEffectCount) {
+        lua_pushcnfunction(L,updateEffects,"gideros_updateEffects");
+        lua_call(L,0,0);
+    }
+
+    return 0;
 }
 
 void LuaApplication::tick(GStatus *status)
@@ -1047,14 +2516,27 @@ void LuaApplication::tick(GStatus *status)
 }
 
 static double yieldHookLimit;
-
+#ifdef LUA_IS_LUAU
+static void yieldHook(lua_State* L, int gc) {
+    if ((gc==-1)&&lua_isyieldable(L)&&(iclock() >= yieldHookLimit)) {
+        L->status=LUA_YIELD;
+    }
+}
+#else
 static void yieldHook(lua_State *L,lua_Debug *ar)
 {
 	//glog_i("YieldHook:%f %f\n",iclock(),yieldHookLimit);
 	if (ar->event == LUA_HOOKRET)
 	{
-		if (iclock() >= yieldHookLimit)
-			lua_sethook(L, yieldHook, LUA_MASKCOUNT, 1);
+		if (LuaApplication::debuggerHook&&(LuaApplication::debuggerBreak&LUA_MASKRET))
+		{
+            lua_getinfo(L, "lS", ar);
+			LuaApplication::debuggerHook(LuaApplication::debuggerContext,L,ar);
+		}
+        if (iclock() >= yieldHookLimit) {
+            LuaDebugging::yieldHookMask=LUA_MASKCOUNT;
+			lua_sethook(L, yieldHook, LUA_MASKCOUNT | (LuaApplication::debuggerBreak&DBG_MASKLUA), 1);
+        }
 	}
 	else if (ar->event == LUA_HOOKCOUNT)
 	{
@@ -1062,10 +2544,43 @@ static void yieldHook(lua_State *L,lua_Debug *ar)
 		{
 			if (lua_canyield(L))
 				lua_yield(L, 0);
-			else
-				lua_sethook(L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT, 1000);
+            else {
+                LuaDebugging::yieldHookMask=LUA_MASKRET | LUA_MASKCOUNT;
+                lua_sethook(L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT | (LuaApplication::debuggerBreak&DBG_MASKLUA), 1000);
+            }
 		}
 	}
+	else if (ar->event == LUA_HOOKLINE)
+	{
+		lua_getinfo(L, "l", ar);
+		if (LuaApplication::debuggerHook&&(LuaApplication::debuggerBreak&LUA_MASKLINE)&&
+				(!(LuaApplication::debuggerBreak&DBG_MASKBREAK)||LuaApplication::breakpoints[ar->currentline]))
+		{
+			lua_getinfo(L, "S", ar); //Possible match, resolve source name and let debuggerHook decide
+			LuaApplication::debuggerHook(LuaApplication::debuggerContext,L,ar);
+		}
+		else {
+			if (ar->currentline!=LuaDebugging::lastLine)
+				LuaDebugging::lastLine=0;
+		}
+	}
+	else if (ar->event == LUA_HOOKCALL)
+	{
+		if (LuaApplication::debuggerHook&&(LuaApplication::debuggerBreak&LUA_MASKCALL))
+		{
+            lua_getinfo(L, "lS", ar);
+			LuaApplication::debuggerHook(LuaApplication::debuggerContext,L,ar);
+		}
+	}
+}
+#endif
+bool LuaApplication::onDemandDraw(bool &now) {
+    bool onDemand=application_->onDemandDraw(now);
+    if (onDemand) {
+        meanFrameTime_=.016;
+        meanFreeTime_=.015;
+    }
+    return onDemand;
 }
 
 void LuaApplication::enterFrame(GStatus *status)
@@ -1092,58 +2607,121 @@ void LuaApplication::enterFrame(GStatus *status)
         lua_pop(L, 1);
     }
 
-    //Schedule Tasks, at least one task should be runn no matter if there is enough time or not
-	if ((meanFrameTime_ >= 0.01)&&(meanFrameTime_<=0.1)) //If frame rate is between 10Hz and 100Hz
+    //Schedule Tasks, at least one task should be run no matter if there is enough time or not
+    taskLock.lock();
+    bool hasThreads=false;
+    if ((meanFrameTime_ >= 0.01)&&(meanFrameTime_<=0.1)) //If frame rate is between 10Hz and 100Hz
 	{
 		double taskStart = iclock();
 		double timeLimit = taskStart + meanFreeTime_*0.9; //Limit ourselves t 90% of free time
 		yieldHookLimit = timeLimit;
-		int loops = 0;
-		while (!tasks_.empty())
+        size_t loops = 0;
+        size_t ntasks=tasks_.size();
+		while ((!tasks_.empty())&&(!status->error()))
 		{
-			AsyncLuaTask t = tasks_.front();
-			tasks_.pop_front();
-			tasks_.push_back(t);
+            AsyncLuaTask t = tasks_.front();
+            if (t.th) {
+                //This is a full thread task, don't consider it for resume
+                hasThreads=true;
+                tasks_.pop_front();
+                if (!t.terminated) {
+                    //Not terminated, queue it again
+                    tasks_.push_back(t);
+                    loops++;
+                    if (loops > tasks_.size())
+                        break;
+                    if (ntasks) ntasks--;
+                    continue;
+                }
+                //Check termination
+                taskLock.unlock();
+                t.th->join();
+                if (t.inError)
+                {
+                    if (exceptionsEnabled_ == true)
+                    {
+                        if (status)
+                            *status = GStatus(1, lua_tostring(t.L, -1));
+                    }
+                }
+                //Drop any return args
+                lua_settop(t.L, 0);
+                luaL_unref(L, LUA_REGISTRYINDEX, t.taskRef);
+                taskLock.lock();
+                continue;
+            }
 			if ((t.sleepTime > iclock()) || (t.skipFrame))
 			{
-				loops++;
+                //Skip this task: push to it the back of the queue
+                tasks_.pop_front();
+                tasks_.push_back(t);
+                loops++;
 				if (loops > tasks_.size())
 					break;
-				continue;
+                if (ntasks) ntasks--;
+                continue;
 			}
 			loops = 0;
 			int res = 0;
-			if (t.autoYield)
-			{
-				lua_sethook(t.L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT, 1000);
-				res = lua_resume(t.L, 0);
-				lua_sethook(t.L, yieldHook, 0, 1000);
+            taskLock.unlock();
+            if ((t.L->profilerHook)&&t.profilerYielded) {
+                profilerYielded(t.L,iclock()-t.profilerYieldStart);
+                t.profilerYielded=false;
+            }
+            if (t.autoYield)
+			{                
+#ifdef LUA_IS_LUAU
+                lua_callbacks(t.L)->interrupt=yieldHook;
+                res = lua_resume(t.L,L,t.nargs);
+                lua_callbacks(t.L)->interrupt=nullptr;
+#else
+                LuaDebugging::yieldHookMask=LUA_MASKRET| LUA_MASKCOUNT;
+                lua_sethook(t.L, yieldHook, LUA_MASKRET | LUA_MASKCOUNT | (LuaApplication::debuggerBreak&DBG_MASKLUA), 1000);
+                res = lua_resume(t.L,t.nargs);
+                LuaDebugging::yieldHookMask=0;
+                lua_sethook(t.L, yieldHook, (LuaApplication::debuggerBreak&DBG_MASKLUA), 1000);
+#endif
 			}
 			else
-				res = lua_resume(t.L, 0);
-			if (res == LUA_YIELD)
-			{ /* Yielded: Do nothing */
-			}
+#ifdef LUA_IS_LUAU
+                res = lua_resume(t.L,NULL,t.nargs);
+#else
+                res = lua_resume(t.L,t.nargs);
+#endif
+            taskLock.lock();
+            //Reload task data after task has yielded/ended
+            t = tasks_.front();
+            tasks_.pop_front();
+            if (res == LUA_YIELD)
+            { /* Yielded: push to the back of the queue */
+                if (t.L->profilerHook) {
+                    t.profilerYielded=true;
+                    t.profilerYieldStart=iclock();
+                }
+                t.nargs=0;
+                tasks_.push_back(t);
+            }
 			else if (res != 0)
 			{
-				tasks_.pop_back(); //Error: Dequeue
 				if (exceptionsEnabled_ == true)
 				{
+					lua_traceback(t.L,L);
 					if (status)
-						*status = GStatus(1, lua_tostring(t.L, -1));
+                        *status = GStatus(1, lua_tostring(L, -1));
 				}
-				lua_pop(t.L, 1);
+                lua_pop(t.L, 1);
 				luaL_unref(L, LUA_REGISTRYINDEX, t.taskRef);
+				//Task had an error, return now to report the error
 				break;
 			}
 			else
 			{
-				tasks_.pop_back(); //Ended: Dequeue
 				//Drop any return args
-				lua_settop(t.L, 0);
+                lua_settop(t.L, 0);
 				luaL_unref(L, LUA_REGISTRYINDEX, t.taskRef);
 			}
-			if (iclock() > timeLimit)
+			if (ntasks) ntasks--;
+			if ((ntasks==0)&&(iclock() > timeLimit)) //All tasks have been executed once and time has been exceeded
 				break;
 		}
 
@@ -1153,33 +2731,64 @@ void LuaApplication::enterFrame(GStatus *status)
 	}
 	else
 		taskFrameTime_ = 0;
+    taskLock.unlock();
+
+    //If we have some true threads, ensure GC is performed if possible
+    if (hasThreads) {
+        lua_gc(L,LUA_GCSTEP,0);
+        taskSuspend=lua_gc(L,LUA_GCNEEDED,0);
+    }
+    frameWake.notify_all();
     application_->deleteAutounrefPool(pool);
 }
 
-void LuaApplication::clearBuffers()
+void LuaApplication::clearBuffers(int delta)
 {
-	if (!frameStartTime_)
-	    frameStartTime_=iclock();
+	if (delta!=0) {
+		if (!frameStartTime_)
+			frameStartTime_=iclock();
+	}
 	application_->clearBuffers();
 }
 
-void LuaApplication::renderScene(int deltaFrameCount)
+void drawInfoResolution(int width, int height, int scale, int lWidth,
+		int lHeight, bool drawRunning, float canvasColor[3],
+		float infoColor[3],int ho, int ao, float fps, float cpu);
+
+void LuaApplication::setDrawInfo(bool enable,float r,float g,float b,float a)
 {
-	application_->renderScene();
+	drawInfo_=enable;
+	infoColor_[0]=r;
+	infoColor_[1]=g;
+	infoColor_[2]=b;
+	infoColor_[3]=a;
+}
 
-	//Compute frame timings
-    double frmEnd=iclock();
-    double frmLasted=frmEnd-lastFrameTime_;
-    if ((frmLasted>=0.01)&&(frmLasted<0.1)) //If frame rate is between 10Hz and 100Hz
-    	meanFrameTime_=meanFrameTime_*0.8+frmLasted*0.2; //Average on 5 frames
-    lastFrameTime_=frmEnd;
+void LuaApplication::renderScene(int deltaFrameCount,float *vmat,float *pmat,const std::function<void(ShaderEngine *,Matrix4 &)> &preStage)
+{
+	application_->renderScene(-1,vmat,pmat,preStage);
 
-    double freeTime=meanFrameTime_-(frmEnd-frameStartTime_-taskFrameTime_);
-    if (freeTime>=0)
-    	meanFreeTime_=meanFreeTime_*0.8+freeTime*0.2; //Average on 5 frames
-	//glog_i("FrameTimes:last:%f mean:%f task:%f free:%f\n",frmLasted,meanFrameTime_,taskFrameTime_,meanFreeTime_);
+	if (deltaFrameCount!=0) {
+		//Compute frame timings
+		double frmEnd=iclock();
+		double frmLasted=frmEnd-lastFrameTime_;
+		if ((frmLasted>=0.01)&&(frmLasted<0.1)) //If frame rate is between 10Hz and 100Hz
+			meanFrameTime_=meanFrameTime_*0.95+frmLasted*0.05; //Average on 20 frames
+		lastFrameTime_=frmEnd;
 
-	frameStartTime_=0;
+		double freeTime=meanFrameTime_-(frmEnd-frameStartTime_-taskFrameTime_);
+		if (freeTime>=0)
+			meanFreeTime_=meanFreeTime_*0.95+freeTime*0.05; //Average on 20 frames
+		//glog_i("FrameTimes:last:%f mean:%f task:%f free:%f delta:%d\n",frmLasted,meanFrameTime_,taskFrameTime_,meanFreeTime_,deltaFrameCount);
+
+		frameStartTime_=0;
+	}
+
+	float canvasColor[3]={1,1,1}; //Dummy, not used anyway
+	if (drawInfo_)
+		drawInfoResolution(getHardwareWidth(), getHardwareHeight(), 100, getLogicalWidth(), getLogicalHeight(),
+				true, canvasColor, infoColor_, (int) hardwareOrientation(), (int) orientation(),
+				1.0/meanFrameTime_,1-(meanFreeTime_/meanFrameTime_));
 }
 
 void LuaApplication::setPlayerMode(bool isPlayer)
@@ -1224,12 +2833,12 @@ void LuaApplication::setHardwareOrientation(Orientation orientation)
 }
 
 
-void LuaApplication::setResolution(int width, int height)
+void LuaApplication::setResolution(int width, int height,bool keepBuffers)
 {
 	width_ = width;
 	height_ = height;
 
-	application_->setResolution(width_, height_);
+	application_->setResolution(width_, height_, keepBuffers);
 }
 
 
@@ -1284,7 +2893,7 @@ void LuaApplication::broadcastEvent(Event* event, GStatus *status)
 {
     void *pool = application_->createAutounrefPool();
 
-	lua_pushcfunction(L, ::broadcastEvent);
+	lua_pushcnfunction(L, ::broadcastEvent, "broadcastEvent");
 	lua_pushlightuserdata(L, event);
 
     if (lua_pcall_traceback(L, 1, 0, 0))
@@ -1354,6 +2963,7 @@ void LuaApplication::initialize()
 	meanFrameTime_=0;
 	meanFreeTime_=0;
 	frameCounter_=0;
+	drawInfo_=false;
 
 #if defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
 #define ARCH_X64 1
@@ -1361,17 +2971,23 @@ void LuaApplication::initialize()
 #define ARCH_X64 0
 #endif
 
+#ifdef LUA_IS_LUAU
+    L = lua_newstate(l_alloc, NULL);
+    luaL_codegeninit(L);
+    //L = luaL_newstate();
+#else
     if (ARCH_X64 && lua_isjit())
         L = luaL_newstate();
     else
         L = lua_newstate(l_alloc, NULL);
+#endif
 
     lua_pushlightuserdata(L, &key_tickFunction);
-    lua_pushcfunction(L, ::tick);
+    lua_pushcnfunction(L, ::tick, "gideros_tick");
     lua_rawset(L, LUA_REGISTRYINDEX);
 
     lua_pushlightuserdata(L, &key_enterFrameFunction);
-	lua_pushcfunction(L, ::enterFrame);
+	lua_pushcnfunction(L, ::enterFrame, "gideros_enterFrame");
 	lua_rawset(L, LUA_REGISTRYINDEX);
 
 #if 0
@@ -1386,6 +3002,7 @@ void LuaApplication::initialize()
 	if (ShaderEngine::Engine)
 		ShaderEngine::Engine->reset();
 
+    resetStyleCache();
 
     lua_setprintfunc(L, printFunc_, printData_);
     luaL_setdata(L, this);
@@ -1393,10 +3010,23 @@ void LuaApplication::initialize()
 	luaL_openlibs(L);
 
 	//	lua_sethook(L, testHook, LUA_MASKLINE, 0);
-
-	lua_pushcfunction(L, bindAll);
+	lua_pushcnfunction(L, bindAll, "gideros_bindAll");
 	lua_pushlightuserdata(L, application_);
 	lua_call(L, 1, 0);
+
+	Rnd::Initialize(iclock()*0xFFFF);
+    LuaDebugging::L=L;
+    LuaDebugging::yieldHookMask=0;
+#ifndef LUA_IS_LUAU
+    LuaDebugging::hook=yieldHook;
+    lua_sethook(L, yieldHook, (LuaApplication::debuggerBreak&DBG_MASKLUA), 1);
+#endif
+    globalLuaState=L;
+    
+    LuaDebugging::reinitDebugger();
+    Core_profilerReset(L);
+    if (LuaDebugging::profiling)
+    	Core_profilerStart(L);
 }
 
 void LuaApplication::setScale(float scale)
@@ -1506,3 +3136,298 @@ lua_State *LuaApplication::getLuaState() const
 {
     return L;
 }
+
+//PROFILER
+struct ProfileInfo {
+    struct ProfilerStack {
+        double entered; //Enter time
+        double profOverHead; //Time spent by profiler when entering/leaving this function
+        std::string callret; //Return to
+    };
+    std::map<lua_State *,std::stack<ProfilerStack>> callstack;
+	std::string fid;
+	std::string name;
+	double time;
+	int count;
+    //Time spent/call count per caller
+	std::map<std::string,double> cTime;
+	std::map<std::string,int> cCount;
+};
+#define PROFILER_SPONTANEOUS    "*Spontaneous*"
+static std::map<std::string,ProfileInfo*> proFuncs;
+static std::map<Closure*,ProfileInfo*> proLookup;
+static ProfileInfo *profilerGetInfo(Closure *cl)
+{
+	ProfileInfo*p=proLookup[cl];
+	if (!p)
+	{
+		std::string fid;
+		char fmt[255];
+#ifdef LUA_IS_LUAU
+        if (cl->isC)
+#else
+        if (cl->c.isC)
+#endif
+		{
+#ifdef LUA_IS_LUAU
+            if (cl->c.debugname)
+                sprintf(fmt,"=[C] %p(%s)",cl->c.f,cl->c.debugname);
+#else
+            if (cl->c.name)
+				sprintf(fmt,"=[C] %p(%s)",cl->c.f,cl->c.name);
+#endif
+            else
+				sprintf(fmt,"=[C] %p",cl->c.f);
+		}
+		else
+#ifdef LUA_IS_LUAU
+            sprintf(fmt,"%s:%d:%p",getstr(cl->l.p->source),cl->l.p->abslineinfo?cl->l.p->abslineinfo[0]:0,cl->l.p);
+#else
+            sprintf(fmt,"%s:%d:%p",getstr(cl->l.p->source),cl->l.p->linedefined,cl->l.p);
+#endif
+		fid=fmt;
+		p=proFuncs[fid];
+		if (!p) {
+			p=(ProfileInfo *)new ProfileInfo;
+			proFuncs[fid]=p;
+			proLookup[cl]=p;
+			p->fid=fid;
+			p->time=0;
+			p->count=0;
+		}
+	}
+	return p;
+}
+
+static ProfileInfo *checkProfilerSpontaneous(lua_State *L)
+{
+    ProfileInfo *cp=proFuncs[PROFILER_SPONTANEOUS];
+    if (cp->callstack[L].empty()) {
+        ProfileInfo::ProfilerStack cs;
+        cs.profOverHead=0;
+        cp->callstack[L].push(cs);
+    }
+    return cp;
+}
+
+static void profilerYielded(lua_State *L,double time)
+{
+    Closure *cl=curr_func(L);
+    ProfileInfo *p=profilerGetInfo(cl);
+    if (!p->callstack[L].empty())
+        p->callstack[L].top().profOverHead+=time;
+}
+
+
+static void profilerHook(lua_State *L,int enter)
+{
+    double enterTime=iclock();
+	Closure *cl=curr_func(L);
+	ProfileInfo *p=profilerGetInfo(cl);
+	if (enter)
+	{
+        if (p->name.empty())
+        {
+            lua_Debug ar;
+            ar.name=NULL;
+#ifdef LUA_IS_LUAU
+            lua_getinfo(L,0,"n",&ar); //Check the '1' value
+            if ((cl->isC)&&(cl->c.debugname))
+                p->name=cl->c.debugname;
+            else {
+                if (ar.name)
+                    p->name=ar.name;
+                else
+                    p->name="Unknown";
+            }
+#else
+            ar.i_ci = cast_int(L->ci - L->base_ci);
+            lua_getinfo(L,"n",&ar);
+            if ((cl->c.isC)&&(cl->c.name))
+                p->name=cl->c.name;
+            else {
+                if (ar.name)
+                    p->name=ar.name;
+                else
+                    p->name="Unknown";
+            }
+#endif
+        }
+        ProfileInfo *cp=NULL;
+        if (L->ci>L->base_ci)
+        {
+            CallInfo *ci=L->ci;
+            ci--;
+            if(ttisfunction(ci->func))
+            {
+                Closure *ccl=ci_func(ci);
+                cp=profilerGetInfo(ccl);
+            }
+            else
+                cp=checkProfilerSpontaneous(L);
+        }
+        else
+            cp=checkProfilerSpontaneous(L);
+        ProfileInfo::ProfilerStack cret;
+        cret.callret=cp->fid;
+        cret.profOverHead=0;
+        double ltime=iclock();
+        cret.entered=ltime;
+        if (!cp->callstack[L].empty())
+            cp->callstack[L].top().profOverHead+=(ltime-enterTime);
+        p->callstack[L].push(cret);
+	}
+	else
+	{
+        int rcalls=1;
+#ifndef LUA_IS_LUAU
+		if (f_isLua(L->ci)) {  /* Lua function? */
+		    rcalls+=L->ci->tailcalls;
+		}
+#endif
+		while (p&&(rcalls--)) {
+            int scount=p->callstack[L].size();
+            if (scount)
+			{
+                ProfileInfo::ProfilerStack &cret=p->callstack[L].top();
+                double ptime=cret.profOverHead;
+                double ctime=enterTime-cret.entered-ptime;
+                if ((ctime>0)&&(scount==1))
+                    p->time+=ctime;
+                else
+                    ctime=0;
+				p->count++;
+                p->cCount[cret.callret]=p->cCount[cret.callret]+1;
+                p->cTime[cret.callret]=p->cTime[cret.callret]+ctime;
+                ProfileInfo *np=proFuncs[cret.callret];
+                if (!np->callstack[L].empty())
+                    np->callstack[L].top().profOverHead+=ptime;
+                p->callstack[L].pop();
+                p=np;
+			}
+		}
+        if (!p->callstack[L].empty())
+            p->callstack[L].top().profOverHead+=(iclock()-enterTime);
+    }
+}
+
+int LuaApplication::Core_profilerStart(lua_State *L)
+{
+	if (!L->profilerHook) //Don't set if already set, since it could be used by the debugger
+		L->profilerHook=profilerHook;
+	return 0;
+}
+
+int LuaApplication::Core_profilerStop(lua_State *L)
+{
+    L->profilerHook=NULL;
+	return 0;
+}
+
+int LuaApplication::Core_profilerReport(lua_State *L)
+{
+	lua_newtable(L);
+	for (std::map<std::string,ProfileInfo*>::iterator it=proFuncs.begin();it!=proFuncs.end();it++)
+	{
+		ProfileInfo *p=it->second;
+        if (p) {
+            lua_newtable(L);
+            lua_pushinteger(L,p->count);
+            lua_setfield(L,-2,"count");
+            lua_pushnumber(L,p->time);
+            lua_setfield(L,-2,"time");
+            lua_pushstring(L,p->name.c_str());
+            lua_setfield(L,-2,"name");
+
+            lua_newtable(L);
+            for (std::map<std::string,int>::iterator it2=p->cCount.begin();it2!=p->cCount.end();it2++)
+            {
+                lua_newtable(L);
+                lua_pushinteger(L,it2->second);
+                lua_setfield(L,-2,"count");
+                lua_pushnumber(L,p->cTime[it2->first]);
+                lua_setfield(L,-2,"time");
+                lua_setfield(L,-2,it2->first.c_str());
+            }
+            lua_setfield(L,-2,"callers");
+
+            lua_setfield(L,-2,it->first.c_str());
+        }
+    }
+	return 1;
+}
+
+int LuaApplication::Core_profilerReset(lua_State *L)
+{
+    G_UNUSED(L);
+	proLookup.clear();
+	for (std::map<std::string,ProfileInfo*>::iterator it=proFuncs.begin();it!=proFuncs.end();it++)
+		delete it->second;
+	proFuncs.clear();
+    std::string fid=PROFILER_SPONTANEOUS;
+    ProfileInfo *p=(ProfileInfo *)new ProfileInfo;
+    proFuncs[fid]=p;
+    p->fid=fid;
+    p->name=PROFILER_SPONTANEOUS;
+    p->time=0;
+    p->count=1;
+	return 0;
+}
+
+int LuaApplication::Core_enableAllocationTracking(lua_State *L)
+{
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    bool en=lua_toboolean(L,1);
+    L->profileTableAllocs=en;
+    lua_getglobal(L,"__tableAllocationProfiler__");
+    if (!en) {
+        lua_pushnil(L);
+        lua_setglobal(L,"__tableAllocationProfiler__");
+    }
+    return 1;
+}
+
+int LuaApplication::Core_random(lua_State *L)
+{
+	int gen=luaL_optnumber(L,1,0);
+	switch (gen)
+	{
+	default:
+		if (lua_isnoneornil(L,2))
+		{
+			double val=Rnd::MT19937::ExtractDouble();
+			lua_pushnumber(L,val);
+			return 1;
+		}
+		uint64_t uival=Rnd::MT19937::ExtractU32();
+		int a=luaL_checkinteger(L,2);
+		if (lua_isnoneornil(L,3))
+		{
+			lua_pushinteger(L,1+(((uival*a)>>32)&0xFFFFFFFF));
+		}
+		else
+		{
+			int b=luaL_checkinteger(L,3);
+			lua_pushinteger(L,a+(((uival*(b+1-a))>>32)&0xFFFFFFFF));
+		}
+		return 1;
+	break;
+	}
+	return 1;
+}
+
+int LuaApplication::Core_randomSeed(lua_State *L)
+{
+	int gen=luaL_optnumber(L,1,0);
+	int seed=luaL_optinteger(L,2,iclock()*0xFFFF);
+	switch (gen)
+	{
+	default: lua_pushinteger(L,Rnd::MT19937::GetSeed()); Rnd::MT19937::Initialize(seed); break;
+	}
+	return 1;
+}
+
+
+
+//

@@ -1,4 +1,5 @@
 #include <QDir>
+#include <QDirIterator>
 #include <QSet>
 #include <QString>
 #include <QTextStream>
@@ -17,12 +18,25 @@
 #include "ExportCommon.h"
 #include "ExportBuiltin.h"
 #include "ExportXml.h"
+#include "ExportLua.h"
+#include <QCryptographicHash>
+#include <QRandomGenerator>
+
+static void addEntryToListIfNotInList(std::vector<QString>& list, const QString& entry)
+{
+    bool entry_in_list = std::find(list.begin(), list.end(), entry) != list.end();
+    if ( !entry_in_list ) {
+       list.push_back(entry);
+    }
+}
 
 static bool readProjectFile(const QString& fileName,
                             ProjectProperties &properties,
                             std::vector<std::pair<QString, QString> > &fileList,
                             std::vector<QString> &folderList,
-                            DependencyGraph &dependencyGraph)
+                            DependencyGraph &dependencyGraph,
+							std::set<QString> &noEncryption,
+							ExportContext &ctx)
 {
     ProjectProperties &properties_ = properties;
     std::vector<std::pair<QString, QString> > &fileList_ = fileList;
@@ -56,12 +70,66 @@ static bool readProjectFile(const QString& fileName,
         properties_.loadXml(properties);
     }
 
-
+    QMap<QString,bool> locked;
     // populate file list, folder list and dependency graph
     {
         fileList_.clear();
         dependencyGraph_.clear();
+        noEncryption.clear();
+        ctx.noPackage.clear();
         std::vector<std::pair<QString, QString> > dependencies_;
+
+    	//Add lua plugins
+        const char* lua_plugins_path = "_LuaPlugins_/";
+    	QMap<QString, QString> plugins;
+    	QMap<QString, QString> allPlugins=ProjectProperties::availablePlugins();
+        bool hasLuaPlugin = false;
+        for (QSet<ProjectProperties::Plugin>::const_iterator it=properties_.plugins.begin(); it!=properties_.plugins.end(); it++)
+    	{
+    		ProjectProperties::Plugin p=*it;
+    		if (p.enabled)
+    		{
+    			QString ppath=allPlugins[p.name];
+    			if (!ppath.isEmpty())
+    			{
+    	    		QFileInfo path(ppath);
+    	    		QDir pf=path.dir();
+    	    		if (pf.cd("luaplugin"))
+    	    		{
+                        QDir luaplugin_dir = pf.path();
+                        int root_length = luaplugin_dir.path().length();
+
+                        // collect all files in luaplugin and any subdirectory of luaplugin
+                        QDirIterator dir_iter(pf.path(), QStringList() << "*", QDir::Files, QDirIterator::Subdirectories);
+                        while (dir_iter.hasNext()) {
+                            hasLuaPlugin = true;
+                            QDir file = dir_iter.next();
+                            QString filename = file.path().mid(file.path().lastIndexOf("/") + 1);
+                            // 'subtract' luaplugin root path from this path
+                            QString rel_path_and_filename = file.path().mid(root_length + 1, file.path().length());
+                            QString just_rel_path = rel_path_and_filename.mid(0, rel_path_and_filename.lastIndexOf("/") + 1);
+
+                            addEntryToListIfNotInList(folderList, lua_plugins_path + just_rel_path);
+                            fileList_.push_back(std::make_pair(lua_plugins_path + rel_path_and_filename, file.path()));
+                            locked[lua_plugins_path + rel_path_and_filename]=true;
+                            if (filename.endsWith(".lua"))
+                            	dependencyGraph_.addCode(file.path(), true);
+                        }
+    	    		}
+    			}
+    		}
+    	}
+        if ((ctx.deviceFamily == e_Html5)&&properties_.html5_fbinstant) {
+			QFileInfo f=QFileInfo("Tools/FBInstant.lua");
+            fileList_.push_back(std::make_pair((lua_plugins_path + static_cast<QString>("FBInstant.lua")),
+                                               f.absoluteFilePath()));
+            locked[lua_plugins_path + static_cast<QString>("FBInstant.lua")]=true;
+			dependencyGraph_.addCode(f.absoluteFilePath(),true);
+            hasLuaPlugin = true;
+ 	    }
+
+        if (hasLuaPlugin)
+            addEntryToListIfNotInList(folderList, lua_plugins_path);
 
         std::stack<QDomNode> stack;
         stack.push(doc.documentElement());
@@ -80,25 +148,36 @@ static bool readProjectFile(const QString& fileName,
                 continue;
             }
 
+            if (e.hasAttribute("excludeFromExport") && e.attribute("excludeFromExport").toInt())
+                continue;
             QString type = e.tagName();
 
             if (type == "file")
             {
-                QString fileName = e.hasAttribute("source") ? e.attribute("source") : e.attribute("file");
+				QString fileName = e.hasAttribute("name")? e.attribute("name"):(e.hasAttribute("source") ? e.attribute("source") : e.attribute("file"));
                 QString name = QFileInfo(fileName).fileName();
+                bool lock=e.hasAttribute("source");
 
                 QString n;
                 for (std::size_t i = 0; i < dir.size(); ++i)
                     n += dir[i] + "/";
                 n += name;
 
+                if (locked[n])
+                      continue;
                 fileList_.push_back(std::make_pair(n, fileName));
+                locked[n]=lock;
 
                 if (QFileInfo(fileName).suffix().toLower() == "lua")
                 {
                     bool excludeFromExecution = e.hasAttribute("excludeFromExecution") && e.attribute("excludeFromExecution").toInt();
                     dependencyGraph_.addCode(fileName, excludeFromExecution);
                 }
+
+                if (e.hasAttribute("excludeFromEncryption") && e.attribute("excludeFromEncryption").toInt())
+                	noEncryption.insert(n);
+                if (e.hasAttribute("excludeFromPackage") && e.attribute("excludeFromPackage").toInt())
+                	ctx.noPackage.insert(n);
 
                 continue;
             }
@@ -142,27 +221,29 @@ void usage()
     fprintf(stderr, "Usage: gdrexport -options <project_file> <output_dir>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options general: \n");
-    fprintf(stderr, "    -platform <platform_name>  #platform to export (ios, android, windows, macosx, winrt, win32, gapp, html5)\n");
+    fprintf(stderr, "    -platform <platform_name>  #platform to export (ios, android, qtwindows, qtmacosx, qtlinux, winrt, win32, linux, gapp, html5)\n");
     fprintf(stderr, "    -encrypt                   #encrypts code and assets\n");
     fprintf(stderr, "    -encrypt-code              #encrypts code\n");
     fprintf(stderr, "    -encrypt-assets            #encrypts assets\n");
     fprintf(stderr, "    -assets-only               #exports only assets\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "Options ios: \n");
+    fprintf(stderr, "Options ios/apple: \n");
     fprintf(stderr, "    -bundle <bundle_id>        #bundle id\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options android: \n");
     fprintf(stderr, "    -package <package_name>    #apk package name\n");
     fprintf(stderr, "    -template <template>       #template to use (eclipse, androidstudio)\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "Options windows: \n");
+    fprintf(stderr, "Options qtwindows: \n");
     fprintf(stderr, "    -organization <name>       #organization name\n");
     fprintf(stderr, "    -domain <domain_name>      #domain name\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "Options macosx: \n");
+    fprintf(stderr, "Options qtmacosx: \n");
     fprintf(stderr, "    -organization <name>       #organization name\n");
     fprintf(stderr, "    -domain <domain_name>      #domain name\n");
     fprintf(stderr, "    -bundle <bundle_id>        #bundle id\n");
+    fprintf(stderr, "    -signingId <signing_id>    #signing identity\n");
+    fprintf(stderr, "    -installerId <signing_id>  #installer signing identity\n");
     fprintf(stderr, "    -category <app category>   #category of your app\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options winrt: \n");
@@ -191,6 +272,7 @@ int main(int argc, char *argv[])
     ctx.tvicon=NULL;
     ctx.splash_h_image=NULL;
     ctx.splash_v_image=NULL;
+    ctx.exportError=false;
     QString projectFileName;
     QString output;
     bool encryptCode = false;
@@ -199,7 +281,7 @@ int main(int argc, char *argv[])
     bool player = false;
 
     //Lookup XML exports scripts
-    QMap<QString,QString> xmlExports=ExportXml::availableTargets();
+    QMap<QString,QString> xmlExports=ExportScript::availableTargets();
 
     int i = 1;
     while (i < arguments.size())
@@ -214,7 +296,7 @@ int main(int argc, char *argv[])
             }
             QString platform = arguments[i + 1];
             ctx.platform=platform;
-            if (platform.toLower() == "ios")
+            if ((platform.toLower() == "ios")||(platform.toLower() == "apple"))
             {
                 ctx.deviceFamily = e_iOS;
             }
@@ -222,13 +304,17 @@ int main(int argc, char *argv[])
             {
             	ctx.deviceFamily = e_Android;
             }
-            else if (platform.toLower() == "windows")
+            else if (platform.toLower() == "qtwindows")
             {
             	ctx.deviceFamily = e_WindowsDesktop;
             }
-            else if (platform.toLower() == "macosx")
+            else if (platform.toLower() == "qtmacosx")
             {
-            	ctx.deviceFamily = e_MacOSXDesktop;
+                ctx.deviceFamily = e_MacOSXDesktop;
+            }
+            else if (platform.toLower() == "qtlinux")
+            {
+                ctx.deviceFamily = e_LinuxDesktop;
             }
             else if (platform.toLower() == "winrt")
             {
@@ -236,7 +322,11 @@ int main(int argc, char *argv[])
             }
             else if (platform.toLower() == "win32")
             {
-            	ctx.deviceFamily = e_Win32;
+                ctx.deviceFamily = e_Win32;
+            }
+            else if (platform.toLower() == "linux")
+            {
+                ctx.deviceFamily = e_Linux;
             }
             else if (platform.toLower() == "gapp")
             {
@@ -349,6 +439,7 @@ int main(int argc, char *argv[])
 
     QDir cdir = QCoreApplication::applicationDirPath();
     cdir.cdUp();
+    // cdir.cdUp(); cdir.cd("Build.Win"); //FOR DEBUG
     QDir::setCurrent(cdir.absolutePath());
 
     const QString &projectFileName_ = projectFileName;
@@ -377,18 +468,11 @@ int main(int argc, char *argv[])
         }
         else
         {
-            qsrand(time(NULL));
             for (int i = 0; i < randomData.size(); ++i)
-                randomData[i] = qrand() % 256;
+                randomData[i] = QRandomGenerator::global()->generate() % 256;
             settings.setValue("randomData", randomData);
             settings.sync();
         }
-    }
-
-    if ((ctx.deviceFamily==e_Html5)&&(!ctx.args["hostname"].isEmpty()))
-    {
-    	encryptAssets=true;
-    	encryptCode=true;
     }
 
     if (encryptCode)
@@ -403,37 +487,16 @@ int main(int argc, char *argv[])
         assetsPrefixRnd=randomData.mid(32,32);
     }
 
-    if (ctx.deviceFamily==e_Html5)
-    {
-    	encryptAssets=true;
-    	encryptCode=true;
-    	if (!(ctx.args["hostname"].isEmpty()))
-    	{
-    		QByteArray mkey=ctx.args["hostname"].toUtf8();
-        	int msize=mkey.size();
-        	if (msize>255)
-        	{
-        		msize=255; //Unlikely to happen
-        		mkey.truncate(255);
-        	}
-        	mkey.append((char)0);
-        	msize++;
-    		codeKey.replace(0,msize,mkey);
-    	}
-    	else
-    	{
-    	    QByteArray zero(1, '\0');
-    		codeKey.replace(0,1,zero);
-    	}
-    }
-
     DependencyGraph dependencyGraph;
-    if (readProjectFile(projectFileName, ctx.properties, ctx.fileQueue, ctx.folderList, dependencyGraph) == false)
+    if (readProjectFile(projectFileName, ctx.properties, ctx.fileQueue, ctx.folderList, dependencyGraph, ctx.noEncryption,ctx) == false)
     {
         // error is displayed at readProjectFile function
         return 1;
     }
-    std::vector<std::pair<QString, bool> > topologicalSort = dependencyGraph.topologicalSort();
+    std::map<QString,QString> fileMap;
+    for (std::size_t j = 0; j < ctx.fileQueue.size(); ++j)
+        fileMap[ctx.fileQueue[j].second]=ctx.fileQueue[j].first;
+    std::vector<std::pair<QString, bool> > topologicalSort = dependencyGraph.topologicalSort(QFileInfo(projectFileName_).dir(),fileMap);
      for (std::size_t i = 0; i < topologicalSort.size(); ++i)
      {
          int index = -1;
@@ -453,6 +516,45 @@ int main(int argc, char *argv[])
              ctx.fileQueue.push_back(item);
          }
      }
+
+    if (ctx.deviceFamily==e_Html5)
+    {
+    	if ((!(ctx.args["hostname"].isEmpty()))&&(!ctx.properties.html5_fbinstant))
+    	{
+        	encryptAssets=true;
+        	encryptCode=true;
+            codePrefixRnd=randomData.mid(0,32);
+            assetsPrefixRnd=randomData.mid(32,32);
+            for (int n=0;n<16;n++)
+            {
+            	QByteArray lrnd=QCryptographicHash::hash((ctx.args["hostname"]+QString::number(n)).toUtf8(),QCryptographicHash::Md5);
+            	int lrndn=0;
+            	for (int k=n*16;k<(n*16+16);k++)
+            	{
+            		codeKey[k]=codeKey.at(k)^lrnd.at(lrndn);
+            		assetsKey[k]=assetsKey.at(k)^lrnd.at(lrndn);
+            		lrndn++;
+            	}
+            }
+
+    		QByteArray mkey=ctx.args["hostname"].toUtf8();
+        	int msize=mkey.size();
+        	if (msize>255)
+        	{
+        		msize=255; //Unlikely to happen
+        		mkey.truncate(255);
+        	}
+        	mkey.append((char)0);
+        	msize++;
+    		codeKey.replace(0,msize,mkey);
+    	}
+    	else
+    	{
+    	    QByteArray zero(1, '\0');
+    		codeKey.replace(0,1,zero);
+    	}
+    }
+
      ctx.assetsOnly=assetsOnly;
      ctx.player=player;
      ctx.codeKey=codeKey;
@@ -460,12 +562,21 @@ int main(int argc, char *argv[])
      ctx.topologicalSort=topologicalSort;
      ctx.encryptCode=encryptCode;
      ctx.encryptAssets=encryptAssets;
+     ctx.appName=ctx.properties.app_name;
+     if (ctx.appName.isEmpty())
+    	 ctx.appName=ctx.base;
 
      //Encryption key replacement info
      QStringList wildcards2;
-     wildcards2 << "libgideros.so" << "libgideros.a" << "gid.dll"
-     		   << "libgid.1.dylib" << "gideros.WindowsPhone.lib"
-     		   << "gideros.Windows.lib" << "gideros.html.mem";
+     wildcards2 << "libgideros.so" << "libgiderosvr.so" // Android
+                << "libgideros.a" // Apple
+                << "gid.dll" //QT Win
+                << "libgid.1.dylib" //QT Mac
+                << "libgid.so.1.0.0" //QT Linux
+                << "libgid.so" << "LinuxTemplate" //Linux
+                << "gideros.WindowsPhone.lib" << "gideros.Windows.lib" //UWP
+                << "gideros.html.mem" << "gideros-wasm.wasm"  //HTML
+                << "*.exe"; //WIN32
      ctx.wildcards << wildcards2;
 
      QList<QPair<QByteArray, QByteArray> > replaceList2;
@@ -474,10 +585,16 @@ int main(int argc, char *argv[])
      replaceList2 << qMakePair(assetsPrefix + encryptionZero, assetsPrefixRnd + assetsKey);
      ctx.replaceList << replaceList2;
 
+     ctx.noEncryptionExt.insert("ttf"); // TTF files do not pass through gvfs!
+     ExportLUA_Init(&ctx);
      if (ctx.deviceFamily==e_Xml)
-    	 ExportXml::exportXml(xmlExports[ctx.platform],false,&ctx);
+     {
+    	 if (!ExportXml::exportXml(xmlExports[ctx.platform],false,&ctx))
+			ctx.exportError=true;
+     }
      else
     	 ExportBuiltin::doExport(&ctx);
+     ExportLUA_Cleanup(&ctx);
 
-    return 0;
+    return ctx.exportError?1:0;
 }

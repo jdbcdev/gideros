@@ -182,12 +182,35 @@ std::string getDeviceName();
 void vibrate(int ms);
 std::string getLocale();
 std::string getLanguage();
+std::string getTimezone();
 void setKeepAwake(bool awake);
 bool setKeyboardVisibility(bool visible);
+int getKeyboardModifiers();
+bool setTextInput(int type,const char *buffer,int selstart,int selend,const char *label,const char *actionLabel, const char *hintText, const char *context);
+typedef struct gapplication_ClipboardResponseCb
+{
+	bool result;
+	const char *data;
+	const char *mimeType;
+} gapplication_ClipboardResponseCb;
+int setClipboard(std::string data,std::string mimeType, int luaFunc);
+int getClipboard(std::string &data,std::string &mimeType, int luaFunc);
 std::vector<std::string> getDeviceInfo();
+std::string getAppId();
+void getSafeDisplayArea(int &l,int &t,int &r,int &b);
 
-bool g_checkStringProperty(bool isSet, const char* what);
-const char* g_getProperty(const char* what, const char* arg);
-void g_setProperty(const char* what, const char* arg);
+typedef struct gapplication_Variant
+{
+	enum {
+	 NIL=0,
+	 DOUBLE,
+	 STRING
+	} type;
+	std::string s;
+	double d;
+} gapplication_Variant;
+std::vector<gapplication_Variant> g_getsetProperty(bool set, const char* what, std::vector<gapplication_Variant> &args);
+bool gapplication_checkPermission(const char *what);
+void gapplication_requestPermissions(std::vector<std::string> perms);
 
 #endif

@@ -19,6 +19,12 @@ public:
 		headingStartCount_ = 0;
 
         gid_ = g_NextId();
+
+		JNIEnv *env = g_getJNIEnv();
+        jclass cls = env->FindClass("com/giderosmobile/android/GiderosSettings");
+		jfieldID fid = env->GetStaticFieldID(cls, "backgroundLocation", "Z");
+		backgroundLocation = env->GetStaticBooleanField(cls, fid);
+		env->DeleteLocalRef(cls);
 	}
 
 	virtual ~GGGeolocationManager()
@@ -88,7 +94,27 @@ public:
 		}
 	}	
 
+	void setThreshold(double threshold)
+	{
+		JNIEnv *env = g_getJNIEnv();
+
+		jclass cls = env->FindClass("com/giderosmobile/android/player/GiderosApplication");
+		env->CallStaticVoidMethod(cls, env->GetStaticMethodID(cls, "setGeolocationThreshold_s", "(D)V"),threshold);
+		env->DeleteLocalRef(cls);
+	}
+
+	double getThreshold()
+	{
+		JNIEnv *env = g_getJNIEnv();
+
+		jclass cls = env->FindClass("com/giderosmobile/android/player/GiderosApplication");
+		jdouble threshold=env->CallStaticDoubleMethod(cls, env->GetStaticMethodID(cls, "getGeolocationThreshold_s", "()D"));
+		env->DeleteLocalRef(cls);
+		return threshold;
+	}
+
 private:
+	bool backgroundLocation;
 	void startUpdatingLocationHelper()
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -153,6 +179,8 @@ public:
     void enqueueEvent(int type, void *event, int free)
     {
         gevent_EnqueueEvent(gid_, callback_s, type, event, free, this);
+        if (backgroundLocation)
+        	gevent_Flush();
     }
     
 private:
@@ -165,7 +193,7 @@ static bool s_acceptEvents = false;
 
 extern "C" {
 
-void Java_com_giderosmobile_android_player_Geolocation_onLocationChanged(JNIEnv *env, jclass clz, jdouble latitude, jdouble longitude, jdouble altitude)
+void Java_com_giderosmobile_android_player_Geolocation_onLocationChanged(JNIEnv *env, jclass clz, jdouble latitude, jdouble longitude, jdouble altitude, jdouble speed, jdouble course, jdouble accuracy, jint type)
 {
 	if (!s_acceptEvents)
 		return;
@@ -174,11 +202,15 @@ void Java_com_giderosmobile_android_player_Geolocation_onLocationChanged(JNIEnv 
 	event->latitude = latitude;
 	event->longitude = longitude;
 	event->altitude = altitude;
+	event->speed = speed;
+	event->course = course;
+	event->accuracy = accuracy;
+	event->type=type;
 
 	s_manager->enqueueEvent(GGEOLOCATION_LOCATION_UPDATE_EVENT, event, 1);
 }
 
-void Java_com_giderosmobile_android_player_Geolocation_onHeadingChanged(JNIEnv *env, jclass clz, jdouble magneticHeading, jdouble trueHeading)
+void Java_com_giderosmobile_android_player_Geolocation_onHeadingChanged(JNIEnv *env, jclass clz, jdouble magneticHeading, jdouble trueHeading, jfloat magX, jfloat magY, jfloat magZ)
 {
 	if (!s_acceptEvents)
 		return;
@@ -186,6 +218,9 @@ void Java_com_giderosmobile_android_player_Geolocation_onHeadingChanged(JNIEnv *
 	ggeolocation_HeadingUpdateEvent *event = (ggeolocation_HeadingUpdateEvent*)malloc(sizeof(ggeolocation_HeadingUpdateEvent));
 	event->magneticHeading = magneticHeading;
 	event->trueHeading = trueHeading;
+	event->magneticX = magX;
+	event->magneticY = magY;
+	event->magneticZ = magZ;
 
 	s_manager->enqueueEvent(GGEOLOCATION_HEADING_UPDATE_EVENT, event, 1);
 }
@@ -228,12 +263,12 @@ double ggeolocation_getAccuracy()
 
 void ggeolocation_setThreshold(double threshold)
 {
-
+	s_manager->setThreshold(threshold);
 }
 
 double ggeolocation_getThreshold()
 {
-    return 0;
+    return s_manager->getThreshold();
 }
 
 void ggeolocation_startUpdatingLocation()

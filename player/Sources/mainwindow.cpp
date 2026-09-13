@@ -9,12 +9,17 @@
 #include <QFileDialog>
 #include <algorithm>
 #include <QPalette>
+#include <QMessageBox>
+#include <QDateTime>
 #include "libnetwork.h"
 #include "applicationwrapper.h"
 #include "glcanvas.h"
 #include "platform.h"
 #include "settingsdialog.h"
 #include "constants.cpp"
+#ifndef G_UNUSED
+#define G_UNUSED(x) (void)(x)
+#endif
 
 MainWindow* MainWindow::instance;
 
@@ -23,6 +28,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent){
     projectName_ = QString ();
     setupUiActions();
     setupUiProperties();
+    ui.centralWidget->setMinimumSize(1, 1);
 
     createUiGroups();
 
@@ -33,6 +39,7 @@ MainWindow::~MainWindow(){}
 
 void MainWindow::setupUiActions(){
     ui.setupUi(this);
+    ui.glCanvas->setupCanvas();
 
     connect(ui.actionExit, SIGNAL(triggered()), this, SLOT(close()));
     connect(ui.actionRestart, SIGNAL(triggered()), this, SLOT(actionRestart()));
@@ -42,9 +49,11 @@ void MainWindow::setupUiActions(){
     connect(ui.actionFull_Screen,   SIGNAL(triggered(bool)), this, SLOT(actionFull_Screen(bool)));
     connect(ui.actionHide_Menu,     SIGNAL(triggered()), this, SLOT(actionHide_Menu()));
     connect(ui.actionAlways_on_Top, SIGNAL(triggered(bool)), this, SLOT(actionAlwaysOnTop(bool)));
+    connect(ui.actionScreenshot, SIGNAL(triggered()), this, SLOT(actionScreenshot()));
 
     connect(ui.actionQuarter,       SIGNAL(triggered()), this, SLOT(actionScale()));
     connect(ui.actionHalf,          SIGNAL(triggered()), this, SLOT(actionScale()));
+    connect(ui.actionThreeQuarter,  SIGNAL(triggered()), this, SLOT(actionScale()));
     connect(ui.actionOriginal,      SIGNAL(triggered()), this, SLOT(actionScale()));
     connect(ui.actionDouble,        SIGNAL(triggered()), this, SLOT(actionScale()));
     connect(ui.actionTriple,        SIGNAL(triggered()), this, SLOT(actionScale()));
@@ -57,6 +66,7 @@ void MainWindow::setupUiActions(){
     connect(ui.actionDraw_Infos, SIGNAL(triggered(bool)), this, SLOT(actionDraw_Infos(bool)));
 
     connect(ui.actionAuto_Scale, SIGNAL(triggered(bool)), this, SLOT(actionAuto_Scale(bool)));
+    connect(ui.actionUse_VSYNC, SIGNAL(triggered(bool)), this, SLOT(actionUse_VSYNC(bool)));
 
     connect(ui.actionRotate_Left,  SIGNAL(triggered()), this, SLOT(actionRotate()));
     connect(ui.actionRotate_Right, SIGNAL(triggered()), this, SLOT(actionRotate()));
@@ -70,6 +80,7 @@ void MainWindow::setupUiActions(){
     connect(ui.action768x1024,  SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action640x960,   SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action1536x2048, SIGNAL(triggered()), this, SLOT(actionResolution()));
+    connect(ui.action1125x2436, SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action320x568,   SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action640x1136,  SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action480x800,   SIGNAL(triggered()), this, SLOT(actionResolution()));
@@ -87,6 +98,8 @@ void MainWindow::setupUiActions(){
     connect(ui.action750x1334,  SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action1242x2208, SIGNAL(triggered()), this, SLOT(actionResolution()));
     connect(ui.action900x1200,  SIGNAL(triggered()), this, SLOT(actionResolution()));
+    connect(ui.action1242x2688, SIGNAL(triggered()), this, SLOT(actionResolution()));
+    connect(ui.action2048x2732, SIGNAL(triggered()), this, SLOT(actionResolution()));
 
     connect(ui.action15_fps,    SIGNAL(triggered()), this, SLOT(actionFps()));
     connect(ui.action30_fps,    SIGNAL(triggered()), this, SLOT(actionFps()));
@@ -115,6 +128,9 @@ void MainWindow::setupUiProperties(){
 
     ui.action1536x2048->setProperty("width",  1536);
     ui.action1536x2048->setProperty("height", 2048);
+
+    ui.action1125x2436->setProperty("width",  1125);
+    ui.action1125x2436->setProperty("height", 2436);
 
     ui.action320x568->setProperty("width",  320);
     ui.action320x568->setProperty("height", 568);
@@ -167,6 +183,12 @@ void MainWindow::setupUiProperties(){
     ui.action900x1200->setProperty("width",  900);
     ui.action900x1200->setProperty("height", 1200);
 
+    ui.action1242x2688->setProperty("width",  1242);
+    ui.action1242x2688->setProperty("height",  2688);
+
+    ui.action2048x2732->setProperty("width",  2048);
+    ui.action2048x2732->setProperty("height",  2732);
+
     ui.action15_fps->setProperty("fps",    15);
     ui.action30_fps->setProperty("fps",    30);
     ui.action60_fps->setProperty("fps",    60);
@@ -179,6 +201,7 @@ void MainWindow::setupUiProperties(){
 
     ui.actionQuarter->setProperty("scale",       25);
     ui.actionHalf->setProperty("scale",          50);
+    ui.actionThreeQuarter->setProperty("scale",  75);
     ui.actionOriginal->setProperty("scale",      100);
     ui.actionDouble->setProperty("scale",        200);
     ui.actionTriple->setProperty("scale",        300);
@@ -188,6 +211,15 @@ void MainWindow::setupUiProperties(){
 
     ui.actionRotate_Left->setProperty("rotate",  eLeft);
     ui.actionRotate_Right->setProperty("rotate", eRight);
+
+    if (!GLCanvas::appPackage.isEmpty()) {
+        ui.menuBar->hide();
+        ui.menuConfigurations->setEnabled(false);
+        ui.menuFile->setEnabled(false);
+        ui.menu_View->setEnabled(false);
+        ui.menuHardware->setEnabled(false);
+        ui.menuZoom2->setEnabled(false);
+    }
 }
 
 void MainWindow::createUiGroups(){
@@ -202,6 +234,7 @@ void MainWindow::createUiGroups(){
     resolutionGroup_->addAction(ui.action768x1024);
     resolutionGroup_->addAction(ui.action640x960);
     resolutionGroup_->addAction(ui.action1536x2048);
+    resolutionGroup_->addAction(ui.action1125x2436);
     resolutionGroup_->addAction(ui.action320x568);
     resolutionGroup_->addAction(ui.action640x1136);
     resolutionGroup_->addAction(ui.action480x800);
@@ -259,7 +292,7 @@ void MainWindow::loadSettings(){
     updateCanvasColor();
     updateInfoColor();
 
-    QSettings settings(Constants::SETTINGS_FOLDER + "/" + Constants::PLAYER_SETTINGS_FILE, QSettings::IniFormat);
+    QSettings settings;
 
     setWidth(settings.value("width",             320).toInt());
     setHeight(settings.value("height",           480).toInt());
@@ -269,6 +302,7 @@ void MainWindow::loadSettings(){
     setDrawInfos(settings.value("drawInfos",     false).toBool());
     setAutoScale(settings.value("autoScale",     false).toBool());
     setAlwaysOnTop(settings.value("alwaysOnTop", false).toBool());
+    ui.actionUse_VSYNC->setChecked(settings.value("vsync",0).toInt());
 
     checkLoadedSettings();
 
@@ -326,6 +360,7 @@ void MainWindow::checkLoadedSettings(){
 }
 
 void MainWindow::saveSettings(){
+    if (!GLCanvas::appPackage.isEmpty()) return;
     if(fullScreen())
         this->showNormal();
 
@@ -346,7 +381,7 @@ void MainWindow::saveSettings(){
     settingsNative.setValue("infoGreen", infoColor().green());
     settingsNative.setValue("infoBlue", infoColor().blue());
 
-    QSettings settings(Constants::SETTINGS_FOLDER + "/" + Constants::PLAYER_SETTINGS_FILE, QSettings::IniFormat);
+    QSettings settings;
 
     settings.setValue("orientation", orientation());
     settings.setValue("alwaysOnTop", alwaysOnTop());
@@ -356,6 +391,7 @@ void MainWindow::saveSettings(){
     settings.setValue("fps",         fps());
     settings.setValue("scale",       scale());
     settings.setValue("drawInfos",   drawInfos());
+    settings.setValue("vsync",ui.actionUse_VSYNC->isChecked()?1:0);
 
     if(fullScreen())
         this->showFullScreen();
@@ -432,6 +468,11 @@ void MainWindow::actionAuto_Scale(bool checked){
     updateAutoScale();
 }
 
+void MainWindow::actionUse_VSYNC(bool checked){
+    G_UNUSED(checked);
+	QMessageBox::information(this, tr("Gideros Player"), tr("You will need to restart the player for this change to take effect."));
+}
+
 void MainWindow::actionResolution(){
     QAction *action = (QAction*)sender();
 
@@ -447,6 +488,19 @@ void MainWindow::actionFps(){
     setFps(action->property("fps").toInt());
 
     updateFps();
+}
+
+void MainWindow::actionScreenshot(){
+    QPixmap qPixMap = ui.glCanvas->grab();
+	QString dir=getWorkingDirectory();
+	QString time=QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
+	int w=width();
+	int h=height();
+    if(orientation() == eLandscapeLeft || orientation() == eLandscapeRight) {
+    	int m=h; h=w; w=m;
+    }
+
+	qPixMap.toImage().save(QString("%1/%2_%3x%4.png").arg(dir).arg(time).arg(w).arg(h), "png", 0);
 }
 
 void MainWindow::actionOrientation(){
@@ -498,6 +552,7 @@ void MainWindow::actionRotate(){
     if(action->property("rotate").toInt() == eLeft){
         switch(orientation())
         {
+        default:
         case ePortrait:
             ui.actionLandscape_Left->trigger();
             break;
@@ -515,6 +570,7 @@ void MainWindow::actionRotate(){
     }else{
         switch (orientation())
         {
+        default:
         case ePortrait:
             ui.actionLandscape_Right->trigger();
             break;
@@ -583,6 +639,7 @@ void MainWindow::updateResolution(bool event){
     ui.glCanvas->setScale(canvasScaleFactor);
 
     switch (orientation()){
+        default:
         case ePortrait:
         case ePortraitUpsideDown:
             ui.glCanvas->setFixedSize(width() / widgetScaleFactor, height() / widgetScaleFactor);
@@ -598,12 +655,7 @@ void MainWindow::updateResolution(bool event){
 }
 
 void MainWindow::updateAutoScale(){
-    if(autoScale()){
-        ui.centralWidget->setMinimumSize(1, 1);
-
-    }else{
-        ui.centralWidget->setMinimumSize(0, 0);
-
+    if(!autoScale()){
         QAction *action = resolutionGroup_->checkedAction();
         if(action){
             setWidth(action->property("width").toInt());
@@ -623,7 +675,7 @@ void MainWindow::updateAlwaysOnTop(){
         setWindowFlags((windowFlags() & ~Qt::WindowStaysOnBottomHint) | Qt::WindowStaysOnTopHint);
 
     else
-        setWindowFlags((windowFlags() & ~Qt::WindowStaysOnTopHint) | Qt::WindowStaysOnBottomHint);
+        setWindowFlags(windowFlags() & ~(Qt::WindowStaysOnTopHint | Qt::WindowStaysOnBottomHint));
 
     show();
 }
@@ -814,7 +866,7 @@ void MainWindow::projectNameChanged(const QString& projectName){
 }
 
 void MainWindow::setFixedSize(bool fixedSize){
-
+    G_UNUSED(fixedSize);
 }
 
 QSize MainWindow::windowSize(){

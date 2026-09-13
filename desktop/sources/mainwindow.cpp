@@ -8,7 +8,6 @@
 #include <QTextStream>
 #include <QFileDialog>
 #include <algorithm>
-#include <QDesktopWidget>
 #include <QPalette>
 #include <QWindowStateChangeEvent>
 #include "libnetwork.h"
@@ -17,7 +16,7 @@
 #include "platform.h"
 #include "settingsdialog.h"
 #include "constants.cpp"
-
+#include "luaapplication.h"
 #include <bytebuffer.h>
 
 MainWindow* MainWindow::instance;
@@ -39,7 +38,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent){
     ui.glCanvas->setExportedApp(true);
     ui.glCanvas->projectDir_ = QDir("assets").absolutePath();
 
-    
+    ui.glCanvas->setupCanvas();
+
     width0_ = 320;
     height0_ = 480;
     scaleModeNum_ = 0;
@@ -57,60 +57,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent){
         QByteArray ba = file.readAll();
         file.close();
         std::vector<char> data(ba.data(), ba.data() + ba.size());
-        ByteBuffer buffer(&data[0], data.size());
-
-        int scaleMode, logicalWidth, logicalHeight, windowWidth, windowHeight;
-        buffer >> scaleMode;
-
-        setLogicalScaleMode((LogicalScaleMode) scaleMode);
         
-        buffer >> logicalWidth;
-        buffer >> logicalHeight;
+        ProjectProperties properties;
+    	properties.load(data, false);
 
-        width0_ = logicalWidth;
-        height0_ = logicalHeight;
+        setLogicalScaleMode((LogicalScaleMode) properties.scaleMode);
 
-    	int scaleCount;
-    	buffer >> scaleCount;
-    	std::vector<std::pair<std::string, float> > imageScales(scaleCount);
-    	for (int i = 0; i < scaleCount; ++i) {
-    		buffer >> imageScales[i].first;
-    		buffer >> imageScales[i].second;
-    	}
-    	
-        int orientation;
-        buffer >> orientation;
-        ui.glCanvas->setHardwareOrientation((Orientation) orientation);
+        width0_ = properties.logicalWidth;
+        height0_ = properties.logicalHeight;
 
-        int fps;
-        buffer >> fps;
+        ui.glCanvas->setHardwareOrientation((Orientation) properties.orientation);
 
-        int retinaDisplay;
-        buffer >> retinaDisplay;
+        ui.glCanvas->setFps(properties.fps);
 
-        int autorotation;
-        buffer >> autorotation;
-
-        int mouseToTouch;
-        buffer >> mouseToTouch;
-        int touchToMouse;
-        buffer >> touchToMouse;
-        int mouseTouchOrder;
-        buffer >> mouseTouchOrder;
-
-
-
-        buffer >> windowWidth;
-        buffer >> windowHeight;
-        if (windowWidth == 0 && windowHeight == 0) {
-            windowWidth = logicalWidth;
-            windowHeight = logicalHeight;
+        if (properties.windowWidth == 0 && properties.windowHeight == 0) {
+        	properties.windowWidth = properties.logicalWidth;
+        	properties.windowHeight = properties.logicalHeight;
             setFixedSize(false);
         }else{
-            width0_ = windowWidth;
-            height0_ = windowHeight;
+            width0_ = properties.windowWidth;
+            height0_ = properties.windowHeight;
         }
-        setWindowSize(windowWidth, windowHeight);
+        setWindowSize(properties.windowWidth, properties.windowHeight);
 
         
     }
@@ -148,6 +116,10 @@ void MainWindow::resizeWindow(int width, int height){
     resize(width, height);
     
     updateResolution(false);
+}
+
+void MainWindow::setOrientation(Orientation orientation){
+    Q_UNUSED(orientation);
 }
 
 void MainWindow::fullScreenWindow(bool fullScreen){
@@ -200,6 +172,7 @@ void MainWindow::updateResolution(bool event){
     ui.glCanvas->setScale(canvasScaleFactor);
 
     switch (ui.glCanvas->getHardwareOrientation()){
+        case eFixed:
         case ePortrait:
         case ePortraitUpsideDown:
             ui.glCanvas->setFixedSize(width / widgetScaleFactor, height / widgetScaleFactor);
@@ -306,5 +279,5 @@ bool MainWindow::fullScreen(){
 }
 
 void MainWindow::printToOutput(const char* text){
-
+    Q_UNUSED(text);
 }

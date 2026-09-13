@@ -2,44 +2,79 @@
 #ifdef EGL
 #include <EGL/egl.h>
 #else
-#include <GL/glfw.h>
+#include <GLFW/glfw3.h>
 #endif
 #include <iostream>
-#include "emscripten.h"
-#include "html5.h"
+#include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
+#include <sys/stat.h>
+#include <gstdio.h>
 #include <glog.h>
 #include <ginput-js.h>
 #include <gplugin.h>
 #include <dlfcn.h>
+#include <math.h>
+#include <cJSON.h>
+//
 static ApplicationManager *s_applicationManager = NULL;
+extern bool inWebXR;
+
+extern void linkCode();
+extern size_t GiderosUIShown;
 
 #ifdef EGL
 EGLDisplay display;
+#elif defined(GLFW)
+static GLFWwindow *glfw_win;
+#else
+static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webglCtx=0;
 #endif
 float pixelRatio=1.0;
+int lastGLWidth=0,lastGLHeight=0;
 
-int initGL(int width, int height)
+static void errorAbort(const char *detail)
+{
+	const char *type="genErr";
+	EM_ASM_( { Module.showError(UTF8ToString($0),UTF8ToString($1)) }, type, detail);
+	emscripten_force_exit(1);
+}
+
+static void errorLua(const char *detail)
+{
+	const char *type="luaErr";
+	EM_ASM_( { Module.showError(UTF8ToString($0),UTF8ToString($1)) }, type, detail);
+	emscripten_force_exit(1);
+}
+
+int initGL(int &width, int &height)
 {
  //emscripten_set_canvas_size(width,height);
-#ifndef EGL
+#ifdef GLFW
  if (glfwInit() != GL_TRUE) {
   printf("glfwInit() failed\n");
   return GL_FALSE;
  }
  
+ pixelRatio=emscripten_get_device_pixel_ratio();
+ printf("Resize:%d,%d\n",width,height);
+ lastGLWidth=width;
+ lastGLHeight=height;
+ width*=pixelRatio;
+ height*=pixelRatio;
+ printf("CanvasSize: %d,%d (%f)\n",width,height,pixelRatio);
                       
- if (glfwOpenWindow(width, height, 8, 8, 8, 0, 16, 8, GLFW_WINDOW) != GL_TRUE) {
-    printf("glfwOpenWindow() failed\n");
-    return GL_FALSE;
- }
+ //8, 8, 8, 8, 16, 8, GLFW_WINDOW
+ //glfwWindowHint(,);
+ glfw_win = glfwCreateWindow(width, height, "", NULL, NULL);
+ glfwMakeContextCurrent(glfw_win);
  
-/* float ratio=1.0;//emscripten_get_device_pixel_ratio();
+/* float ratio=1.0;//
  EM_ASM_({
    var canvas = Module['canvas'];
    canvas.width=$0;
    canvas.height=$1;
    },width*ratio,height*ratio);    */ 
-#else
+#elif defined(EGL)
  EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
  EGLint major = 0, minor = 0;
  EGLBoolean ret = eglInitialize(display, &major, &minor);
@@ -69,40 +104,113 @@ int initGL(int width, int height)
  };
  EGLContext context = eglCreateContext(display, config, NULL, contextAttribs);
  ret = eglMakeCurrent(display, surface, surface, context);*/
+#else
+ pixelRatio=emscripten_get_device_pixel_ratio();
+ printf("Resize:%d,%d\n",width,height);
+ lastGLWidth=width;
+ lastGLHeight=height;
+ width*=pixelRatio;
+ height*=pixelRatio;
+ printf("CanvasSize: %d,%d (%f)\n",width,height,pixelRatio);
+ emscripten_set_canvas_element_size("#canvas",width,height);
+
+
+ //8, 8, 8, 8, 16, 8, GLFW_WINDOW
+ //glfwWindowHint(,);
+ EmscriptenWebGLContextAttributes ctx;
+ emscripten_webgl_init_context_attributes(&ctx);
+ ctx.stencil=true;
+ //ctx.explicitSwapControl=true;
+ ctx.majorVersion=2;
+
+ if (webglCtx&&emscripten_is_webgl_context_lost(webglCtx))
+	 webglCtx=0;
+
+ if (webglCtx<=0)
+	 webglCtx=emscripten_webgl_create_context("#canvas",&ctx);
+ if (webglCtx<=0) {
+	 ctx.majorVersion=1;
+	 webglCtx=emscripten_webgl_create_context("#canvas",&ctx);
+ }
+ if (webglCtx<=0) {
+	 printf("Failed to create WebGL context:%d\n",(int)webglCtx);
+	 webglCtx=0;
+ }
+ else
+	 printf("WebGL context:%d\n",(int)webglCtx);
+
+ emscripten_webgl_make_context_current(webglCtx);
 #endif
  return 0;
 }
 
-extern "C" void GGStreamOpenALTick();                                                                                                    
-void looptick()
-{
-    s_applicationManager->drawFrame();
-#ifndef EGL
-    glfwSwapBuffers();
+extern "C" void GGStreamOpenALTick();
+static double dueTime=0;
+extern "C" int g_getFps();
+static bool contextLost=false;
+
+void looptick(void *a) {
+	double t = emscripten_get_now() / 1000;
+	if (t < dueTime)
+		return;
+
+	//Compute next minium frame time. Don't be too strict because of jitter, actual call rate will be a sub-multiple of 60Hz anyhow
+	int fps = g_getFps();
+	if (fps == 0)
+		fps = 60;
+	dueTime = t + 0.7 / fps;
+
+	try {
+		// Check for size change in main loop, due to buggy iOS behavior
+		int defWidth=EM_ASM_INT_V( {return window.innerWidth;});
+		int defHeight=EM_ASM_INT_V( {return window.innerHeight;});
+		if (defWidth!=lastGLWidth || defHeight!=lastGLHeight) {
+#ifdef GLFW
+			glfwDestroyWindow(glfw_win);
 #else
-    eglSwapInterval(display,1);
+			/*	  if (webglCtx) {
+			 emscripten_webgl_make_context_current(0);
+			 emscripten_webgl_destroy_context(webglCtx);
+			 }*/
 #endif
+			initGL(defWidth,defHeight);
+			s_applicationManager->surfaceChanged(defWidth,defHeight,(defWidth>defHeight)?90:0);
+		}
+		if (!emscripten_is_webgl_context_lost(webglCtx)) {
+			if (contextLost) {
+				printf("Restarting due to WebGL context loss");
+				s_applicationManager->lowMemory();
+				s_applicationManager->stop();
+				contextLost=false;
+			}
+			if (s_applicationManager->drawFrame()) {
+				if (!inWebXR) {
+#ifdef GLFW
+					glfwSwapBuffers(glfw_win);
+#elif defined(EGL)
+					eglSwapInterval(display,1);
+#else
+					/*if (webglCtx)
+					 emscripten_webgl_commit_frame();
+					 */
+#endif
+				}
+			}
+		}
+	}
+	catch(const luaException& e)
+	{
+		errorLua(e.what());
+	}
+	catch(const std::exception& e)
+	{
+		errorAbort(e.what());
+	}
+	catch(...)
+	{
+		errorAbort("Generic error");
+	}
 }
-
-EM_BOOL resize_callback(int eventType, const EmscriptenUiEvent *e, void *userData)
-{
- int defWidth=e->windowInnerWidth;
- int defHeight=e->windowInnerHeight;	
-// printf("Resize:%d,%d\n",e->windowInnerWidth,e->windowInnerHeight);
- float ratio=emscripten_get_device_pixel_ratio();
- defWidth*=ratio;
- defHeight*=ratio;
- pixelRatio=ratio;
-// printf("CanvasSize: %d,%d (%f)\n",defWidth,defHeight,ratio);
- 
- //emscripten_set_canvas_size(width*ratio,height*ratio);
- glfwCloseWindow();
-  initGL(defWidth,defHeight);   
-//glfwSetWindowSize(defWidth,defHeight); 
-    s_applicationManager->surfaceChanged(defWidth,defHeight,(defWidth>defHeight)?90:0);
- return false;
-}
-
 
 // returns the number of utf8 code points in the buffer at s
 size_t utf8len(const char *s)
@@ -111,9 +219,10 @@ size_t utf8len(const char *s)
     for (; *s; ++s) if ((*s & 0xC0) != 0x80) ++len;
     return len;
 }
-
+int s_KeyboardModifiers=0;
 EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData)
 {
+ if (GiderosUIShown) return false;
  const char *key=e->key;
  char kcode[2]={(char)(e->keyCode),0};
  if ((!key)||(!(*key)))
@@ -125,111 +234,197 @@ EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *user
  if ((!strcmp(key,"Backspace"))||(*key=='\b')) skey=2;
  if ((!strcmp(key,"Enter"))||(*key=='\r')) skey=4;
  if ((!strcmp(key,"Escape"))||(*key=='\e')) skey=8;
+ int mkey=0;
+ if (e->shiftKey) mkey|=GINPUT_SHIFT_MODIFIER;
+ if (e->altKey) mkey|=GINPUT_ALT_MODIFIER;
+ if (e->ctrlKey) mkey|=GINPUT_CTRL_MODIFIER;
+ if (e->metaKey) mkey|=GINPUT_META_MODIFIER;
+ s_KeyboardModifiers=mkey;
+ //printf("PressCode:%s %d (%d)\n",key,skey,eventType);
  if (eventType == EMSCRIPTEN_EVENT_KEYDOWN)
  {
-  ginputp_keyDown(key,e->code);
+	 if (!e->repeat)
+		 ginputp_keyDown(key,e->code,mkey);
   //printf("DownCode:%s %d\n",key,skey);
   if (skey==1) ginputp_keyChar("\t");
   if (skey==2) ginputp_keyChar("\b");
   if (skey==4) ginputp_keyChar("\r");
   if (skey==8) ginputp_keyChar("\e");
+  //Emulate keypress
+  if( (!skey)&&(*key)&&((mkey&(~GINPUT_SHIFT_MODIFIER))==0))
+  {
+	  if ((utf8len(key)==1)||((*key)<'A')||((*key)>'Z'))
+		   ginputp_keyChar(key);
+  }
  }
  else if (eventType == EMSCRIPTEN_EVENT_KEYUP)
  {
   //printf("UpCode:%s %d\n",key,skey);
-  ginputp_keyUp(key,e->code);
+  ginputp_keyUp(key,e->code,mkey);
  }
  else if (eventType == EMSCRIPTEN_EVENT_KEYPRESS)
  {
+	 //Keypress is being deprecated and no longer works in some situations, rely on keydown instead
+/*  printf("PressCode:%s %d\n",key,skey);
   if ((utf8len(key)==1)&&(!skey))
-   ginputp_keyChar(key);
+   ginputp_keyChar(key);*/
  }
 
  return true;
 }
 
+extern void WebXR_EventTrigger();
+void checkEventTriggers() {
+    EM_ASM( Module.checkALMuted(); );
+    WebXR_EventTrigger();
+}
+
 EM_BOOL mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData)
 {
-	 int x=e->canvasX*pixelRatio;
-	 int y=e->canvasY*pixelRatio;
+	 if (GiderosUIShown) return false;
+	 int x=e->targetX*pixelRatio;
+	 int y=e->targetY*pixelRatio;
 	 int b=e->buttons;
-	 int bs=0;
+	 int bs=0,m=0;
 	 if (e->button==0)
 	  bs=1;
          else if (e->button==1)
           bs=4;
          else if (e->button==2)
           bs=2;
-          
 	 b=(b&1)|((b&2)<<1)|((b&4)>>1); //Convert buttons to gideros mask
-	 if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN)
-		 ginputp_mouseDown(x,y,bs);
+	 if (e->ctrlKey) m|=GINPUT_CTRL_MODIFIER;
+	 if (e->shiftKey) m|=GINPUT_SHIFT_MODIFIER;
+	 if (e->altKey) m|=GINPUT_ALT_MODIFIER;
+	 if (e->metaKey) m|=GINPUT_META_MODIFIER;
+
+	 if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN) {
+		 //EM_ASM( document.getElementById("canvas").setCapture(true); );
+		 ginputp_mouseDown(x,y,bs,m);
+	 }
 	 else if (eventType == EMSCRIPTEN_EVENT_MOUSEUP)
-		 ginputp_mouseUp(x,y,bs);
+	 {
+		 checkEventTriggers();
+		 ginputp_mouseUp(x,y,bs,m);
+		 //if (!b) EM_ASM( document.getElementById("canvas").setCapture(false); );
+	 }
 	 else if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE)
 	 {
 		 if (b)
-			 ginputp_mouseMove(x,y,b);
+			 ginputp_mouseMove(x,y,b,m);
 		 else
-			 ginputp_mouseHover(x,y,b);
-	}
+			 ginputp_mouseHover(x,y,b,m);
+	 }
+	 else if (eventType == EMSCRIPTEN_EVENT_MOUSEENTER)
+	 {
+		 ginputp_mouseEnter(x,y,b,m);
+	 }
+	 else if (eventType == EMSCRIPTEN_EVENT_MOUSELEAVE)
+	 {
+		 ginputp_mouseLeave(x,y,m);
+	 }
 
   return true;
 }
 
 EM_BOOL wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData)
 {
+	 if (GiderosUIShown) return false;
  double w=e->deltaY;
  if (e->deltaMode==1)
   w=w*40;
  if (e->deltaMode==2)
   w=w*120;
- int x=e->mouse.canvasX*pixelRatio;
- int y=e->mouse.canvasY*pixelRatio;
+ int x=e->mouse.targetX*pixelRatio;
+ int y=e->mouse.targetY*pixelRatio;
  int b=e->mouse.buttons;
+ int m=0;
+ if (e->mouse.ctrlKey) m|=GINPUT_CTRL_MODIFIER;
+ if (e->mouse.shiftKey) m|=GINPUT_SHIFT_MODIFIER;
+ if (e->mouse.altKey) m|=GINPUT_ALT_MODIFIER;
+ if (e->mouse.metaKey) m|=GINPUT_META_MODIFIER;
+
  b=(b&1)|((b&2)<<1)|(b&4>>1); //Convert buttons to gideros mask
-  ginputp_mouseWheel(x,y,b,-w);
+  ginputp_mouseWheel(x,y,b,-w,m);
   return true;
 }
 
 EM_BOOL touch_callback(int eventType, const EmscriptenTouchEvent *e, void *userData)
 {
+	 if (GiderosUIShown) return false;
+	int m=0;
+	 if (e->ctrlKey) m|=GINPUT_CTRL_MODIFIER;
+	 if (e->shiftKey) m|=GINPUT_SHIFT_MODIFIER;
+	 if (e->altKey) m|=GINPUT_ALT_MODIFIER;
+	 if (e->metaKey) m|=GINPUT_META_MODIFIER;
     for (int k=0;k<e->numTouches;k++) {
      if (!e->touches[k].isChanged) continue;
-	 int x=e->touches[k].canvasX*pixelRatio;
-	 int y=e->touches[k].canvasY*pixelRatio;
+	 int x=e->touches[k].targetX*pixelRatio;
+	 int y=e->touches[k].targetY*pixelRatio;
 	 int i=e->touches[k].identifier;
 	 if (eventType == EMSCRIPTEN_EVENT_TOUCHSTART)
-		 ginputp_touchBegin(x,y,i);
+		 ginputp_touchBegin(x,y,i,m);
 	 else if (eventType == EMSCRIPTEN_EVENT_TOUCHEND)
 	 {
-	         EM_ASM( Module.checkALMuted(); );	         
-		 ginputp_touchEnd(x,y,i);
-         }
+		 checkEventTriggers();
+		 ginputp_touchEnd(x,y,i,m);
+     }
 	 else if (eventType == EMSCRIPTEN_EVENT_TOUCHMOVE)
-		 ginputp_touchMove(x,y,i);
+		 ginputp_touchMove(x,y,i,m);
 	 else if (eventType == EMSCRIPTEN_EVENT_TOUCHCANCEL)
-		 ginputp_touchCancel(x,y,i);
+		 ginputp_touchCancel(x,y,i,m);
   }
   return true;
 }
 
+static bool curHidden=false;
+EM_BOOL visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent *e, void *userData)
+{
+	if (e->hidden&&(!curHidden))
+		s_applicationManager->pause();
+	else if (curHidden&&(!e->hidden))
+		s_applicationManager->resume();
+	curHidden=e->hidden;
+  return true;
+}
 
-extern "C" int main_registerPlugin(const char *pname);
-extern "C" void* g_pluginMain_JSNative(lua_State* L, int type);
+EM_BOOL wgl_callback(int eventType, const void *reserved, void *userData)
+{
+    switch (eventType) {
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:
+        {
+        	EM_ASM_( { Module.showGLContextLost(1); });
+        	break;
+        }
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED:
+        {
+        	EM_ASM_( { Module.showGLContextLost(0); });
+        	contextLost=true;
+        	break;
+        }
+    };
+    return true;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int main_registerPlugin(const char *pname,const char *psym);
+extern "C" EMSCRIPTEN_KEEPALIVE void* g_pluginMain_JSNative(lua_State* L, int type);
+extern "C" EMSCRIPTEN_KEEPALIVE void* g_pluginMain_WebXR(lua_State* L, int type);
+
+extern "C" EMSCRIPTEN_KEEPALIVE long _keep();
+
 
 extern const char *codeKey_;
 const char *currentUrl=NULL;
+
+
 int main() {
   EM_ASM(Module.setStatus("Initializing"));
+  try {
           
-char *url=(char *) EM_ASM_INT_V({
- return allocate(intArrayFromString(location.href), 'i8', ALLOC_STACK);
+char *url=(char *) EM_ASM_PTR({
+ return stringToNewUTF8(location.href);
 });
- char *surl=(char *)malloc(strlen(url)+2);
- *surl='s';
- strcpy(surl+1,url);
- currentUrl=surl;
+ currentUrl=strdup(url);
 
  const char *hostname=codeKey_+32;
  bool allowed=(strlen(hostname)==0);
@@ -246,16 +441,11 @@ char *url=(char *) EM_ASM_INT_V({
   allowed|=!strncmp(s1,hostname,strlen(hostname));
   if (s2) *s2='/';
  }
- /*
- allowed|=!strncmp(url,"http://hieroglyphe.net/",23);
- allowed|=!strncmp(url,"http://www.geopisteur.com/",26);
- allowed|=!strncmp(url,"http://apps.giderosmobile.com/",30); 
- allowed|=!strncmp(url,"http://www.totebogames.com/",27); 
- allowed|=!strncmp(url,"http://www.miniclip.com/",24); 
- */
+
  if (!allowed)
  {
   printf("Sorry: location %s not allowed\n",url);
+  linkCode();
   return -1;
  }
   url=strstr(url,"://")+2;
@@ -263,64 +453,81 @@ char *url=(char *) EM_ASM_INT_V({
   if (lurl) *lurl=0;
   lurl=url+strlen(url)-1;
   if ((*lurl)=='/') *lurl=0;
-  
+
   //PLUGINS Init
   g_registerPlugin(g_pluginMain_JSNative);
+  g_registerPlugin(g_pluginMain_WebXR);
   EM_ASM(Module.registerPlugins());
 
+
   int defWidth=EM_ASM_INT_V({ return window.innerWidth; });
-   int defHeight=EM_ASM_INT_V({ return window.innerHeight; });
-   int fullScreen;
- float ratio=emscripten_get_device_pixel_ratio();
- defWidth*=ratio;
- defHeight*=ratio;
- pixelRatio=ratio;
-// printf("CanvasSize: %d,%d (%f)\n",defWidth,defHeight,ratio);
-//   emscripten_get_canvas_size(&defWidth,&defHeight,&fullScreen);
-    initGL(defWidth,defHeight);    
+  int defHeight=EM_ASM_INT_V({ return window.innerHeight; });
+  initGL(defWidth,defHeight);
 //    glog_setLevel(0);
     bool hasGApp=EM_ASM_INT_V({ return Module.hasGApp; });
-    s_applicationManager=new ApplicationManager(false,hasGApp?"main.gapp":"",url);
+    s_applicationManager=new ApplicationManager(!hasGApp,hasGApp?"main.gapp":"",url);
     s_applicationManager->surfaceCreated();
 
     EMSCRIPTEN_RESULT ret;
     bool capture=false;
-    ret = emscripten_set_resize_callback(0, 0, true, resize_callback);
-    ret = emscripten_set_mousedown_callback(0, 0, capture, mouse_callback);
-    ret = emscripten_set_mouseup_callback(0, 0, capture, mouse_callback);
-    ret = emscripten_set_mousemove_callback(0, 0, capture, mouse_callback);
-    ret = emscripten_set_wheel_callback(0, 0, capture, wheel_callback);
-    ret = emscripten_set_touchstart_callback(0, 0, capture, touch_callback);
-    ret = emscripten_set_touchend_callback(0, 0, capture, touch_callback);
-    ret = emscripten_set_touchmove_callback(0, 0, capture, touch_callback);
-    ret = emscripten_set_touchcancel_callback(0, 0, capture, touch_callback);
-    ret = emscripten_set_keydown_callback(0, 0, true, key_callback);
-    ret = emscripten_set_keyup_callback(0, 0, true, key_callback);
-    ret = emscripten_set_keypress_callback(0, 0, true, key_callback);
-   //printf("URL:%s\n",url);
+    //ret = emscripten_set_resize_callback(0, 0, true, resize_callback);
+    ret = emscripten_set_mousedown_callback("#canvas", 0, capture, mouse_callback);
+    ret = emscripten_set_mouseup_callback("#canvas", 0, capture, mouse_callback);
+    ret = emscripten_set_mousemove_callback("#canvas", 0, capture, mouse_callback);
+    ret = emscripten_set_mouseenter_callback("#canvas", 0, capture, mouse_callback);
+    ret = emscripten_set_mouseleave_callback("#canvas", 0, capture, mouse_callback);
+    ret = emscripten_set_wheel_callback("#canvas", 0, capture, wheel_callback);
+    ret = emscripten_set_touchstart_callback("#canvas", 0, capture, touch_callback);
+    ret = emscripten_set_touchend_callback("#canvas", 0, capture, touch_callback);
+    ret = emscripten_set_touchmove_callback("#canvas", 0, capture, touch_callback);
+    ret = emscripten_set_touchcancel_callback("#canvas", 0, capture, touch_callback);
+    ret = emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    ret = emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    ret = emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    ret = emscripten_set_visibilitychange_callback(0, true, visibility_callback);
+
+    emscripten_set_webglcontextlost_callback("#canvas", 0, false, wgl_callback);
+    emscripten_set_webglcontextrestored_callback("#canvas", 0, false, wgl_callback);
+    //printf("URL:%s\n",url);
 
     s_applicationManager->surfaceChanged(defWidth,defHeight,(defWidth>defHeight)?90:0);
-    emscripten_set_main_loop(looptick, 0, 1);
-    main_registerPlugin(NULL);
+    emscripten_set_main_loop_arg(looptick, NULL,  0, 1);
+    main_registerPlugin(NULL,NULL);
+  }
+  catch(const luaException& e)
+  {
+      errorLua(e.what());
+  }
+  catch(const std::exception& e)
+  {
+      errorAbort(e.what());
+  }
+  catch(...)
+  {
+      errorAbort("Generic error");
+//      _keep();
+  }
 }
 
-int main_registerPlugin(const char *pname)
+
+int main_registerPlugin(const char *pname,const char *psym)
 {
  if (!pname)
   return 0;
- void *hndl = dlopen (NULL, RTLD_LAZY);
+ void *hndl = dlopen (pname, RTLD_LAZY);
  if (!hndl) { fprintf(stderr, "dlopen failed: %s\n", dlerror()); 
            exit (EXIT_FAILURE); 
  };
  void *(*func)(lua_State *,
        int)=(void *(*)(lua_State *,
-             int))dlsym(hndl,pname);
+             int))dlsym(hndl,psym);
  int ret=0;
  if (func)
   ret=g_registerPlugin(func);
  else
   fprintf(stderr,"Symbol %s not found\n",pname);
  //dlclose(hndl); //XXX check this
+
   return ret;
 }
 
@@ -328,10 +535,64 @@ void flushDrive(int drive)
 {
  if (drive==1)
  {
-  printf("Sync FS\n");
   EM_ASM({
-   FS.syncfs(function (err) {
-           });
+   if (!FS.gidSyncing) {
+	   FS.gidSyncing=true;
+	   FS.syncfs(function (err) {
+		   FS.gidSyncing=false;
+	           });
+   }
   });
  }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void JSPlayer_play(const char *project)
+{
+	s_applicationManager->openProject(project);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void JSPlayer_stop()
+{
+	s_applicationManager->stop();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void JSPlayer_writeFile(const char *project, const char *path,const char *data,int datasize)
+{
+	char tmp[PATH_MAX];
+	char *p = NULL;
+	size_t len;
+	snprintf(tmp, sizeof(tmp), "gideros/%s/resource/%s", project,path);
+	len = strlen(tmp);
+	if (tmp[len - 1] == '/')
+		tmp[len - 1] = 0;
+	for (p = tmp + 1; *p; p++)
+		if (*p == '/') {
+			*p = 0;
+			mkdir(tmp, S_IRWXU);
+			*p = '/';
+		}
+	FILE* fos = fopen(tmp, "wb");
+	fwrite(data,datasize, 1, fos);
+	fclose(fos);
+	glog_v("Wrote file '%s' (%d)\n",tmp,datasize);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE cJSON *JSCall(const char *mtd, cJSON *args)
+{
+	char *sArgs=args?cJSON_PrintUnformatted(args):strdup("null");
+	if (args) cJSON_Delete(args);
+	char *ret=(char *) EM_ASM_PTR({
+	 return stringToNewUTF8(Module.JSCallJS(UTF8ToString($0),UTF8ToString($1))||'null');
+	},mtd,sArgs);
+	free(sArgs);
+
+	cJSON *cj=cJSON_Parse(ret);
+	free(ret);
+	return cj;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void JSCallV(const char *mtd, cJSON *args)
+{
+	cJSON *c=JSCall(mtd,args);
+	cJSON_Delete(c);
 }

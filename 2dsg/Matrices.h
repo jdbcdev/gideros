@@ -19,6 +19,11 @@
 #ifndef MATH_MATRICES_H
 #define MATH_MATRICES_H
 
+#ifndef G_UNUSED
+#define G_UNUSED(x) (void)(x)
+#endif
+
+
 #include <iostream>
 #include <iomanip>
 #include "Vectors.h"
@@ -167,7 +172,7 @@ public:
     const float* get() const;
     const float* data() const;
     float* raw();
-    const float* getTranspose();                        // return transposed matrix
+    void         getTranspose(float *tm);                        // return transposed matrix
     float        getDeterminant();
 
     Matrix4&    identity();
@@ -222,9 +227,9 @@ private:
     float       getCofactor(float m0, float m1, float m2,
                             float m3, float m4, float m5,
                             float m6, float m7, float m8);
+    void 	computeType();
 
     float m[16];
-    float tm[16];                                       // transpose m
 };
 
 
@@ -682,23 +687,32 @@ inline void Matrix4::set(const float src[16])
     m[4] = src[4];  m[5] = src[5];  m[6] = src[6];  m[7] = src[7];
     m[8] = src[8];  m[9] = src[9];  m[10]= src[10]; m[11]= src[11];
     m[12]= src[12]; m[13]= src[13]; m[14]= src[14]; m[15]= src[15];
+    computeType();
+}
+
+inline void Matrix4::computeType()
+{
 	//TRN: m0,m5,m10,m15=1 m12,m13,m14=x
 	//M2D: m10,m15=1 m0,m1,m4,m5,m12,m13,m14=x
 	//M3D: m15=1 m0,m1,m2,m4,m5,m6,m8,m9,m10,m12,m13,m14=x
 	//FULL: no opt
+    const float EPS = 1e-6f;
     type=FULL;
-    if ((m[15]==1)&&(m[3]==0)&&(m[7]==0)&&(m[11]==0))
+
+    if ((fabs(m[15]-1)<EPS)&&(fabs(m[3])<EPS)&&
+        (fabs(m[7])<EPS)&&(fabs(m[11])<EPS))
     {
-    	type=M3D;
-    	if ((m[10]==1)&&(m[2]==0)&&(m[6]==0)&&(m[8]==0)&&(m[9]==0))
-    	{
-    		type=M2D;
-        	if ((m[0]==1)&&(m[5]==1)&&(m[1]==0)&&(m[4]==0))
-        		type=TRANSLATE;
-    	}
+        type=M3D;
+        if ((fabs(m[10]-1)<EPS)&&(fabs(m[2])<EPS)&&
+            (fabs(m[6])<EPS)&&(fabs(m[8])<EPS)&&(fabs(m[9])<EPS))
+        {
+            type=M2D;
+            if ((fabs(m[0]-1)<EPS)&&(fabs(m[5]-1)<EPS)&&
+                (fabs(m[1])<EPS)&&(fabs(m[4])<EPS))
+                type=TRANSLATE;
+        }
     }
 }
-
 
 
 inline void Matrix4::set(float m00, float m01, float m02, float m03,
@@ -718,7 +732,7 @@ inline void Matrix4::set(float m00, float m01, float m02, float m03,
 inline void Matrix4::setRow(int index, const float row[4])
 {
     m[index] = row[0];  m[index + 4] = row[1];  m[index + 8] = row[2];  m[index + 12] = row[3];
-    type=FULL;
+    computeType();
 }
 
 
@@ -726,7 +740,7 @@ inline void Matrix4::setRow(int index, const float row[4])
 inline void Matrix4::setRow(int index, const Vector4& v)
 {
     m[index] = v.x;  m[index + 4] = v.y;  m[index + 8] = v.z;  m[index + 12] = v.w;
-    type=FULL;
+    computeType();
 }
 
 
@@ -734,7 +748,7 @@ inline void Matrix4::setRow(int index, const Vector4& v)
 inline void Matrix4::setRow(int index, const Vector3& v)
 {
     m[index] = v.x;  m[index + 4] = v.y;  m[index + 8] = v.z;
-    type=FULL;
+    computeType();
 }
 
 
@@ -742,7 +756,7 @@ inline void Matrix4::setRow(int index, const Vector3& v)
 inline void Matrix4::setColumn(int index, const float col[4])
 {
     m[index*4] = col[0];  m[index*4 + 1] = col[1];  m[index*4 + 2] = col[2];  m[index*4 + 3] = col[3];
-    type=FULL;
+    computeType();
 }
 
 
@@ -750,7 +764,7 @@ inline void Matrix4::setColumn(int index, const float col[4])
 inline void Matrix4::setColumn(int index, const Vector4& v)
 {
     m[index*4] = v.x;  m[index*4 + 1] = v.y;  m[index*4 + 2] = v.z;  m[index*4 + 3] = v.w;
-    type=FULL;
+    computeType();
 }
 
 
@@ -758,7 +772,7 @@ inline void Matrix4::setColumn(int index, const Vector4& v)
 inline void Matrix4::setColumn(int index, const Vector3& v)
 {
     m[index*4] = v.x;  m[index*4 + 1] = v.y;  m[index*4 + 2] = v.z;
-    type=FULL;
+    computeType();
 }
 
 
@@ -780,13 +794,12 @@ inline float* Matrix4::raw()
 
 
 
-inline const float* Matrix4::getTranspose()
+inline void Matrix4::getTranspose(float* tm)
 {
     tm[0] = m[0];   tm[1] = m[4];   tm[2] = m[8];   tm[3] = m[12];
     tm[4] = m[1];   tm[5] = m[5];   tm[6] = m[9];   tm[7] = m[13];
     tm[8] = m[2];   tm[9] = m[6];   tm[10]= m[10];  tm[11]= m[14];
     tm[12]= m[3];   tm[13]= m[7];   tm[14]= m[11];  tm[15]= m[15];
-    return tm;
 }
 
 
@@ -889,7 +902,7 @@ inline Matrix4 Matrix4::operator*(const Matrix4& n) const
 	case 3: //TRNxFULL
 	    return Matrix4(n[0],n[1],n[2],n[3],
 	                   n[4],n[5],n[6],n[7],
-	                   n[8],n[9],n[10],n[8],
+                       n[8],n[9],n[10],n[11],
 	                   n[12] + m[12],n[13] + m[13],n[14] + m[14],n[15],FULL);
 	case 4: //M2DxTRN
 	    return Matrix4(m[0],m[1],0,0,
@@ -907,7 +920,34 @@ inline Matrix4 Matrix4::operator*(const Matrix4& n) const
 	                   m[1]*n[12] + m[5]*n[13] + m[13],
 	                   n[14] + m[14],
 	                   1,M2D);
-	case 8: //M3DxTRN
+    case 6: //M2DxM3D
+        return Matrix4(m[0]*n[0]+m[4]*n[1],m[1]*n[0]+m[5]*n[1],n[2],0,
+                       m[0]*n[4]+m[4]*n[5],m[1]*n[4]+m[5]*n[5],n[6],0,
+                       m[0]*n[8]+m[4]*n[9],m[1]*n[8]+m[5]*n[9],n[10],0,
+                       m[0]*n[12]+m[4]*n[13]+m[12],
+                       m[1]*n[12]+m[5]*n[13]+m[13],
+                       n[14] + m[14],
+                       1,M3D);
+    case 7: // M2DxFULL
+        return Matrix4(
+            m[0]*n[0] + m[4]*n[1] + m[12]*n[3],
+            m[1]*n[0] + m[5]*n[1] + m[13]*n[3],
+            n[2] + m[14]*n[3],
+            n[3],
+            m[0]*n[4] + m[4]*n[5] + m[12]*n[7],
+            m[1]*n[4] + m[5]*n[5] + m[13]*n[7],
+            n[6] + m[14]*n[7],
+            n[7],
+            m[0]*n[8] + m[4]*n[9] + m[12]*n[11],
+            m[1]*n[8] + m[5]*n[9] + m[13]*n[11],
+            n[10] + m[14]*n[11],
+            n[11],
+            m[0]*n[12] + m[4]*n[13] + m[12]*n[15],
+            m[1]*n[12] + m[5]*n[13] + m[13]*n[15],
+            n[14] + m[14]*n[15],
+            n[15],
+            FULL);
+    case 8: //M3DxTRN
 	    return Matrix4(m[0],m[1],m[2],0,
 	    			   m[4],m[5],m[6],0,
 	    			   m[8],m[9],m[10],0,
@@ -915,7 +955,63 @@ inline Matrix4 Matrix4::operator*(const Matrix4& n) const
 	                   m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13],
 	                   m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14],
 	                   1,M3D);
-	case 12: //FULLxTRN
+    case 9: //M3DxM2D
+        return Matrix4(m[0]*n[0]  + m[4]*n[1],
+                       m[1]*n[0]  + m[5]*n[1],
+                       m[2]*n[0]  + m[6]*n[1],
+                       0,
+
+                       m[0]*n[4]  + m[4]*n[5],
+                       m[1]*n[4]  + m[5]*n[5],
+                       m[2]*n[4]  + m[6]*n[5],
+                       0,
+
+                       m[8],m[9],m[10], 0,
+
+                       m[0]*n[12] + m[4]*n[13] + m[8]*n[14] + m[12],
+                       m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13],
+                       m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14],
+                       1,M3D);
+    case 10: //M3DxM3D
+        return Matrix4(m[0]*n[0]  + m[4]*n[1]  + m[8]*n[2],
+                       m[1]*n[0]  + m[5]*n[1]  + m[9]*n[2],
+                       m[2]*n[0]  + m[6]*n[1]  + m[10]*n[2],
+                       0,
+
+                       m[0]*n[4]  + m[4]*n[5]  + m[8]*n[6],
+                       m[1]*n[4]  + m[5]*n[5]  + m[9]*n[6],
+                       m[2]*n[4]  + m[6]*n[5]  + m[10]*n[6],
+                       0,
+
+                       m[0]*n[8]  + m[4]*n[9]  + m[8]*n[10],
+                       m[1]*n[8]  + m[5]*n[9]  + m[9]*n[10],
+                       m[2]*n[8]  + m[6]*n[9]  + m[10]*n[10],
+                       0,
+
+                       m[0]*n[12] + m[4]*n[13] + m[8]*n[14] + m[12],
+                       m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13],
+                       m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14],
+                       1,M3D);
+    case 11: // M3DxFULL
+        return Matrix4(
+            m[0]*n[0] + m[4]*n[1] + m[8]*n[2] + m[12]*n[3],
+            m[1]*n[0] + m[5]*n[1] + m[9]*n[2] + m[13]*n[3],
+            m[2]*n[0] + m[6]*n[1] + m[10]*n[2] + m[14]*n[3],
+            n[3],
+            m[0]*n[4] + m[4]*n[5] + m[8]*n[6] + m[12]*n[7],
+            m[1]*n[4] + m[5]*n[5] + m[9]*n[6] + m[13]*n[7],
+            m[2]*n[4] + m[6]*n[5] + m[10]*n[6] + m[14]*n[7],
+            n[7],
+            m[0]*n[8] + m[4]*n[9] + m[8]*n[10] + m[12]*n[11],
+            m[1]*n[8] + m[5]*n[9] + m[9]*n[10] + m[13]*n[11],
+            m[2]*n[8] + m[6]*n[9] + m[10]*n[10] + m[14]*n[11],
+            n[11],
+            m[0]*n[12] + m[4]*n[13] + m[8]*n[14] + m[12]*n[15],
+            m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13]*n[15],
+            m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14]*n[15],
+            n[15],
+            FULL);
+    case 12: //FULLxTRN
 	    return Matrix4(m[0],m[1],m[2],m[3],
 	    			   m[4],m[5],m[6],m[7],
 	    			   m[8],m[9],m[10],m[11],
@@ -923,14 +1019,34 @@ inline Matrix4 Matrix4::operator*(const Matrix4& n) const
 	                   m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13],
 	                   m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14],
 	                   m[3]*n[12] + m[7]*n[13] + m[11]*n[14] + m[15],FULL);
-	case 6: //M2DxM3D TODO
-	case 7: //M2DxFULL TODO
-	case 9: //M3DxM2D TODO
-	case 10: //M3DxM3D TODO
-	case 11: //M3DxFULL TODO
-	case 13: //FULLxM2D TODO
-	case 14: //FULLxM3D TODO
-	default: //FULLxFULL
+    case 13: //FULLxM2D
+        return Matrix4(m[0]*n[0]+m[4]*n[1],m[1]*n[0]+m[5]*n[1],m[2]*n[0]+m[6]*n[1],m[3]*n[0]+m[7]*n[1],
+                       m[0]*n[4]+m[4]*n[5],m[1]*n[4]+m[5]*n[5],m[2]*n[4]+m[6]*n[5],m[3]*n[4]+m[7]*n[5],
+                       m[8],m[9],m[10],m[11],
+                       m[0]*n[12] + m[4]*n[13] + m[12],
+                       m[1]*n[12] + m[5]*n[13] + m[13],
+                       m[2]*n[12] + m[6]*n[13] + m[14],
+                       m[3]*n[12] + m[7]*n[13] + m[15],FULL);
+    case 14: //FULLxM3D
+        return Matrix4(
+                    m[0]*n[0] + m[4]*n[1] + m[8]*n[2],
+                    m[1]*n[0] + m[5]*n[1] + m[9]*n[2],
+                    m[2]*n[0] + m[6]*n[1] + m[10]*n[2],
+                    m[3]*n[0] + m[7]*n[1] + m[11]*n[2],
+                    m[0]*n[4] + m[4]*n[5] + m[8]*n[6],
+                    m[1]*n[4] + m[5]*n[5] + m[9]*n[6],
+                    m[2]*n[4] + m[6]*n[5] + m[10]*n[6],
+                    m[3]*n[4] + m[7]*n[5] + m[11]*n[6],
+                    m[0]*n[8] + m[4]*n[9] + m[8]*n[10],
+                    m[1]*n[8] + m[5]*n[9] + m[9]*n[10],
+                    m[2]*n[8] + m[6]*n[9] + m[10]*n[10],
+                    m[3]*n[8] + m[7]*n[9] + m[11]*n[10],
+                    m[0]*n[12] + m[4]*n[13] + m[8]*n[14] + m[12],
+                    m[1]*n[12] + m[5]*n[13] + m[9]*n[14] + m[13],
+                    m[2]*n[12] + m[6]*n[13] + m[10]*n[14] + m[14],
+                    m[3]*n[12] + m[7]*n[13] + m[11]*n[14] + m[15],
+                    FULL);
+    default: //FULLxFULL
     return Matrix4(m[0]*n[0]  + m[4]*n[1]  + m[8]*n[2]  + m[12]*n[3],
     		       m[1]*n[0]  + m[5]*n[1]  + m[9]*n[2]  + m[13]*n[3],
     		       m[2]*n[0]  + m[6]*n[1]  + m[10]*n[2]  + m[14]*n[3],
@@ -957,7 +1073,269 @@ inline Matrix4 Matrix4::operator*(const Matrix4& n) const
 
 inline Matrix4& Matrix4::operator*=(const Matrix4& rhs)
 {
-    *this = *this * rhs;
+    int mode=((type)<<2)|(rhs.type);
+    const float *n=rhs.data();
+    switch (mode)
+    {
+    case 0: //TRNxTRN
+        m[12]+=n[12];  m[13]+=n[13]; m[14]+=n[14];
+        break;
+    case 1: //TRNxM2D
+        m[0]=n[0]; m[1]=n[1]; m[4]=n[4]; m[5]=n[5];
+        m[12]+=n[12];  m[13]+=n[13]; m[14]+=n[14];
+        type=M2D;
+        break;
+    case 2: //TRNxM3D
+        memcpy(m,n,sizeof(float)*12);
+        m[12]+=n[12];  m[13]+=n[13]; m[14]+=n[14];
+        type=M3D;
+        break;
+    case 3: //TRNxFULL
+        memcpy(m,n,sizeof(float)*12);
+        m[12]+=n[12];  m[13]+=n[13]; m[14]+=n[14]; m[15]=n[15];
+        type=FULL;
+        break;
+    case 4: //M2DxTRN
+        m[12]+=(m[0]*n[12]+m[4]*n[13]);
+        m[13]+=(m[1]*n[12]+m[5]*n[13]);
+        m[14]+=n[14];
+        break;
+    case 5: //M2DxM2D
+    {
+        float r0=m[0], r1=m[1], r4=m[4], r5=m[5];
+        float t0=m[12], t1=m[13], t2=m[14];
+
+        m[0]=r0*n[0] + r4*n[1];
+        m[1]=r1*n[0] + r5*n[1];
+
+        m[4]=r0*n[4] + r4*n[5];
+        m[5]=r1*n[4] + r5*n[5];
+
+        m[12]=r0*n[12] + r4*n[13] + t0;
+        m[13]=r1*n[12] + r5*n[13] + t1;
+        m[14]=n[14] + t2;
+        break;
+    }
+    case 6: //M2DxM3D
+    {
+        float r0=m[0], r1=m[1], r4=m[4], r5=m[5];
+        float t0=m[12], t1=m[13], t2=m[14];
+
+        m[0]=r0*n[0] + r4*n[1];
+        m[1]=r1*n[0] + r5*n[1];
+
+        m[4]=r0*n[4] + r4*n[5];
+        m[5]=r1*n[4] + r5*n[5];
+
+        m[2]=n[2];
+        m[6]=n[6];
+        m[10]=n[10];
+
+        m[12]=r0*n[12] + r4*n[13] + t0;
+        m[13]=r1*n[12] + r5*n[13] + t1;
+        m[14]=n[14] + t2;
+
+        type=M3D;
+        break;
+    }
+    case 7: //M2DxFULL
+    {
+        float r0=m[0], r1=m[1], r4=m[4], r5=m[5];
+        float tx=m[12], ty=m[13], tz=m[14];
+
+        m[0]=r0*n[0] + r4*n[1] + tx*n[3];
+        m[1]=r1*n[0] + r5*n[1] + ty*n[3];
+        m[2]=n[2] + tz*n[3];
+        m[3]=n[3];
+
+        m[4]=r0*n[4] + r4*n[5] + tx*n[7];
+        m[5]=r1*n[4] + r5*n[5] + ty*n[7];
+        m[6]=n[6] + tz*n[7];
+        m[7]=n[7];
+
+        m[8]=r0*n[8] + r4*n[9] + tx*n[11];
+        m[9]=r1*n[8] + r5*n[9] + ty*n[11];
+        m[10]=n[10] + tz*n[11];
+        m[11]=n[11];
+
+        m[12]=r0*n[12] + r4*n[13] + tx*n[15];
+        m[13]=r1*n[12] + r5*n[13] + ty*n[15];
+        m[14]=n[14] + tz*n[15];
+        m[15]=n[15];
+
+        type=FULL;
+        break;
+    }
+    case 8: //M3DxTRN
+        m[12]+=m[0]*n[12] + m[4]*n[13] + m[8]*n[14];
+        m[13]+=m[1]*n[12] + m[5]*n[13] + m[9]*n[14];
+        m[14]+=m[2]*n[12] + m[6]*n[13] + m[10]*n[14];
+        break;
+    case 9: //M3DxM2D
+    {
+        float r0=m[0], r1=m[1], r2=m[2];
+        float r4=m[4], r5=m[5], r6=m[6];
+        float r8=m[8], r9=m[9], r10=m[10];
+        float t0=m[12], t1=m[13], t2=m[14];
+
+        m[0]=r0*n[0] + r4*n[1];
+        m[1]=r1*n[0] + r5*n[1];
+        m[2]=r2*n[0] + r6*n[1];
+
+        m[4]=r0*n[4] + r4*n[5];
+        m[5]=r1*n[4] + r5*n[5];
+        m[6]=r2*n[4] + r6*n[5];
+
+        m[8]=r8;
+        m[9]=r9;
+        m[10]=r10;
+
+        m[12]=r0*n[12] + r4*n[13] + r8*n[14] + t0;
+        m[13]=r1*n[12] + r5*n[13] + r9*n[14] + t1;
+        m[14]=r2*n[12] + r6*n[13] + r10*n[14] + t2;
+
+        type=M3D;
+        break;
+    }
+    case 10: //M3DxM3D
+    {
+        float r0=m[0], r1=m[1], r2=m[2];
+        float r4=m[4], r5=m[5], r6=m[6];
+        float r8=m[8], r9=m[9], r10=m[10];
+        float t0=m[12], t1=m[13], t2=m[14];
+
+        m[0]=r0*n[0] + r4*n[1] + r8*n[2];
+        m[1]=r1*n[0] + r5*n[1] + r9*n[2];
+        m[2]=r2*n[0] + r6*n[1] + r10*n[2];
+
+        m[4]=r0*n[4] + r4*n[5] + r8*n[6];
+        m[5]=r1*n[4] + r5*n[5] + r9*n[6];
+        m[6]=r2*n[4] + r6*n[5] + r10*n[6];
+
+        m[8]=r0*n[8] + r4*n[9] + r8*n[10];
+        m[9]=r1*n[8] + r5*n[9] + r9*n[10];
+        m[10]=r2*n[8] + r6*n[9] + r10*n[10];
+
+        m[12]=r0*n[12] + r4*n[13] + r8*n[14] + t0;
+        m[13]=r1*n[12] + r5*n[13] + r9*n[14] + t1;
+        m[14]=r2*n[12] + r6*n[13] + r10*n[14] + t2;
+
+        break;
+    }
+    case 11: //M3DxFULL
+    {
+        float r0=m[0], r1=m[1], r2=m[2];
+        float r4=m[4], r5=m[5], r6=m[6];
+        float r8=m[8], r9=m[9], r10=m[10];
+        float t0=m[12], t1=m[13], t2=m[14];
+
+        m[0]=r0*n[0] + r4*n[1] + r8*n[2];
+        m[1]=r1*n[0] + r5*n[1] + r9*n[2];
+        m[2]=r2*n[0] + r6*n[1] + r10*n[2];
+        m[3]=n[3];
+
+        m[4]=r0*n[4] + r4*n[5] + r8*n[6];
+        m[5]=r1*n[4] + r5*n[5] + r9*n[6];
+        m[6]=r2*n[4] + r6*n[5] + r10*n[6];
+        m[7]=n[7];
+
+        m[8]=r0*n[8] + r4*n[9] + r8*n[10];
+        m[9]=r1*n[8] + r5*n[9] + r9*n[10];
+        m[10]=r2*n[8] + r6*n[9] + r10*n[10];
+        m[11]=n[11];
+
+        m[12]=r0*n[12] + r4*n[13] + r8*n[14] + t0;
+        m[13]=r1*n[12] + r5*n[13] + r9*n[14] + t1;
+        m[14]=r2*n[12] + r6*n[13] + r10*n[14] + t2;
+        m[15]=n[15];
+
+        type=FULL;
+        break;
+    }
+    case 12: //FULLxTRN
+        m[12]+=m[0]*n[12] + m[4]*n[13] + m[8]*n[14];
+        m[13]+=m[1]*n[12] + m[5]*n[13] + m[9]*n[14];
+        m[14]+=m[2]*n[12] + m[6]*n[13] + m[10]*n[14];
+        m[15]+=m[3]*n[12] + m[7]*n[13] + m[11]*n[14];
+        break;
+    case 13: //FULLxM2D
+    {
+        float r0=m[0], r1=m[1], r2=m[2], r3=m[3];
+        float r4=m[4], r5=m[5], r6=m[6], r7=m[7];
+        float t0=m[12], t1=m[13], t2=m[14], t3=m[15];
+
+        m[0]=r0*n[0] + r4*n[1];
+        m[1]=r1*n[0] + r5*n[1];
+        m[2]=r2*n[0] + r6*n[1];
+        m[3]=r3*n[0] + r7*n[1];
+
+        m[4]=r0*n[4] + r4*n[5];
+        m[5]=r1*n[4] + r5*n[5];
+        m[6]=r2*n[4] + r6*n[5];
+        m[7]=r3*n[4] + r7*n[5];
+
+        m[12]=r0*n[12] + r4*n[13] + t0;
+        m[13]=r1*n[12] + r5*n[13] + t1;
+        m[14]=r2*n[12] + r6*n[13] + t2;
+        m[15]=r3*n[12] + r7*n[13] + t3;
+        break;
+    }
+    case 14: //FULLxM3D
+    {
+        float r0=m[0], r1=m[1], r2=m[2], r3=m[3];
+        float r4=m[4], r5=m[5], r6=m[6], r7=m[7];
+        float r8=m[8], r9=m[9], r10=m[10], r11=m[11];
+        float t0=m[12], t1=m[13], t2=m[14], t3=m[15];
+
+        m[0]=r0*n[0] + r4*n[1] + r8*n[2];
+        m[1]=r1*n[0] + r5*n[1] + r9*n[2];
+        m[2]=r2*n[0] + r6*n[1] + r10*n[2];
+        m[3]=r3*n[0] + r7*n[1] + r11*n[2];
+
+        m[4]=r0*n[4] + r4*n[5] + r8*n[6];
+        m[5]=r1*n[4] + r5*n[5] + r9*n[6];
+        m[6]=r2*n[4] + r6*n[5] + r10*n[6];
+        m[7]=r3*n[4] + r7*n[5] + r11*n[6];
+
+        m[8]=r0*n[8] + r4*n[9] + r8*n[10];
+        m[9]=r1*n[8] + r5*n[9] + r9*n[10];
+        m[10]=r2*n[8] + r6*n[9] + r10*n[10];
+        m[11]=r3*n[8] + r7*n[9] + r11*n[10];
+
+        m[12]=r0*n[12] + r4*n[13] + r8*n[14] + t0;
+        m[13]=r1*n[12] + r5*n[13] + r9*n[14] + t1;
+        m[14]=r2*n[12] + r6*n[13] + r10*n[14] + t2;
+        m[15]=r3*n[12] + r7*n[13] + r11*n[14] + t3;
+        break;
+    }
+    default:
+    {
+        float r0=m[0], r1=m[1], r2=m[2], r3=m[3];
+        float r4=m[4], r5=m[5], r6=m[6], r7=m[7];
+        float r8=m[8], r9=m[9], r10=m[10], r11=m[11];
+        float r12=m[12], r13=m[13], r14=m[14], r15=m[15];
+
+        m[0]=r0*n[0] + r4*n[1] + r8*n[2] + r12*n[3];
+        m[1]=r1*n[0] + r5*n[1] + r9*n[2] + r13*n[3];
+        m[2]=r2*n[0] + r6*n[1] + r10*n[2] + r14*n[3];
+        m[3]=r3*n[0] + r7*n[1] + r11*n[2] + r15*n[3];
+
+        m[4]  = r0*n[4]  + r4*n[5]  + r8*n[6]  + r12*n[7];
+        m[5]  = r1*n[4]  + r5*n[5]  + r9*n[6]  + r13*n[7];
+        m[6]  = r2*n[4]  + r6*n[5]  + r10*n[6] + r14*n[7];
+        m[7]  = r3*n[4]  + r7*n[5]  + r11*n[6] + r15*n[7];
+
+        m[8]  = r0*n[8]  + r4*n[9]  + r8*n[10] + r12*n[11];
+        m[9]  = r1*n[8]  + r5*n[9]  + r9*n[10] + r13*n[11];
+        m[10] = r2*n[8]  + r6*n[9]  + r10*n[10]+ r14*n[11];
+        m[11] = r3*n[8]  + r7*n[9]  + r11*n[10]+ r15*n[11];
+
+        m[12] = r0*n[12] + r4*n[13] + r8*n[14] + r12*n[15];
+        m[13] = r1*n[12] + r5*n[13] + r9*n[14] + r13*n[15];
+        m[14] = r2*n[12] + r6*n[13] + r10*n[14]+ r14*n[15];
+        m[15] = r3*n[12] + r7*n[13] + r11*n[14]+ r15*n[15];
+    }
+    }
     return *this;
 }
 

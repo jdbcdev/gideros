@@ -21,10 +21,16 @@ static NSMutableDictionary *ads = [NSMutableDictionary dictionary];
 	for(NSString *key in ads){
         id ad = [ads objectForKey:key];
         [ad destroy];
-        [ad release];
         ad = nil;
     }
     [ads removeAllObjects];
+}
+
++ (BOOL) hasProvider:(NSString*)adprovider
+{
+    NSString *ProviderClass = @"Ads";
+    ProviderClass = [ProviderClass stringByAppendingString:[adprovider capitalizedString]];
+    return NSClassFromString(ProviderClass)!=nil;
 }
 
 +(void)initialize:(NSString*)adprovider{
@@ -42,7 +48,6 @@ static NSMutableDictionary *ads = [NSMutableDictionary dictionary];
 	if(ad)
 	{
         [ad destroy];
-        [ad release];
         ad = nil;
 		[ads removeObjectForKey:[adprovider lowercaseString]];
     }
@@ -222,6 +227,16 @@ static NSMutableDictionary *ads = [NSMutableDictionary dictionary];
     return 0;
 }
 
++(BOOL)checkConsent:(NSString*)adprovider reset:(BOOL)reset forUnderAge:(BOOL) underAge
+{
+	id ad = [ads objectForKey:[adprovider lowercaseString]];
+    if (ad) {
+        return [ad checkConsent:reset forUnderAge:underAge];
+    }
+    else
+    	return FALSE;
+}
+
 +(BOOL)hasConnection{
     Reachability *networkReachability = [Reachability reachabilityForInternetConnection];
     NetworkStatus networkStatus = [networkReachability currentReachabilityStatus];
@@ -234,6 +249,10 @@ static NSMutableDictionary *ads = [NSMutableDictionary dictionary];
 
 +(BOOL)isPortrait{
     return ([UIApplication sharedApplication].statusBarOrientation == UIInterfaceOrientationPortrait || [UIApplication sharedApplication].statusBarOrientation == UIInterfaceOrientationPortraitUpsideDown);
+}
+
++(void)adsReady:(Class)adprovider state:(BOOL)state{
+    gads_adsReady([[AdsClass modifyName:adprovider] UTF8String], state);
 }
 
 +(void)adReceived:(Class)adprovider forType:(NSString*)type{
@@ -264,8 +283,16 @@ static NSMutableDictionary *ads = [NSMutableDictionary dictionary];
     gads_adDismissed([[AdsClass modifyName:adprovider] UTF8String], [type UTF8String]);
 }
 
++(void)adRewarded:(Class)adprovider forType:(NSString*)type withAmount:(int)amount {
+    gads_adRewarded([[AdsClass modifyName:adprovider] UTF8String], [type UTF8String], amount);
+}
+
 +(void)adError:(Class)adprovider with:(NSString*)error{
     gads_adError([[AdsClass modifyName:adprovider] UTF8String],[error UTF8String]);
+}
+
++(void)adConsent:(Class)adprovider with:(NSString*)error andCode:(int) errorcode {
+    gads_adConsent([[AdsClass modifyName:adprovider] UTF8String],[error UTF8String],errorcode);
 }
 
 +(NSString*)modifyName:(Class)name{

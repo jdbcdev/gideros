@@ -13,10 +13,10 @@ class Application;
 class TextField : public TextFieldBase
 {
 public:
-    TextField(Application *application);
-    TextField(Application *application, BMFontBase* font);
-    TextField(Application *application, BMFontBase* font, const char* text);
-    TextField(Application *application, BMFontBase* font, const char* text, const char *sample);
+    TextField(Application *application, BMFontBase* font=NULL, const char* text=NULL, const char *sample=NULL, FontBase::TextLayoutParameters *params=NULL);
+    virtual Sprite *clone() { TextField *clone=new TextField(application_); clone->cloneFrom(this); return clone; }
+    void cloneFrom(TextField *);
+    void bulkUpdate(bool en);
 
 	virtual ~TextField()
 	{
@@ -25,12 +25,13 @@ public:
 	}
 
     virtual void setFont(FontBase* font);
+    FontBase *getFont() { return font_; };
 
 	virtual void setText(const char* text);
 	virtual const char* text() const;
 
-	virtual void setTextColor(unsigned int color);
-	virtual unsigned int textColor() const;
+    virtual void setTextColor(float r,float g,float b,float a);
+    virtual void textColor(float &r,float &g,float &b,float &a);
 
     virtual void setLetterSpacing(float letterSpacing);
     virtual float letterSpacing() const;
@@ -40,6 +41,8 @@ public:
     virtual void setSample(const char* sample);
     virtual const char* sample() const;
 
+    virtual void setLayout(FontBase::TextLayoutParameters *l=NULL);
+
 	void createGraphics();
 
 private:
@@ -47,12 +50,12 @@ private:
 
     BMFontBase* font_;
 
-	float r_, g_, b_;
-	unsigned int textColor_;
-    float letterSpacing_;
+	float a_, r_, g_, b_;
+	bool bulk;
+	bool dirty;
 
 private:
-	GraphicsBase graphicsBase_;
+	std::vector<GraphicsBase> graphicsBase_;
     virtual void doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey);
     float minx_, miny_, maxx_, maxy_;
     int sminx, sminy, smaxx, smaxy;

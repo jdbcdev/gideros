@@ -1,6 +1,7 @@
 #include "errordialog.h"
 #include <QFont>
 #include <QFontMetrics>
+#include "glcanvas.h"
 
 ErrorDialog::ErrorDialog(QWidget *parent)
     : QDialog(parent)
@@ -16,7 +17,7 @@ ErrorDialog::ErrorDialog(QWidget *parent)
 
     QFontMetrics fm(f);
     ui.textEdit->setFont(f);
-    ui.textEdit->setTabStopWidth(fm.width("1234"));
+    ui.textEdit->setTabStopDistance(fm.horizontalAdvance("1234"));
 
     connect(ui.clear, SIGNAL(clicked()), ui.textEdit, SLOT(clear()));
     connect(ui.close, SIGNAL(clicked()), this, SLOT(hide()));
@@ -24,7 +25,12 @@ ErrorDialog::ErrorDialog(QWidget *parent)
 
 ErrorDialog::~ErrorDialog()
 {
+}
 
+void ErrorDialog::hide() {
+	QDialog::hide();
+    if (!GLCanvas::appPackage.isEmpty())
+    	exit(1);
 }
 
 void ErrorDialog::appendString(const QString& string)

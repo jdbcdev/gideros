@@ -261,7 +261,7 @@ LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
     int i;
     for (i=0; i<nup; i++)  /* copy upvalues to the top */
       lua_pushvalue(L, -nup);
-    lua_pushcclosure(L, l->func, nup);
+    lua_pushcnclosure(L, l->func, nup,l->name);
     lua_setfield(L, -(nup+2), l->name);
   }
   lua_pop(L, nup);  /* remove upvalues */
@@ -549,7 +549,7 @@ static int errfile (lua_State *L, const char *what, int fnameindex) {
 }
 
 
-LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
+LUALIB_API int luaL_loadfilenamed (lua_State *L, const char *filename, const char *chunkname) {
   LoadF lf;
   int status, readstatus;
   int c;
@@ -560,7 +560,7 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
     lf.f = stdin;
   }
   else {
-    lua_pushfstring(L, "@%s", filename);
+    lua_pushfstring(L, "@%s", chunkname);
     lf.f = fopen(filename, "r");
     if (lf.f == NULL) return errfile(L, "open", fnameindex);
   }
@@ -587,6 +587,10 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
   }
   lua_remove(L, fnameindex);
   return status;
+}
+
+LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
+	return luaL_loadfilenamed(L,filename,filename);
 }
 
 

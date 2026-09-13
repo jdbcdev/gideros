@@ -1,7 +1,9 @@
 #include <ghttp.h>
 #include <stdio.h>
-#include <emscripten/val.h>
 #include <map>
+#include <string>
+#include "emscripten.h"
+#include <sys/types.h>
 
 struct GHttpContext
 {
@@ -19,11 +21,10 @@ struct GHttpContext
 };
 
 static std::map<g_id, GHttpContext> map_;
-using namespace emscripten;
 
 extern "C" {
 
-void ghttp_onload(int xh,int arg,const char *buf,int size, int status, char *hdrs)
+void ghttp_onload(uint32_t xh,g_id arg,const char *buf,int size, int status, char *hdrs,int header)
 {
 	//printf("OnLoad:%d,%d,%p,%d,%s\n",xh,arg,buf,size,hdrs);
 	std::map<g_id, GHttpContext>::iterator it=map_.find(arg);
@@ -60,7 +61,8 @@ void ghttp_onload(int xh,int arg,const char *buf,int size, int status, char *hdr
         ghttp_ResponseEvent *event = (ghttp_ResponseEvent*)malloc(sizeof(ghttp_ResponseEvent)  + sizeof(ghttp_Header)*hdrCount + size + hdrSize);
 
         event->data = (char*)event + sizeof(ghttp_ResponseEvent) + sizeof(ghttp_Header)*hdrCount;
-        memcpy(event->data, buf,size);
+        if (buf)
+        	memcpy(event->data, buf,size);
         event->size = size;
 
         event->httpStatusCode = status;
@@ -84,36 +86,45 @@ void ghttp_onload(int xh,int arg,const char *buf,int size, int status, char *hdr
 		event->headers[hdrn].name=NULL;
 		event->headers[hdrn].value=NULL;
 
-        gevent_EnqueueEvent(ctx.id, ctx.callback, GHTTP_RESPONSE_EVENT, event, 1, ctx.udata);
+        gevent_EnqueueEvent(ctx.id, ctx.callback, header?GHTTP_HEADER_EVENT:GHTTP_RESPONSE_EVENT, event, 1, ctx.udata);
 
 	}
 }
 
-void ghttp_onprogress(int xh,int arg,int pg,int tot)
+void ghttp_onprogress(uint32_t xh,g_id arg,int pg,int tot,const char *buf,int size)
 {
 	//printf("OnProgress:%d,%d,%d,%d\n",xh,arg,pg,tot);
 	std::map<g_id, GHttpContext>::iterator it=map_.find(arg);
 	if (it!=map_.end())
 	{
 		struct GHttpContext ctx=it->second;
-		ghttp_ProgressEvent* event = (ghttp_ProgressEvent*)malloc(sizeof(ghttp_ProgressEvent));
+		ghttp_ProgressEvent* event = (ghttp_ProgressEvent*)malloc(sizeof(ghttp_ProgressEvent)+size);
 		event->bytesLoaded = pg;
 		event->bytesTotal = tot;
+		if (buf) {
+			event->chunk=(void *)(event+1);
+        	memcpy(event->chunk, buf,size);
+		}
+		else
+			event->chunk=NULL;
+		event->chunkSize=size;
             
-                gevent_EnqueueEvent(ctx.id, ctx.callback, GHTTP_PROGRESS_EVENT, event, 1, ctx.udata);
+        gevent_EnqueueEvent(ctx.id, ctx.callback, GHTTP_PROGRESS_EVENT, event, 1, ctx.udata);
 	}	
 }
 
-void ghttp_onerror(int xh,int arg,int sts,const char *text)
+void ghttp_onerror(uint32_t xh,g_id arg,int sts,const char *text)
 {
 	//printf("OnError:%d,%d,%d,%s\n",xh,arg,sts,text);
 	std::map<g_id, GHttpContext>::iterator it=map_.find(arg);
 	if (it!=map_.end())
 	{
 		struct GHttpContext ctx=it->second;
-		ghttp_ErrorEvent *event = (ghttp_ErrorEvent*)malloc(sizeof(ghttp_ErrorEvent));
+		ghttp_ErrorEvent *event = (ghttp_ErrorEvent*)gevent_CreateEventStruct1(
+			                                           sizeof(ghttp_ErrorEvent),
+			                                        offsetof(ghttp_ErrorEvent, error), text);
         
-                gevent_EnqueueEvent(ctx.id, ctx.callback, GHTTP_ERROR_EVENT, event, 1, ctx.udata);
+        gevent_EnqueueEvent(ctx.id, ctx.callback, GHTTP_ERROR_EVENT, event, 1, ctx.udata);
 		map_.erase(it);
 	}	
 }
@@ -127,7 +138,7 @@ void ghttp_Cleanup()
 	ghttp_CloseAll();
 }
 
-g_id ghttp_Get(const char* url, const ghttp_Header *header, gevent_Callback callback, void* udata)
+g_id ghttp_Get(const char* url, const ghttp_Header *header, int streaming, gevent_Callback callback, void* udata)
 {
 	struct GHttpContext ctx;
     ctx.id = g_NextId();
@@ -136,21 +147,15 @@ g_id ghttp_Get(const char* url, const ghttp_Header *header, gevent_Callback call
     ctx.xhrId=0;
     map_[ctx.id] = ctx;
     
-    val module = val::global("Module");
-    val hdrs=val::object();
-    if (header)
-     while (header->name)
-     {
-      hdrs.set(header->name,val(header->value));
-      header++;
-     }
-    ctx.xhrId=module.call<int>("ghttpjs_urlload",val(url),val("GET"),hdrs,val(""),val(ctx.id),val(true), (int)ghttp_onload, (int)ghttp_onerror, (int)ghttp_onprogress);
+   ctx.xhrId=EM_ASM_INT({
+        	return ($6?Module.ghttpjs_urlstream:Module.ghttpjs_urlload)(Module.UTF8ToString($0),'GET',$1,null,$2,true,$3,$4,$5);
+        },url,header,ctx.id,(intptr_t)ghttp_onload, (intptr_t)ghttp_onerror, (intptr_t)ghttp_onprogress,streaming);
     //printf("GET:%ld/%d %s\n",ctx.id,ctx.xhrId,url);
 
     return ctx.id;
 }
 
-g_id ghttp_Post(const char* url, const ghttp_Header *header, const void* data, size_t size, gevent_Callback callback, void* udata)
+g_id ghttp_Post(const char* url, const ghttp_Header *header, const void* data, size_t size, int streaming, gevent_Callback callback, void* udata)
 {
 	struct GHttpContext ctx;
     ctx.id = g_NextId();
@@ -159,33 +164,50 @@ g_id ghttp_Post(const char* url, const ghttp_Header *header, const void* data, s
     ctx.xhrId=0;
     map_[ctx.id] = ctx;
 
-    val module = val::global("Module");
-    val hdrs=val::object();
-    if (header)
-     while (header->name)
-     {
-      hdrs.set(header->name,val(header->value));
-      header++;
-     }
-    //std::string vdata((const char *)data,size);
-    ctx.xhrId=module.call<int>("ghttpjs_urlload",val(url),val("POST"),hdrs,
-     emscripten::memory_view<uint8_t>(size,(const uint8_t *)data),
-     val(ctx.id),val(true), (int)ghttp_onload, (int)ghttp_onerror, (int)ghttp_onprogress);
+	ctx.xhrId=EM_ASM_INT({
+			return ($8?Module.ghttpjs_urlstream:Module.ghttpjs_urlload)(Module.UTF8ToString($0),'POST',$1,HEAPU8.subarray($6,$6+Number($7)),$2,true,$3,$4,$5);
+		},url,header,ctx.id,(intptr_t)ghttp_onload, (intptr_t)ghttp_onerror, (intptr_t)ghttp_onprogress,data,size,streaming);
     //printf("POST:%ld/%d %s\n",ctx.id,ctx.xhrId,url);
 
     return ctx.id;
 }
 
-g_id ghttp_Delete(const char* url, const ghttp_Header *header, gevent_Callback callback, void* udata)
+g_id ghttp_Delete(const char* url, const ghttp_Header *header, int streaming, gevent_Callback callback, void* udata)
 {
-//    return s_manager->Delete(url, header, callback, udata);
-	return 0;
+	struct GHttpContext ctx;
+    ctx.id = g_NextId();
+    ctx.callback = callback;
+    ctx.udata = udata;
+    ctx.xhrId=0;
+    map_[ctx.id] = ctx;
+
+   ctx.xhrId=EM_ASM_INT({
+        	return ($6?Module.ghttpjs_urlstream:Module.ghttpjs_urlload)(Module.UTF8ToString($0),'DELETE',$1,null,$2,true,$3,$4,$5);
+        },url,header,ctx.id,(intptr_t)ghttp_onload, (intptr_t)ghttp_onerror, (intptr_t)ghttp_onprogress,streaming);
+    //printf("GET:%ld/%d %s\n",ctx.id,ctx.xhrId,url);
+
+    return ctx.id;
 }
 
-g_id ghttp_Put(const char* url, const ghttp_Header *header, const void* data, size_t size, gevent_Callback callback, void* udata)
+g_id ghttp_Put(const char* url, const ghttp_Header *header, const void* data, size_t size, int streaming, gevent_Callback callback, void* udata)
 {
-//    return s_manager->Put(url, header, data, size, callback, udata);
-	return 0;
+	struct GHttpContext ctx;
+    ctx.id = g_NextId();
+    ctx.callback = callback;
+    ctx.udata = udata;
+    ctx.xhrId=0;
+    map_[ctx.id] = ctx;
+
+	ctx.xhrId=EM_ASM_INT({
+			return ($8?Module.ghttpjs_urlstream:Module.ghttpjs_urlload)(Module.UTF8ToString($0),'PUT',$1,HEAPU8.subarray($6,$6+Number($7)),$2,true,$3,$4,$5);
+		},url,header,ctx.id,(intptr_t)ghttp_onload, (intptr_t)ghttp_onerror, (intptr_t)ghttp_onprogress,data,size,streaming);
+
+    return ctx.id;
+}
+
+void ghttp_StreamAdvanced(g_id id,size_t size)
+{
+	//TODO
 }
 
 void ghttp_Close(g_id id)

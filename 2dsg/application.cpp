@@ -51,6 +51,7 @@ static double GetCounter() {
 #endif
 }
 
+static SpriteProxyFactory *spriteFactory=NULL;
 Application::Application() :
 		textureManager_(this), timerContainer_(this) {
 	stage_ = 0;
@@ -61,6 +62,7 @@ Application::Application() :
 
 	nframe_ = -1;	// uninitialized yet
 	time_ = -1;
+    onDemandDraw_ = false;
 
 	clearColorBuffer_ = true;
 
@@ -79,6 +81,10 @@ Application::Application() :
 	fov_ = 0;
 	farplane_ = 0;
 	nearplane_ = 0;
+
+	if (!spriteFactory)
+		spriteFactory=new SpriteProxyFactory();
+	gtexture_set_spritefactory(spriteFactory);
 }
 
 Application::~Application() {
@@ -98,6 +104,7 @@ void Application::initView() {
 	backr_ = 1.f;
 	backg_ = 1.f;
 	backb_ = 1.f;
+	backa_ = 1.f;
 
 	stage_ = new Stage(this);
 }
@@ -119,6 +126,12 @@ void Application::releaseView() {
 //	Referenced::emptyPool();
 }
 
+bool Application::onDemandDraw(bool &now)
+{
+    now=(stage_->changes_&Sprite::INV_EFFECTS);
+    return onDemandDraw_;
+}
+
 void Application::enterFrame() {
 	timerContainer_.tick();
 
@@ -135,11 +148,11 @@ void Application::enterFrame() {
 
 void Application::clearBuffers() {
 	if (clearColorBuffer_ == true)
-		ShaderEngine::Engine->clearColor(backr_, backg_, backb_, 1.f);
+		ShaderEngine::Engine->clearColor(backr_, backg_, backb_, backa_);
 }
 
 void Application::configureFrustum(float fov, float farplane, float nearplane) {
-	if (fov > 179) //Do not allow 180°, this would cause infinite width
+	if (fov > 179) //Do not allow 180ï¿½, this would cause infinite width
 		fov = 179;
 	if (fov < 0)
 		fov = 0;
@@ -152,7 +165,17 @@ void Application::configureFrustum(float fov, float farplane, float nearplane) {
 	fov_ = fov;
 }
 
-void Application::renderScene(int deltaFrameCount) {
+/** Rendering routine modifies:
+ *  - current projection matrices
+ *  - Shader Engine state
+ * It also needs to have consistent:
+ *  - Sprite hierarchy (children and skipset) x
+ *  - Effect stacks x
+ *  - Shaders x
+ *  - VBOs
+ *  - Textures
+ *  */
+void Application::renderScene(int deltaFrameCount, float *vmat, float *pmat, const std::function<void(ShaderEngine *,Matrix4 &)> &preStage) {
 	if (nframe_ < 0 || time_ < 0) {
 		nframe_ = 0;
 		time_ = iclock();
@@ -171,6 +194,7 @@ void Application::renderScene(int deltaFrameCount) {
 
 	if (!ShaderEngine::Engine)
 		return;
+    RENDER_START();
 	ShaderEngine *gfx = ShaderEngine::Engine;
 	//oglTextureReset();
 	gfx->reset();
@@ -194,114 +218,128 @@ void Application::renderScene(int deltaFrameCount) {
 
 	if (projectionDirty_) {
 		projectionDirty_ = false;
-		Matrix4 projection, frustum;
-		//glMatrixMode(GL_PROJECTION);
-		//glLoadIdentity();
+		if (!pmat) {
+			Matrix4 projection, frustum;
+			//glMatrixMode(GL_PROJECTION);
+			//glLoadIdentity();
 
-		//glHint(GL_PERSPECTIVE_CORRECTION_HINT,GL_NICEST);
+			//glHint(GL_PERSPECTIVE_CORRECTION_HINT,GL_NICEST);
 
-		projection.scale(logicalScaleX_, logicalScaleY_, fov_?logicalScaleY_:1.0);
-		projection.translate(logicalTranslateX_, logicalTranslateY_, 0);
-		projection.scale(1.f / scale_, 1.f / scale_, fov_?1.f/scale_:1.f);
+			projection.scale(logicalScaleX_, logicalScaleY_, fov_?logicalScaleY_:1.0);
+			projection.translate(logicalTranslateX_, logicalTranslateY_, 0);
+			projection.scale(1.f / scale_, 1.f / scale_, fov_?1.f/scale_:1.f);
 
-		if (hardwareOrientation_ == eFixed) {
-		} else {
-			switch (orientation_) {
-			case ePortrait:
-				break;
-			case ePortraitUpsideDown:
-				projection.translate(-(width_ / scale_) / 2,
-						-(height_ / scale_) / 2, 0);
-				projection.rotate(180, 0, 0, 1);
-				projection.translate((width_ / scale_) / 2,
-						(height_ / scale_) / 2, 0);
-				break;
-			case eLandscapeLeft:
-				projection.translate(-(width_ / scale_) / 2,
-						-(width_ / scale_) / 2, 0);
-				projection.rotate(90, 0, 0, 1);
-				projection.translate((width_ / scale_) / 2,
-						(width_ / scale_) / 2, 0);
-				break;
-			case eLandscapeRight:
-				projection.translate(-(height_ / scale_) / 2,
-						-(height_ / scale_) / 2, 0);
-				projection.rotate(270, 0, 0, 1);
-				projection.translate((height_ / scale_) / 2,
-						(height_ / scale_) / 2, 0);
-				break;
+			if (hardwareOrientation_ == eFixed) {
+			} else {
+				switch (orientation_) {
+				case ePortrait:
+				case eFixed:
+					break;
+				case ePortraitUpsideDown:
+					projection.translate(-(width_ / scale_) / 2,
+							-(height_ / scale_) / 2, 0);
+					projection.rotate(180, 0, 0, 1);
+					projection.translate((width_ / scale_) / 2,
+							(height_ / scale_) / 2, 0);
+					break;
+				case eLandscapeLeft:
+					projection.translate(-(width_ / scale_) / 2,
+							-(width_ / scale_) / 2, 0);
+					projection.rotate(90, 0, 0, 1);
+					projection.translate((width_ / scale_) / 2,
+							(width_ / scale_) / 2, 0);
+					break;
+				case eLandscapeRight:
+					projection.translate(-(height_ / scale_) / 2,
+							-(height_ / scale_) / 2, 0);
+					projection.rotate(270, 0, 0, 1);
+					projection.translate((height_ / scale_) / 2,
+							(height_ / scale_) / 2, 0);
+					break;
+				}
+
+				switch (hardwareOrientation_) {
+				case eFixed:
+				case ePortrait:
+					break;
+				case ePortraitUpsideDown:
+					projection.translate(-(width_ / scale_) / 2,
+							-(height_ / scale_) / 2, 0);
+					projection.rotate(180, 0, 0, 1);
+					projection.translate((width_ / scale_) / 2,
+							(height_ / scale_) / 2, 0);
+					break;
+				case eLandscapeLeft:
+					projection.translate(-(width_ / scale_) / 2,
+							-(width_ / scale_) / 2, 0);
+					projection.rotate(-90, 0, 0, 1);
+					projection.translate((width_ / scale_) / 2,
+							(width_ / scale_) / 2, 0);
+					break;
+				case eLandscapeRight:
+					projection.translate(-(height_ / scale_) / 2,
+							-(height_ / scale_) / 2, 0);
+					projection.rotate(-270, 0, 0, 1);
+					projection.translate((height_ / scale_) / 2,
+							(height_ / scale_) / 2, 0);
+					break;
+				}
 			}
 
+			Matrix4 vpProjection = projection;
 			switch (hardwareOrientation_) {
+			case eFixed:
 			case ePortrait:
-				break;
 			case ePortraitUpsideDown:
-				projection.translate(-(width_ / scale_) / 2,
-						-(height_ / scale_) / 2, 0);
-				projection.rotate(180, 0, 0, 1);
-				projection.translate((width_ / scale_) / 2,
-						(height_ / scale_) / 2, 0);
+				if (fov_ > 0) {
+					float hw = width_ * 0.5 / scale_;
+					float hh = height_ * 0.5 / scale_;
+					float fp = (farplane_ > 0) ? farplane_ : height_ * 100;
+					float np = (nearplane_ > 0) ? nearplane_ : 1;
+					float fd=hh / tan(fov_ * M_PI / 360.0);
+					float nps = np/fd;
+					frustum = gfx->setFrustum(-hw * nps, hw * nps, hh * nps,
+							-hh * nps, np, fp);
+					projection.translate(-hw, -hh, -fd-0.001);
+				} else {
+					float fp = (farplane_ > 0) ? farplane_ : 1; //Conservative default
+					frustum = gfx->setOrthoFrustum(0, width_ / scale_,
+							height_ / scale_, 0, -fp, fp,false);
+				}
 				break;
 			case eLandscapeLeft:
-				projection.translate(-(width_ / scale_) / 2,
-						-(width_ / scale_) / 2, 0);
-				projection.rotate(-90, 0, 0, 1);
-				projection.translate((width_ / scale_) / 2,
-						(width_ / scale_) / 2, 0);
-				break;
 			case eLandscapeRight:
-				projection.translate(-(height_ / scale_) / 2,
-						-(height_ / scale_) / 2, 0);
-				projection.rotate(-270, 0, 0, 1);
-				projection.translate((height_ / scale_) / 2,
-						(height_ / scale_) / 2, 0);
+				if (fov_ > 0) {
+					float hw = width_ * 0.5 / scale_;
+					float hh = height_ * 0.5 / scale_;
+					float fp = (farplane_ > 0) ? farplane_ : height_ * 100;
+					float np = (nearplane_ > 0) ? nearplane_ : 1;
+					float fd=hh / tan(fov_ * M_PI / 360.0);
+					float nps = np/fd;
+					frustum = gfx->setFrustum(-hh * nps, hh * nps, hw * nps,
+							-hw * nps, np, fp);
+					projection.translate(-hh, -hw, -fd-0.001);
+				} else {
+					float fp = (farplane_ > 0) ? farplane_ : 1; //Conservative default
+					frustum = gfx->setOrthoFrustum(0, height_ / scale_,
+							width_ / scale_, 0, -fp, fp,false);
+				}
 				break;
 			}
+			projectionMatrix_ = frustum * projection;
+			vpProjectionMatrix_ = vpProjection;
 		}
-
-		Matrix4 vpProjection = projection;
-		switch (hardwareOrientation_) {
-		case eFixed:
-		case ePortrait:
-		case ePortraitUpsideDown:
-			if (fov_ > 0) {
-				float hw = width_ * 0.5 / scale_;
-				float hh = height_ * 0.5 / scale_;
-				float fp = (farplane_ > 0) ? farplane_ : height_ * 100;
-				float np = (nearplane_ > 0) ? nearplane_ : 1;
-				float fd=hh / tan(fov_ * M_PI / 360.0);
-				float nps = np/fd;
-				frustum = gfx->setFrustum(-hw * nps, hw * nps, hh * nps,
-						-hh * nps, np, fp);
-				projection.translate(-hw, -hh, -fd-0.001);
-			} else {
-				float fp = (farplane_ > 0) ? farplane_ : 1; //Conservative default
-				frustum = gfx->setOrthoFrustum(0, width_ / scale_,
-						height_ / scale_, 0, -fp, fp);
-			}
-			break;
-		case eLandscapeLeft:
-		case eLandscapeRight:
-			if (fov_ > 0) {
-				float hw = width_ * 0.5 / scale_;
-				float hh = height_ * 0.5 / scale_;
-				float fp = (farplane_ > 0) ? farplane_ : height_ * 100;
-				float np = (nearplane_ > 0) ? nearplane_ : 1;
-				float fd=hh / tan(fov_ * M_PI / 360.0);
-				float nps = np/fd;
-				frustum = gfx->setFrustum(-hh * nps, hh * nps, hw * nps,
-						-hw * nps, np, fp);
-				projection.translate(-hh, -hw, -fd-0.001);
-			} else {
-				float fp = (farplane_ > 0) ? farplane_ : 1; //Conservative default
-				frustum = gfx->setOrthoFrustum(0, height_ / scale_,
-						width_ / scale_, 0, -fp, fp);
-			}
-			break;
-		}
-		projectionMatrix_ = frustum * projection;
-		vpProjectionMatrix_ = vpProjection;
 	}
+	if (pmat) {
+		Matrix4 pm(pmat);
+		projectionMatrix_=pm;
+		vpProjectionMatrix_=pm;
+	}
+	if (vmat) {
+		Matrix4 vm(vmat);
+		gfx->setView(vm);
+	}
+
 	if ((hardwareOrientation_==eLandscapeRight)||(hardwareOrientation_==eLandscapeLeft))
 		gfx->setViewportProjection(vpProjectionMatrix_,height_ / scale_,width_ / scale_);
 	else
@@ -324,6 +362,7 @@ void Application::renderScene(int deltaFrameCount) {
 			std::swap(hw, hh);
 	}
 	gfx->setProjection(projectionMatrix_);
+    gfx->setScreenScale(lsx,lsy);
 
 	// hardware start/end x/y
 	//if(lsx == 0) lsx = 1;
@@ -334,6 +373,8 @@ void Application::renderScene(int deltaFrameCount) {
 	float ey = (hh - lty) / lsy;
 
 	CurrentTransform currentTransform;
+	if (preStage)
+		preStage(gfx,currentTransform);
 	stage_->draw(currentTransform, sx, sy, ex, ey);
 
 #if 0 && defined(QT_CORE_LIB)
@@ -346,54 +387,75 @@ void Application::renderScene(int deltaFrameCount) {
 
 //	Referenced::emptyPool();
 	lastFrameRenderTime_ = iclock() - time;
+    if (onDemandDraw_)
+        stage_->changes_=(Sprite::ChangeSet) (stage_->changes_&(~Sprite::INV_EFFECTS));
+    RENDER_END();
 }
 
-void Application::mouseDown(int x, int y, int button) {
+void Application::mouseDown(int x, int y, int button, int modifiers, int type) {
 	correctTouchPositionHardware(&x, &y);
 	correctTouchPosition(&x, &y);
 	correctTouchPositionLogical(&x, &y);
-	stage_->mouseDown(x, y, button, logicalScaleX_, logicalScaleY_,
+	stage_->mouseDown(x, y, button, modifiers, type, logicalScaleX_, logicalScaleY_,
 			logicalTranslateX_, logicalTranslateY_);
 }
 
-void Application::mouseUp(int x, int y, int button) {
+void Application::mouseUp(int x, int y, int button, int modifiers, int type) {
 	correctTouchPositionHardware(&x, &y);
 	correctTouchPosition(&x, &y);
 	correctTouchPositionLogical(&x, &y);
-	stage_->mouseUp(x, y, button, logicalScaleX_, logicalScaleY_,
+	stage_->mouseUp(x, y, button, modifiers, type, logicalScaleX_, logicalScaleY_,
 			logicalTranslateX_, logicalTranslateY_);
 }
 
-void Application::mouseMove(int x, int y, int button) {
+void Application::mouseMove(int x, int y, int button, int modifiers, int type) {
 	correctTouchPositionHardware(&x, &y);
 	correctTouchPosition(&x, &y);
 	correctTouchPositionLogical(&x, &y);
-	stage_->mouseMove(x, y, button, logicalScaleX_, logicalScaleY_,
+	stage_->mouseMove(x, y, button, modifiers, type, logicalScaleX_, logicalScaleY_,
 			logicalTranslateX_, logicalTranslateY_);
 }
 
-void Application::mouseHover(int x, int y, int button) {
+void Application::mouseHover(int x, int y, int button, int modifiers, int type) {
 	correctTouchPositionHardware(&x, &y);
 	correctTouchPosition(&x, &y);
 	correctTouchPositionLogical(&x, &y);
-	stage_->mouseHover(x, y, button, logicalScaleX_, logicalScaleY_,
+	stage_->mouseHover(x, y, button, modifiers, type, logicalScaleX_, logicalScaleY_,
 			logicalTranslateX_, logicalTranslateY_);
 }
 
-void Application::mouseWheel(int x, int y, int wheel) {
+void Application::mouseWheel(int x, int y, int wheel, int modifiers) {
 	correctTouchPositionHardware(&x, &y);
 	correctTouchPosition(&x, &y);
 	correctTouchPositionLogical(&x, &y);
-	stage_->mouseWheel(x, y, logicalScaleX_, logicalScaleY_, logicalTranslateX_,
+	stage_->mouseWheel(x, y, modifiers, logicalScaleX_, logicalScaleY_, logicalTranslateX_,
 			logicalTranslateY_, wheel);
 }
 
-void Application::keyDown(int keyCode, int realCode) {
-	stage_->keyDown(keyCode, realCode);
+void Application::mouseEnter(int x, int y, int buttons, int modifiers)
+{
+    correctTouchPositionHardware(&x, &y);
+    correctTouchPosition(&x, &y);
+    correctTouchPositionLogical(&x, &y);
+    stage_->mouseEnter(x, y, buttons, modifiers, logicalScaleX_, logicalScaleY_, logicalTranslateX_,
+            logicalTranslateY_);
 }
 
-void Application::keyUp(int keyCode, int realCode) {
-	stage_->keyUp(keyCode, realCode);
+void Application::mouseLeave(int x, int y, int modifiers)
+{
+    correctTouchPositionHardware(&x, &y);
+    correctTouchPosition(&x, &y);
+    correctTouchPositionLogical(&x, &y);
+    stage_->mouseLeave(x, y, modifiers, logicalScaleX_, logicalScaleY_, logicalTranslateX_,
+            logicalTranslateY_);
+}
+
+void Application::keyDown(int keyCode, int realCode,int modifiers) {
+	stage_->keyDown(keyCode, realCode, modifiers);
+}
+
+void Application::keyUp(int keyCode, int realCode,int modifiers) {
+	stage_->keyUp(keyCode, realCode, modifiers);
 }
 
 void Application::keyChar(const char *code) {
@@ -442,6 +504,7 @@ void Application::touchesCancel(ginput_TouchEvent *event) {
 
 void Application::setOrientation(Orientation orientation) {
 	orientation_ = orientation;
+	projectionDirty_ = true;
 
 	calculateLogicalTransformation();
 }
@@ -461,19 +524,21 @@ Orientation Application::hardwareOrientation() const {
 
 void Application::setDeviceOrientation(Orientation orientation) {
 	deviceOrientation_ = orientation;
-	projectionDirty_ = true;
 }
 
 Orientation Application::getDeviceOrientation() const {
 	return deviceOrientation_;
 }
 
-void Application::setResolution(int width, int height) {
+void Application::setResolution(int width, int height,bool keepBuffers) {
 	width_ = width;
 	height_ = height;
 
-	if (ShaderEngine::Engine)
-		ShaderEngine::Engine->resizeFramebuffer(width_, height_);
+    if (ShaderEngine::Engine&&!keepBuffers) {
+        if (hardwareOrientation_==eLandscapeLeft||hardwareOrientation_==eLandscapeRight)
+            std::swap(width,height);
+		ShaderEngine::Engine->resizeFramebuffer(width, height);
+    }
 
 	calculateLogicalTransformation();
 }
@@ -489,6 +554,7 @@ void Application::resolution(int* width, int* height) {
 void Application::correctTouchPosition(int* x, int* y) {
 	if (hardwareOrientation_==eFixed) return;
 	switch (orientation_) {
+	case eFixed:
 	case ePortrait:
 		break;
 	case ePortraitUpsideDown:
@@ -668,6 +734,8 @@ void Application::calculateLogicalTransformation() {
 		logicalTranslateY_ = 0;
 	}
 	projectionDirty_ = true;
+    if (stage_)
+        stage_->logicalTransformChanged();
 }
 
 void Application::correctTouchPositionLogical(int* x, int* y) {
@@ -806,19 +874,22 @@ void Application::removeTicker(Ticker* ticker) {
 	tickersIteratorInvalid_ = true;
 }
 
-void Application::setBackgroundColor(float r, float g, float b) {
+void Application::setBackgroundColor(float r, float g, float b, float a) {
 	backr_ = r;
 	backg_ = g;
 	backb_ = b;
+	backa_ = a;
 }
 
-void Application::getBackgroundColor(float* r, float* g, float* b) {
+void Application::getBackgroundColor(float* r, float* g, float* b, float* a) {
 	if (r)
 		*r = backr_;
 	if (g)
 		*g = backg_;
 	if (b)
 		*b = backb_;
+	if (a)
+		*a = backa_;
 }
 
 float Application::getLogicalTranslateX() const {

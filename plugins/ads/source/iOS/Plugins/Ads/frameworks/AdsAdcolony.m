@@ -20,7 +20,6 @@
 
 -(void)destroy{
     [self.mngr destroy];
-    [self.mngr release];
     self.mngr = nil;
 
 }
@@ -121,6 +120,11 @@
 }
 
 -(void)enableTesting{
+}
+
+-(BOOL)checkConsent:(BOOL) reset forUnderAge:(BOOL) underAge
+{
+	return FALSE;
 }
 
 -(UIView*)getView{

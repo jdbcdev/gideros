@@ -36,18 +36,23 @@ int main(int argc, char *argv[])
 	QCoreApplication::setOrganizationName("GiderosMobile");
 	QCoreApplication::setOrganizationDomain("giderosmobile.com");
 	QCoreApplication::setApplicationName("GiderosTexturePacker");
+    //QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 
 	QSettings::setDefaultFormat(QSettings::IniFormat);
 
 	QApplication a(argc, argv);
 
-        QDir dir = QCoreApplication::applicationDirPath();
+    QDir dir = QCoreApplication::applicationDirPath();
 #if defined(Q_OS_MAC)
-        dir.cdUp();
+    dir.cdUp();
 #endif
-        QDir::setCurrent(dir.absolutePath());
+    QDir::setCurrent(dir.absolutePath());
 
 	MainWindow w;
 	w.show();
-	return a.exec();
+
+    if (argc>1)
+        w.openStartProject(argv[1]);
+
+    return a.exec();
 }

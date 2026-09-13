@@ -154,61 +154,100 @@ Matrix4& Matrix4::transpose()
 
 void Matrix4::transformPoint(float x, float y, float* newx, float* newy) const
 {
-	Vector4 src=Vector4(x,y,0,1);
-	Vector4 dst=*this*src;
-	*newx=dst.x;
-	*newy=dst.y;
-/*
-	glog_i("Matrix:\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n",
-			m[0],m[4],m[8],m[12],
-			m[1],m[5],m[9],m[13],
-			m[2],m[6],m[10],m[14],
-			m[3],m[7],m[11],m[15]
-			);
-	glog_i("XFORMP: (%f,%f)->(%f,%f)",x,y,*newx,*newy);
-	*/
+    switch(type) {
+    case TRANSLATE:
+        *newx = x + m[12];
+        *newy = y + m[13];
+        break;
+    case M2D:
+    case M3D:
+    case FULL:
+        *newx = m[0]*x + m[4]*y + m[12];
+        *newy = m[1]*x + m[5]*y + m[13];
+        break;
+    }
 }
 
 void Matrix4::inverseTransformPoint(float x, float y, float* newx, float* newy) const
 {
-	Vector4 src=Vector4(x,y,0,1);
-	Matrix4 inv=inverse();
-	Vector4 dst=inv*src;
-	*newx=dst.x;
-	*newy=dst.y;
-/*	glog_i("Matrix:\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n",
-			m[0],m[4],m[8],m[12],
-			m[1],m[5],m[9],m[13],
-			m[2],m[6],m[10],m[14],
-			m[3],m[7],m[11],m[15]
-			);
-	glog_i("IMatrix:\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n%f\t%f\t%f\t%f\n",
-			inv[0],inv[4],inv[8],inv[12],
-			inv[1],inv[5],inv[9],inv[13],
-			inv[2],inv[6],inv[10],inv[14],
-			inv[3],inv[7],inv[11],inv[15]
-			);
-	glog_i("IXFORMP: (%f,%f)->(%f,%f)",x,y,*newx,*newy);
-*/
+    switch(type) {
+    case TRANSLATE:
+        *newx = x - m[12];
+        *newy = y - m[13];
+        break;
+    case M2D: {
+        // Fast inverse for 2D affine: | a c tx |^-1
+        //                             | b d ty |
+        //                             | 0 0 1  |
+        float det = m[0]*m[5] - m[1]*m[4];
+        if (fabs(det) > 1e-6f) {
+            float invDet = 1.0f / det;
+            float dx = x - m[12];
+            float dy = y - m[13];
+            *newx = invDet * (m[5]*dx - m[4]*dy);
+            *newy = invDet * (m[0]*dy - m[1]*dx);
+        } else {
+            *newx = x;
+            *newy = y;
+        }
+        break;
+    }
+    case M3D:
+    case FULL:
+    {
+        Matrix4 inv=inverse();
+        const float *m=inv.data();
+        *newx = m[0]*x + m[4]*y + m[12];
+        *newy = m[1]*x + m[5]*y + m[13];
+        break;
+    }
+    }
 }
 
 void Matrix4::transformPoint(float x, float y, float z, float* newx, float* newy, float* newz) const
 {
-	Vector4 src=Vector4(x,y,z,1);
-	Vector4 dst=*this*src;
-	*newx=dst.x;
-	*newy=dst.y;
-	*newz=dst.z;
+    switch(type) {
+    case TRANSLATE:
+        *newx = x + m[12];
+        *newy = y + m[13];
+        *newz = z + m[14];
+        break;
+    case M2D:
+        *newx = m[0]*x + m[4]*y + m[12];
+        *newy = m[1]*x + m[5]*y + m[13];
+        *newz = z + m[14];
+        break;
+    case M3D:
+    case FULL:
+        *newx = m[0]*x + m[4]*y + m[8]*z + m[12];
+        *newy = m[1]*x + m[5]*y + m[9]*z + m[13];
+        *newz = m[2]*x + m[6]*y + m[10]*z + m[14];
+        break;
+    }
 }
 
 void Matrix4::inverseTransformPoint(float x, float y, float z,float* newx, float* newy, float* newz) const
 {
-	Vector4 src=Vector4(x,y,z,1);
 	Matrix4 inv=inverse();
-	Vector4 dst=inv*src;
-	*newx=dst.x;
-	*newy=dst.y;
-	*newz=dst.z;
+    const float *m=inv.data();
+    switch(type) {
+    case TRANSLATE:
+        *newx = x + m[12];
+        *newy = y + m[13];
+        *newz = z + m[14];
+        break;
+    case M2D:
+        *newx = m[0]*x + m[4]*y + m[12];
+        *newy = m[1]*x + m[5]*y + m[13];
+        *newz = z + m[14];
+        break;
+    case M3D:
+    case FULL:
+        *newx = m[0]*x + m[4]*y + m[8]*z + m[12];
+        *newy = m[1]*x + m[5]*y + m[9]*z + m[13];
+        *newz = m[2]*x + m[6]*y + m[10]*z + m[14];
+        break;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -216,19 +255,79 @@ void Matrix4::inverseTransformPoint(float x, float y, float z,float* newx, float
 ///////////////////////////////////////////////////////////////////////////////
 Matrix4& Matrix4::invert()
 {
-    // If the 4th row is [0,0,0,1] then it is affine matrix and
-    // it has no projective transformation.
-    if(m[3] == 0 && m[7] == 0 && m[11] == 0 && m[15] == 1)
-        this->invertAffine();
-    else
+    switch (type) {
+    case TRANSLATE:
+        m[12] = -m[12];
+        m[13] = -m[13];
+        m[14] = -m[14];
+        break;
+    case M2D:
     {
+        float a=m[0], b=m[1];
+        float c=m[4], d=m[5];
+        float tx=m[12], ty=m[13], tz=m[14];
+
+        float det = a*d - b*c;
+        float invDet = 1.0f / det;
+
+        // R^-1
+        m[0] =  d * invDet;
+        m[1] = -b * invDet;
+        m[4] = -c * invDet;
+        m[5] =  a * invDet;
+
+        // -R^-1 * T
+        m[12] = -(m[0]*tx + m[4]*ty);
+        m[13] = -(m[1]*tx + m[5]*ty);
+        m[14] = -tz;
+
+        m[3]=0; m[7]=0; m[11]=0; m[15]=1;
+        break;
+    }
+    case M3D:
+    {
+        float r0=m[0], r1=m[1], r2=m[2];
+        float r4=m[4], r5=m[5], r6=m[6];
+        float r8=m[8], r9=m[9], r10=m[10];
+
+        float tx=m[12], ty=m[13], tz=m[14];
+
+        float det =
+            r0*(r5*r10 - r6*r9) -
+            r1*(r4*r10 - r6*r8) +
+            r2*(r4*r9  - r5*r8);
+
+        float invDet = 1.0f / det;
+
+        float i0 =  (r5*r10 - r6*r9) * invDet;
+        float i1 = -(r1*r10 - r2*r9) * invDet;
+        float i2 =  (r1*r6  - r2*r5) * invDet;
+
+        float i4 = -(r4*r10 - r6*r8) * invDet;
+        float i5 =  (r0*r10 - r2*r8) * invDet;
+        float i6 = -(r0*r6  - r2*r4) * invDet;
+
+        float i8 =  (r4*r9  - r5*r8) * invDet;
+        float i9 = -(r0*r9  - r1*r8) * invDet;
+        float i10=  (r0*r5  - r1*r4) * invDet;
+
+        // R^-1
+        m[0]=i0;  m[1]=i1;  m[2]=i2;
+        m[4]=i4;  m[5]=i5;  m[6]=i6;
+        m[8]=i8;  m[9]=i9;  m[10]=i10;
+
+        // -R^-1 * T
+        m[12] = -(i0*tx + i4*ty + i8*tz);
+        m[13] = -(i1*tx + i5*ty + i9*tz);
+        m[14] = -(i2*tx + i6*ty + i10*tz);
+
+        m[3]=0; m[7]=0; m[11]=0; m[15]=1;
+
+        type = M3D;
+        break;
+    }
+    case FULL:
         this->invertGeneral();
-        /*@@ invertProjective() is not optimized (slower than generic one)
-        if(fabs(m[0]*m[5] - m[1]*m[4]) > EPSILON)
-            this->invertProjective();   // inverse using matrix partition
-        else
-            this->invertGeneral();      // generalized inverse
-        */
     }
 
     return *this;
@@ -330,7 +429,17 @@ Matrix4& Matrix4::invertAffine()
     // last row should be unchanged (0,0,0,1)
     //m[3] = m[7] = m[11] = 0.0f;
     //m[15] = 1.0f;
-    type=FULL;
+
+    const float EPS = 1e-6f;
+    type=M3D;
+    if ((fabs(m[10]-1)<EPS)&&(fabs(m[2])<EPS)&&
+        (fabs(m[6])<EPS)&&(fabs(m[8])<EPS)&&(fabs(m[9])<EPS))
+    {
+        type=M2D;
+        if ((fabs(m[0]-1)<EPS)&&(fabs(m[5]-1)<EPS)&&
+            (fabs(m[1])<EPS)&&(fabs(m[4])<EPS))
+            type=TRANSLATE;
+    }
 
     return * this;
 }
@@ -399,7 +508,7 @@ Matrix4& Matrix4::invertProjective()
     /*-----------------------------+-----------------------------*/
     m[2] = c1[0];  m[6] = c1[2]; /*|*/ m[10]= d1[0];  m[14]= d1[2];
     m[3] = c1[1];  m[7] = c1[3]; /*|*/ m[11]= d1[1];  m[15]= d1[3];
-    type=FULL;
+    computeType();
 
     return *this;
 }
@@ -464,7 +573,7 @@ Matrix4& Matrix4::invertGeneral()
     m[13]=  invDeterminant * cofactor7;
     m[14]= -invDeterminant * cofactor11;
     m[15]=  invDeterminant * cofactor15;
-    type=FULL;
+    computeType();
 
     return *this;
 }
@@ -510,11 +619,19 @@ Matrix4& Matrix4::translate(const Vector3& v)
 
 Matrix4& Matrix4::translate(float x, float y, float z)
 {
-    m[0] += m[3] * x;   m[4] += m[7] * x;   m[8] += m[11]* x;   m[12]+= m[15]* x;
-    m[1] += m[3] * y;   m[5] += m[7] * y;   m[9] += m[11]* y;   m[13]+= m[15]* y;
-    m[2] += m[3] * z;   m[6] += m[7] * z;   m[10]+= m[11]* z;   m[14]+= m[15]* z;
-    if (type==TRANSLATE)
-    	type=M3D;
+    switch (type)
+    {
+    case TRANSLATE:
+    case M2D:
+    case M3D:
+        m[12]+= x; m[13]+=y; m[14]+=z;
+        break;
+    case FULL:
+        m[0] += m[3] * x;   m[4] += m[7] * x;   m[8] += m[11]* x;   m[12]+= m[15]* x;
+        m[1] += m[3] * y;   m[5] += m[7] * y;   m[9] += m[11]* y;   m[13]+= m[15]* y;
+        m[2] += m[3] * z;   m[6] += m[7] * z;   m[10]+= m[11]* z;   m[14]+= m[15]* z;
+        break;
+    }
 
     return *this;
 }
@@ -531,11 +648,27 @@ Matrix4& Matrix4::scale(float s)
 
 Matrix4& Matrix4::scale(float x, float y, float z)
 {
-    m[0] *= x;   m[4] *= x;   m[8] *= x;   m[12] *= x;
-    m[1] *= y;   m[5] *= y;   m[9] *= y;   m[13] *= y;
-    m[2] *= z;   m[6] *= z;   m[10]*= z;   m[14] *= z;
-    if (type==TRANSLATE)
-    	type=M3D;
+    switch (type)
+    {
+    case TRANSLATE:
+        m[0] = x;   m[12] *= x;
+        m[5] = y;   m[13] *= y;
+        m[10]= z;   m[14] *= z;
+        type=(z!=1)?M3D:M2D;
+        break;
+    case M2D:
+        m[0] *= x;   m[4] *= x;   m[12] *= x;
+        m[1] *= y;   m[5] *= y;   m[13] *= y;
+        m[10]= z;                 m[14] *= z;
+        type=(z!=1)?M3D:M2D;
+        break;
+    case M3D:
+    default:
+        m[0] *= x;   m[4] *= x;   m[8] *= x;   m[12] *= x;
+        m[1] *= y;   m[5] *= y;   m[9] *= y;   m[13] *= y;
+        m[2] *= z;   m[6] *= z;   m[10]*= z;   m[14] *= z;
+        break;
+    }
     return *this;
 }
 
@@ -550,40 +683,110 @@ Matrix4& Matrix4::rotate(float angle, const Vector3& axis)
     return rotate(angle, axis.x, axis.y, axis.z);
 }
 
+
 Matrix4& Matrix4::rotate(float angle, float x, float y, float z)
 {
-    float c = cosf(angle * DEG2RAD);    // cosine
-    float s = sinf(angle * DEG2RAD);    // sine
-    float c1 = 1.0f - c;                // 1 - c
-    float m0 = m[0],  m4 = m[4],  m8 = m[8],  m12= m[12],
-          m1 = m[1],  m5 = m[5],  m9 = m[9],  m13= m[13],
-          m2 = m[2],  m6 = m[6],  m10= m[10], m14= m[14];
+    float c = cosf(angle * DEG2RAD);
+    float s = sinf(angle * DEG2RAD);
+    float c1 = 1.0f - c;
 
-    // build rotation matrix
-    float r0 = x * x * c1 + c;
-    float r1 = x * y * c1 + z * s;
-    float r2 = x * z * c1 - y * s;
-    float r4 = x * y * c1 - z * s;
-    float r5 = y * y * c1 + c;
-    float r6 = y * z * c1 + x * s;
-    float r8 = x * z * c1 + y * s;
-    float r9 = y * z * c1 - x * s;
-    float r10= z * z * c1 + c;
+    bool Zaxis=x == 0 && y == 0 && z == 1;
+    switch (type)
+    {
+    // ---------------------------------------------------------
+    // CASE 1 : TRANSLATE → devient M3D
+    // ---------------------------------------------------------
+    case TRANSLATE:
+    {
+        type = M2D; //Will become M2D on all cases
+        // Rotation autour de Z ?
+        if (Zaxis)
+        {
+            // Rotation 2D
+            float tx = m[12], ty = m[13];
 
-    // multiply rotation matrix
-    m[0] = r0 * m0 + r4 * m1 + r8 * m2;
-    m[1] = r1 * m0 + r5 * m1 + r9 * m2;
-    m[2] = r2 * m0 + r6 * m1 + r10* m2;
-    m[4] = r0 * m4 + r4 * m5 + r8 * m6;
-    m[5] = r1 * m4 + r5 * m5 + r9 * m6;
-    m[6] = r2 * m4 + r6 * m5 + r10* m6;
-    m[8] = r0 * m8 + r4 * m9 + r8 * m10;
-    m[9] = r1 * m8 + r5 * m9 + r9 * m10;
-    m[10]= r2 * m8 + r6 * m9 + r10* m10;
-    m[12]= r0 * m12+ r4 * m13+ r8 * m14;
-    m[13]= r1 * m12+ r5 * m13+ r9 * m14;
-    m[14]= r2 * m12+ r6 * m13+ r10* m14;
-    type=FULL;
+            // Colonnes X/Y deviennent la rotation 2D
+            m[0] = c;   m[1] = s;
+            m[4] = -s;  m[5] = c;
+
+            // Translation tournée en 2D
+            m[12] = c*tx - s*ty;
+            m[13] = s*tx + c*ty;
+
+            // Z reste inchangé
+            // W reste inchangé
+
+            break;
+        }
+
+        // Sinon → rotation 3D → devient M3D
+        // (on retombe sur le cas M3D)
+    }
+    case M2D:
+    {
+        // Rotation 2D uniquement si axe = Z
+        if (Zaxis)
+        {
+            float m0 = m[0], m4 = m[4], m12 = m[12];
+            float m1 = m[1], m5 = m[5], m13 = m[13];
+
+            // Rotation dans le plan XY
+            m[0] = c*m0 - s*m1;
+            m[1] = s*m0 + c*m1;
+
+            m[4] = c*m4 - s*m5;
+            m[5] = s*m4 + c*m5;
+
+            // Translation 2D
+            m[12] = c*m12 - s*m13;
+            m[13] = s*m12 + c*m13;
+
+            // Z reste inchangé
+            break;
+        }
+
+        type = M3D; //Will become M3D
+        // Sinon → rotation 3D → devient M3D
+        // On retombe sur le cas M3D ci-dessous
+    }
+    case M3D:
+    case FULL:
+    {
+        float m0 = m[0],  m4 = m[4],  m8 = m[8],  m12= m[12];
+        float m1 = m[1],  m5 = m[5],  m9 = m[9],  m13= m[13];
+        float m2 = m[2],  m6 = m[6],  m10= m[10], m14= m[14];
+
+        float r0 = x*x*c1 + c;
+        float r1 = x*y*c1 + z*s;
+        float r2 = x*z*c1 - y*s;
+
+        float r4 = x*y*c1 - z*s;
+        float r5 = y*y*c1 + c;
+        float r6 = y*z*c1 + x*s;
+
+        float r8 = x*z*c1 + y*s;
+        float r9 = y*z*c1 - x*s;
+        float r10= z*z*c1 + c;
+
+        m[0] = r0*m0 + r4*m1 + r8*m2;
+        m[1] = r1*m0 + r5*m1 + r9*m2;
+        m[2] = r2*m0 + r6*m1 + r10*m2;
+
+        m[4] = r0*m4 + r4*m5 + r8*m6;
+        m[5] = r1*m4 + r5*m5 + r9*m6;
+        m[6] = r2*m4 + r6*m5 + r10*m6;
+
+        m[8] = r0*m8 + r4*m9 + r8*m10;
+        m[9] = r1*m8 + r5*m9 + r9*m10;
+        m[10]= r2*m8 + r6*m9 + r10*m10;
+
+        m[12]= r0*m12+ r4*m13+ r8*m14;
+        m[13]= r1*m12+ r5*m13+ r9*m14;
+        m[14]= r2*m12+ r6*m13+ r10*m14;
+
+        break;
+    }
+    }
 
     return *this;
 }
@@ -605,7 +808,7 @@ Matrix4& Matrix4::rotateX(float angle)
     m[10]= m9 * s + m10* c;
     m[13]= m13* c + m14*-s;
     m[14]= m13* s + m14* c;
-    type=FULL;
+    computeType();
 
     return *this;
 }
@@ -627,7 +830,7 @@ Matrix4& Matrix4::rotateY(float angle)
     m[10]= m8 *-s + m10* c;
     m[12]= m12* c + m14* s;
     m[14]= m12*-s + m14* c;
-    type=FULL;
+    computeType();
 
     return *this;
 }
@@ -649,6 +852,6 @@ Matrix4& Matrix4::rotateZ(float angle)
     m[9] = m8 * s + m9 * c;
     m[12]= m12* c + m13*-s;
     m[13]= m12* s + m13* c;
-    type=FULL;
+    computeType();
     return *this;
 }

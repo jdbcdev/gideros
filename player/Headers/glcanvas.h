@@ -1,7 +1,7 @@
 #ifndef GLCANVAS_H
 #define GLCANVAS_H
 
-#include <QGLWidget>
+#include <QOpenGLWidget>
 #include <QDir>
 
 class LuaApplication;
@@ -14,11 +14,12 @@ class Server;
 #include <gfile_p.h>
 #include <gstatus.h>
 
-class GLCanvas : public QGLWidget{
+class GLCanvas : public QOpenGLWidget{
 	Q_OBJECT
 
 public:
 	GLCanvas(QWidget *parent);
+	void setupCanvas();
 	~GLCanvas();
 
     QString projectDir_;
@@ -40,6 +41,10 @@ public:
     //std::set<std::string> accessedResourceFiles;
     std::set<std::string> allResourceFiles;
     static QString appPackage;
+    static bool EnableVSYNC;
+    static bool TabletActive;
+    static bool TabletPress;
+    void realEnterFrame();
 
 private slots:
 	void onTimer();
@@ -53,8 +58,10 @@ private:
     int width_, height_;
     bool isPlayer_;
     std::string resourceDirectory_;
+    std::string documentsDirectory_;
+    std::string temporaryDirectory_;
     std::string md5filename_;
-    int fps_;
+    int sync_;
     double clock_;
     QString projectName_;
     bool running_;
@@ -66,6 +73,8 @@ private:
     float infoColor_[3];
     bool exportedApp_;
     bool mouseButtonPressed_[5];
+    QMap<int,int> touchIdMap;
+    quint32 touchIdUsed;
     //	PlatformImplementation* platformImplementation_;
 
     void setupProperties();
@@ -73,7 +82,8 @@ private:
 	virtual void initializeGL();
 
 	virtual void paintGL();
-	bool checkLuaError(GStatus status);
+    void enterFrame();
+    bool checkLuaError(GStatus status);
     void timerEvent(QTimerEvent *);
     void mousePressEvent(QMouseEvent* event);
     void mouseMoveEvent(QMouseEvent* event);

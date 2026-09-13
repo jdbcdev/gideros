@@ -1,25 +1,34 @@
 <plugin
  name="Ads"
  description="Generic Ads interface">
- <property name="gmsVersion" type="string" title="Google Play Services version" description="" default="9.2.0" />
+ <property name="gmsVersion" type="string" title="Google Play Services version" description="" default="23.2.0" />
  <property name="gmsAppId" type="string" title="Application Id" description="Application Id for Google Play Services" default="" />
+ <property name="adsNeedId" type="boolean" title="Advertising ID is required (Android 13+)"/>
  <!--
  <property name="adsFwAdcolony" type="boolean" title="Enable Adcolony support (Android,iOS)"/>
  -->
- <property name="adsFwAdmob" type="boolean" title="Enable Admob support (Android, require Gaming/Google Play)"/>
+ <property name="adsFwAdmob" type="boolean" title="Enable Admob support (Android, iOS, require Gaming/Google Play)"/>
  <property name="adsFwAdmobClient" type="string" title="Admob client key (ca-app-pub-xxx)"/>
  <property name="adsFwAdmobBanner" type="string" title="Admob banner key"/>
  <property name="adsFwAdmobInterstitial" type="string" title="Admob interstitial key"/>
  <!--
  <property name="adsFwAmazon" type="boolean" title="Enable Amazon support (Android,iOS)"/>
  -->
- <property name="adsFwApplovin" type="boolean" title="Enable AppLovin support (Android, Gaming/Google Play)"/>
- <property name="adsFwApplovinKey" type="string" title="AppLovin SDK key (Android)"/>
- <property name="adsFwChartboost" type="boolean" title="Enable Chartboost support (Android, Gaming/Google Play)"/>
+ <property name="adsFwApplovin" type="boolean" title="Enable AppLovin support (Android, iOS, Gaming/Google Play)"/>
+ <property name="adsFwApplovinKey" type="string" title="AppLovin SDK key (Android, iOS)"/>
+ <property name="adsFwApplovinConsent" type="boolean" title="Enable AppLovin Consent Flow (iOS)"/>
+ <property name="adsFwApplovinPrivacy" type="string" title="AppLovin privacy policy URL (iOS)"/>
+ <property name="adsFwApplovinTOS" type="string" title="AppLovin terms of service URL (iOS)"/>
+ <property name="adsFwChartboost" type="boolean" title="Enable Chartboost support (Android, iOS, Gaming/Google Play)"/>
  <!--
  <property name="adsFwHeyzap" type="boolean" title="Enable Heyzap support (Android,iOS)"/>
  <property name="adsFwIad" type="boolean" title="Enable iAd support (iOS)"/>
  <property name="adsFwInmobi" type="boolean" title="Enable Inmobi support (Android,iOS)"/>
+ -->
+ <property name="adsFwKiip" type="boolean" title="Enable Kiip support (Android,iOS)"/>
+<property name="adsFwKiipKey" type="string" title="Kiip Key Android" description="Kiip key for your application" default="" />
+<property name="adsFwKiipKeyIos" type="string" title="Kiip Key iOS" description="Kiip key for your application" default="" />
+ <!--
  <property name="adsFwMillenial" type="boolean" title="Enable Millenial support (Android)"/>
  <property name="adsFwMopub" type="boolean" title="Enable Mopub support (Android,iOS)"/>
  <property name="adsFwRevmob" type="boolean" title="Enable Revmob support (Android,iOS)"/>
@@ -28,9 +37,7 @@
  <property name="adsFwTapjoy" type="boolean" title="Enable Tapjoy support (Android)"/> 
  -->
  <property name="adsFwUnity" type="boolean" title="Enable Unity Ads support (Android,iOS)"/>
- <!--
- <property name="adsFwVungle" type="boolean" title="Enable Vungle support (Android,iOS)"/>
- -->
+ <property name="adsFwVungle" type="boolean" title="Enable Vungle support (Android,iOS,UWP)"/>
  
   <target name="AndroidStudio,APK">
     <template name="sources" path="[[[sys.pluginDir]]]/bin/Android/src" dest="app/src/main/java" exclude="frameworks"/>
@@ -41,9 +48,26 @@
             <append orig="//GIDEROS-EXTERNAL-CLASS//" by="		&quot;com.giderosmobile.android.plugins.ads.Ads&quot;,"/>
         </replacelist>
     </template>
+    <if condition="[[[plugin.adsNeedId]]]">
+	    <lua>
+    	local ap=require("Tools/export_android")
+    	ap.usePermission("com.google.android.gms.permission.AD_ID")
+    	</lua>
+    </if>
     <set key="local.adsfwd" value="app/src/main/java/com/giderosmobile/android/plugins/ads/frameworks"/>
     <set key="local.adsfws" value="[[[sys.pluginDir]]]/bin/Android/src/com/giderosmobile/android/plugins/ads/frameworks"/>
     <mkdir>[[[local.adsfwd]]]</mkdir>
+    <set key="local.adsReqGms" value="0"/>
+    <if condition="[[[plugin.adsFwApplovin]]]">
+	    <set key="local.adsReqGms" value="1"/>
+    </if>
+    <if condition="[[[plugin.adsFwChartboost]]]">
+	    <set key="local.adsReqGms" value="1"/>
+    </if>
+    <if condition="[[[plugin.adsFwAdmob]]]">
+	    <set key="local.adsReqGms" value="1"/>
+    </if>
+    <if condition="[[[local.adsReqGms]]]">
  	<template name="GMS" path="[[[sys.pluginDir]]]/bin/Android/res" dest="app/src/main/res/">
 		<replacelist wildcards="ids.xml">
 			<replace orig="561448401579" by="[[[plugin.gmsAppId]]]"/>
@@ -59,57 +83,143 @@
     	        </append>
 	       	</replacelist>	
  	</template>	 	
+ 	</if>
     <if condition="[[[plugin.adsFwUnity]]]">
     	<template name="Unity Ads" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsUnity.java" />
-    	<set key="local.adsAarVer" value="2.0.5" />
+    	<set key="local.adsAarVer" value="3.0.0" />
     	<set key="local.adsJarVer" value="unity-ads-[[[local.adsAarVer]]].aar" />
-    	<download source="http://giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
+    	<download source="http://apps.giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
     	<cp src="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" dst="app/libs/[[[local.adsJarVer]]]" />
     	<template name="Unity Ads AAR" path="app" dest="app">
 			<replacelist wildcards="build.gradle">
 				<append>
 					<orig>//TAG-DEPENDENCIES//</orig>								
 					<by>
-				    compile 'com.unity3d.ads:unity:ads:[[[local.adsAarVer]]]@aar'
+				    implementation 'com.unity3d.ads:unity:ads:[[[local.adsAarVer]]]@aar'
 					</by>
 				</append>
 	       	</replacelist>	
 	 	</template>
 	</if>  
+    <if condition="[[[plugin.adsFwVungle]]]">
+    	<template name="Binaries" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsVungle.java" />
+    	<template name="Binaries" path="" dest="">
+			<replacelist wildcards="build.gradle;AndroidManfiest.xml">
+				<append>
+					<orig>//TAG-DEPENDENCIES//</orig>								
+					<by>
+					implementation 'com.github.vungle:vungle-android-sdk:5.1.0'
+					</by>
+				</append>
+				<append>
+					<orig>//TAG-TOP-GRADLE-ALLREPOS//</orig>								
+					<by>
+					maven { url 'https://jitpack.io' }</by>
+				</append>
+				<append>
+            		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
+            		<by><![CDATA[
+	<activity android:name="com.vungle.publisher.VideoFullScreenAdActivity"
+     android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize"
+     android:theme="@android:style/Theme.NoTitleBar.Fullscreen"/>
+
+    <activity android:name="com.vungle.publisher.MraidFullScreenAdActivity"
+     android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize"
+     android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"/>
+
+    <activity android:name="com.vungle.publisher.FlexViewAdActivity"
+     android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize"
+     android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"/>]]></by>    	        
+    	        </append>
+	       	</replacelist>	
+	 	</template>
+	    <lua>
+    	local ap=require("Tools/export_android")
+    	ap.minSdk(11)
+    	ap.usePermission("android.permission.ACCESS_NETWORK_STATE")
+    	ap.usePermission("android.permission.WRITE_EXTERNAL_STORAGE",18)
+    	</lua>
+	</if>  
+    <if condition="[[[plugin.adsFwKiip]]]">
+    	<template name="Kiip" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsKiip.java">
+         <replacelist wildcards="AdsKiip.java">
+            <replace orig="GIDEROS_KIIP_APP_KEY" by="[[[plugin.adsFwKiipKey]]]"/>
+         </replacelist>
+    	</template>
+    	<set key="local.adsVer" value="2.3.1" />
+    	<set key="local.adsJarVer" value="Kiip-Android-SDK-v[[[local.adsVer]]].zip" />
+    	<download source="http://apps.giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
+    	<mkdir>_tmpKiip</mkdir>
+    	<cd>_tmpKiip</cd>
+    	<unzip source="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" dest="" />
+    	<cd>..</cd>
+    	<template name="Kiip" path="_tmpKiip/KiipSDK/src/main/res" dest="app/src/main/res" />
+    	<cp src="_tmpKiip/KiipSDK/libs/KiipSDK.jar" dst="app/libs/KiipSDK.jar" />
+    	<rmdir>_tmpKiip</rmdir>
+   		<template name="Activity" path="">
+         <replacelist wildcards="[[[project.namews]]]Activity.java">
+            <append orig="//GIDEROS-ACTIVITY-IMPORT//" by="&#10;import androidx.fragment.app.FragmentActivity;"/>
+            <replace orig="[[[project.namews]]]Activity extends Activity" by="[[[project.namews]]]Activity extends FragmentActivity"/>
+         </replacelist>
+    	</template>
+    	<template name="Kiip" path="app" dest="app">
+			<replacelist wildcards="AndroidManifest.xml;build.gradle">
+				<append>
+					<orig>//TAG-DEPENDENCIES//</orig>								
+					<by>
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation files('libs/KiipSDK.jar')
+					</by>
+				</append>
+            	<append>
+            		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
+            		<by><![CDATA[
+        <meta-data android:name="me.kiip.sdk.AppKey" android:value="[[[plugin.adsFwKiipKey]]]"/>
+        <provider android:name="me.kiip.sdk.KiipSDKProvider"
+            android:authorities="me.kiip.sdk.KiipSDKProvider[[[plugin.adsFwKiipKey]]]"
+            android:exported="true" />]]></by>    	        
+    	        </append>
+	       	</replacelist>	
+	 	</template>
+    <lua>
+    local ap=require("Tools/export_android")
+    ap.usePermission("android.permission.ACCESS_NETWORK_STATE")
+    </lua>
+	</if>  
     <if condition="[[[plugin.adsFwApplovin]]]">
     	<template name="AppLovin" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsApplovin.java" />
-    	<set key="local.adsJarVer" value="applovin-sdk-6.4.0.jar" />
-    	<download source="http://giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
-    	<cp src="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" dst="app/libs/[[[local.adsJarVer]]]" />
-	    <!-- <template name="binaries" path="[[[sys.pluginDir]]]/source/Android/libs" dest="app/libs" include="applovin*.jar" /> -->
+    	<template name="AppLovin" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsMax.java" />
     	<template name="AndroidManifest" path="">
         	<replacelist wildcards="AndroidManifest.xml;build.gradle">
             	<append>
             		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
             		<by><![CDATA[
-<meta-data android:name="applovin.sdk.key" android:value="[[[plugin.adsFwApplovinKey]]]"  />
-<activity android:name="com.applovin.adview.AppLovinInterstitialActivity" android:configChanges="orientation|screenSize" />
-<activity android:name="com.applovin.adview.AppLovinConfirmationActivity" />]]></by>
+<meta-data android:name="applovin.sdk.key" android:value="[[[plugin.adsFwApplovinKey]]]"  />]]></by>
     	        </append>
-            	<append>
-            		<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
-            		<by><![CDATA[
-    	            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>]]></by>
-    	        </append>    	        
 				<append>
 					<orig>//TAG-DEPENDENCIES//</orig>								
 					<by>
-				    compile files('libs/[[[local.adsJarVer]]]')
-		            compile 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
+				    implementation 'com.applovin:applovin-sdk:+'
+		            implementation 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
 					</by>
 				</append>
         	</replacelist>
     	</template>
+	    <lua>
+    	local ap=require("Tools/export_android")
+    	ap.minSdk(16)
+    	</lua>
+    <lua>
+	
+    local ap=require("Tools/export_android")
+    ap.usePermission("android.permission.ACCESS_NETWORK_STATE")
+    ap.usePermission("android.permission.WRITE_EXTERNAL_STORAGE",18)
+    </lua>
     </if>	  
     <if condition="[[[plugin.adsFwChartboost]]]">
     	<template name="ChartBoost" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsChartboost.java" />
-    	<set key="local.adsJarVer" value="chartboost-sdk-6.6.1.jar" />
-    	<download source="http://giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
+    	<set key="local.adsJarVer" value="chartboost-sdk-7.2.0.jar" />
+    	<download source="http://apps.giderosmobile.com/ext/android/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
     	<cp src="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" dst="app/libs/[[[local.adsJarVer]]]" />
 	    <!-- <template name="binaries" path="[[[sys.pluginDir]]]/source/Android/libs" dest="app/libs" include="chartboos*.jar" /> -->
     	<template name="AndroidManifest" path="">
@@ -123,53 +233,56 @@
                android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"
                android:configChanges="keyboardHidden|orientation|screenSize" />]]></by>
     	        </append>
-            	<append>
-            		<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
-            		<by><![CDATA[
-    	            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>]]></by>
-    	        </append>    	        
 				<append>
 					<orig>//TAG-DEPENDENCIES//</orig>								
 					<by>
-				    compile files('libs/[[[local.adsJarVer]]]')
-		            compile 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
+				    implementation files('libs/[[[local.adsJarVer]]]')
+		            implementation 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
 					</by>
 				</append>
         	</replacelist>
     	</template>
+    <lua>
+    local ap=require("Tools/export_android")
+    ap.usePermission("android.permission.ACCESS_NETWORK_STATE")
+    </lua>
     </if>	  
-    <if condition="[[[plugin.adsFwAdMob]]]">
+    <if condition="[[[plugin.adsFwAdmob]]]">
     	<template name="AdMob" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsAdmob.java" />
     	<template name="AndroidManifest" path="">
         	<replacelist wildcards="AndroidManifest.xml;build.gradle;strings.xml">
             	<append>
             		<orig><![CDATA[<!-- TAG:APPLICATION-EXTRA -->]]></orig>
             		<by><![CDATA[
+       <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="[[[plugin.adsFwAdmobClient]]]"/>            		
 	   <activity
             android:name="com.google.android.gms.ads.AdActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
             android:theme="@android:style/Theme.Translucent" />]]></by>
     	        </append>
-            	<append>
-            		<orig><![CDATA[<!-- TAG:MANIFEST-EXTRA -->]]></orig>
-            		<by><![CDATA[
-    	            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>]]></by>
-    	        </append>   
 				<append>
 					<orig>//TAG-DEPENDENCIES//</orig>								
 					<by>
-		            compile 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
+		            implementation 'com.google.android.gms:play-services-ads:[[[plugin.gmsVersion]]]'
+ 					implementation 'com.google.android.ump:user-messaging-platform:2.1.0'
 					</by>
 				</append>
             	<prepend>
             		<orig><![CDATA[</resources>]]></orig>
             		<by><![CDATA[    <!-- AdMob ad unit IDs -->
-    <string name="banner_home_footer">[[[plugin.adsFwAdmodClient]]]/[[[plugin.adsFwAdmobBanner]]]</string>
-    <string name="interstitial_full_screen">[[[plugin.adsFwAdmodClient]]]/[[[plugin.adsFwAdmobInterstitial]]]</string>            		
+    <string name="banner_home_footer">[[[plugin.adsFwAdmobClient]]]/[[[plugin.adsFwAdmobBanner]]]</string>
+    <string name="interstitial_full_screen">[[[plugin.adsFwAdmobClient]]]/[[[plugin.adsFwAdmobInterstitial]]]</string>            		
             		]]></by>
     	        </prepend>   
         	</replacelist>
     	</template>
+    <lua>
+    local ap=require("Tools/export_android")
+    ap.minSdk(19)
+    ap.usePermission("android.permission.ACCESS_NETWORK_STATE")
+    </lua>
     </if>	  
  </target>
  <target name="Android">
@@ -187,144 +300,335 @@
     	<template name="Unity Ads" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsAdUnity.java" />
 	</if>
  </target>
+
  <target name="iOS">
-   <template name="binaries" path="[[[sys.pluginDir]]]/source/iOS/Plugins/" dest="[[[project.namews]]]/Plugins/" exclude="frameworks"/>
-    <set key="local.adsfwd" value="[[[project.namews]]]/Plugins/Ads/frameworks"/>
+   <template name="binaries" path="[[[sys.pluginDir]]]/source/iOS/Plugins/" dest="[[[project.name]]]/Plugins/" exclude="frameworks"/>
+    <set key="local.adsfwd" value="[[[project.name]]]/Plugins/Ads/frameworks"/>
     <set key="local.adsfws" value="[[[sys.pluginDir]]]/source/iOS/Plugins/Ads/frameworks"/>
     <mkdir>[[[local.adsfwd]]]</mkdir>
-   <template name="Project" path="">
-        <replacelist wildcards="project.pbxproj">
-            <prepend>
-            	<orig>/* End PBXFileReference section */</orig>
-            	<by><![CDATA[
- 		EB0FCCBB1DB6518A0048AD30 /* ads.mm in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCB9B1DB651890048AD30 /* ads.mm */; };
- 		EB0FCCBC1DB6518A0048AD30 /* adsbinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCB9C1DB651890048AD30 /* adsbinder.cpp */; };
- 		EB0FCCBD1DB6518A0048AD30 /* AdsClass.mm in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCB9E1DB651890048AD30 /* AdsClass.mm */; };
- 		EB0FCCBE1DB6518A0048AD30 /* AdsManager.m in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCBA01DB651890048AD30 /* AdsManager.m */; };
- 		EB0FCCBF1DB6518A0048AD30 /* AdsState.m in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCBA31DB651890048AD30 /* AdsState.m */; };
- 		EB0FCCC01DB6518A0048AD30 /* AdsStateChangeListener.m in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCBA51DB651890048AD30 /* AdsStateChangeListener.m */; };
- 		EB0FCD2D1DB6518A0048AD30 /* Reachability.m in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCCBA1DB6518A0048AD30 /* Reachability.m */; };
- 		EB0FCB9A1DB651890048AD30 /* ads.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ads.h; sourceTree = "<group>"; };
- 		EB0FCB9B1DB651890048AD30 /* ads.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ads.mm; sourceTree = "<group>"; };
- 		EB0FCB9C1DB651890048AD30 /* adsbinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = adsbinder.cpp; sourceTree = "<group>"; };
- 		EB0FCB9D1DB651890048AD30 /* AdsClass.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsClass.h; sourceTree = "<group>"; };
- 		EB0FCB9E1DB651890048AD30 /* AdsClass.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AdsClass.mm; sourceTree = "<group>"; };
- 		EB0FCB9F1DB651890048AD30 /* AdsManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsManager.h; sourceTree = "<group>"; };
- 		EB0FCBA01DB651890048AD30 /* AdsManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AdsManager.m; sourceTree = "<group>"; };
- 		EB0FCBA11DB651890048AD30 /* AdsProtocol.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsProtocol.h; sourceTree = "<group>"; };
- 		EB0FCBA21DB651890048AD30 /* AdsState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsState.h; sourceTree = "<group>"; };
- 		EB0FCBA31DB651890048AD30 /* AdsState.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AdsState.m; sourceTree = "<group>"; };
- 		EB0FCBA41DB651890048AD30 /* AdsStateChangeListener.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsStateChangeListener.h; sourceTree = "<group>"; };
- 		EB0FCBA51DB651890048AD30 /* AdsStateChangeListener.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AdsStateChangeListener.m; sourceTree = "<group>"; };
- 		EB0FCCB91DB6518A0048AD30 /* Reachability.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Reachability.h; sourceTree = "<group>"; };
- 		EB0FCCBA1DB6518A0048AD30 /* Reachability.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Reachability.m; sourceTree = "<group>"; };
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addGroup("Ads","Plugins/Ads","GroupAds_ios","GroupPlugins_ios")
+iOSProject.addGroup("frameworks","frameworks","GroupAdsFrameworks_ios","GroupAds_ios")
+iOSProject.addGroup("Ads","Plugins/Ads","GroupAds_atv","GroupPlugins_atv")
+iOSProject.addGroup("frameworks","frameworks","GroupAdsFrameworks_atv","GroupAds_atv")
+iOSProject.addSources({
+ "ads.mm","adsbinder.cpp","AdsClass.mm","AdsManager.m","AdsState.m",
+ "AdsStateChangeListener.m","Reachability.m",
+ "ads.h","AdsClass.h","AdsManager.h","AdsProtocol.h","AdsState.h","AdsStateChangeListener.h","Reachability.h"
+},"GroupAds","ios")
+iOSProject.addFrameworkPath(Export.getProperty("project.name").."/Plugins/Ads/frameworks")
+iOSProject.commit()
+iOSProject._sknets={}
+function iOSProject.addSKNets(nets)
+	for _,n in ipairs(nets) do
+		iOSProject._sknets[n]=true
+	end
+	local skndict={}
+	for n,_ in pairs(iOSProject._sknets) do
+		table.insert(skndict,{ SKAdNetworkIdentifier=n })
+	end
+	iOSProject.InfoPlist.SKAdNetworkItems=skndict
+end
+	]]></lua>
 
-		EB0FCB991DB651890048AD30 /* Ads */ = {
-			isa = PBXGroup;
-			children = (
-				EB0FCB9A1DB651890048AD30 /* ads.h */,
-				EB0FCB9B1DB651890048AD30 /* ads.mm */,
-				EB0FCB9C1DB651890048AD30 /* adsbinder.cpp */,
-				EB0FCB9D1DB651890048AD30 /* AdsClass.h */,
-				EB0FCB9E1DB651890048AD30 /* AdsClass.mm */,
-				EB0FCB9F1DB651890048AD30 /* AdsManager.h */,
-				EB0FCBA01DB651890048AD30 /* AdsManager.m */,
-				EB0FCBA11DB651890048AD30 /* AdsProtocol.h */,
-				EB0FCBA21DB651890048AD30 /* AdsState.h */,
-				EB0FCBA31DB651890048AD30 /* AdsState.m */,
-				EB0FCBA41DB651890048AD30 /* AdsStateChangeListener.h */,
-				EB0FCBA51DB651890048AD30 /* AdsStateChangeListener.m */,
-				EB0FCBA61DB651890048AD30 /* frameworks */,
-				EB0FCCB91DB6518A0048AD30 /* Reachability.h */,
-				EB0FCCBA1DB6518A0048AD30 /* Reachability.m */,
-			);
-			name = Ads;
-			path = Plugins/Ads;
-			sourceTree = "<group>";
-		};
-		EB0FCBA61DB651890048AD30 /* frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				/* ADS-FRAMEWORKS */
-			);
-			path = frameworks;
-			sourceTree = "<group>";
-		};
+<if condition="[[[plugin.adsFwApplovin]]]">
+	<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsApplovin.*" exclude="*.framework" />
+	<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsMax.*" exclude="*.framework" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.needObjCLinking()
+iOSProject.addSources({
+"AdsApplovin.m","AdsApplovin.h", "AdsMax.m", "AdsMax.h",
+},"GroupAdsFrameworks","ios")
+iOSProject.pod("AppLovinSDK",true)
+iOSProject.InfoPlist.AppLovinSdkKey=Export.getProperty("plugin.adsFwApplovinKey")
+iOSProject.InfoPlist.AppLovinConsentFlowInfo={
+	AppLovinConsentFlowEnabled=Export.isSet("plugin.adsFwApplovinConsent"),
+	AppLovinConsentFlowPrivacyPolicy=Export.getProperty("plugin.adsFwApplovinPrivacy"),
+	AppLovinConsentFlowTermsOfService=Export.getProperty("plugin.adsFwApplovinTOS"),
+}
+iOSProject.InfoPlist.SKAdNetworkItems=iOSProject.InfoPlist.SKAdNetworkItems or {}
+local nets={
+    "24t9a8vw3c.skadnetwork",
+    "2fnua5tdw4.skadnetwork",
+    "2u9pt9hc89.skadnetwork",
+    "32z4fx6l9h.skadnetwork",
+    "3qcr597p9d.skadnetwork",
+    "3rd42ekr43.skadnetwork",
+    "3sh42y64q3.skadnetwork",
+    "424m5254lk.skadnetwork",
+    "4468km3ulz.skadnetwork",
+    "4fzdc2evr5.skadnetwork",
+    "4pfyvq9l8r.skadnetwork",
+    "523jb4fst2.skadnetwork",
+    "54nzkqm89y.skadnetwork",
+    "578prtvx9j.skadnetwork",
+    "5a6flpkh64.skadnetwork",
+    "5l3tpt7t6e.skadnetwork",
+    "5lm9lj6jb7.skadnetwork",
+    "6xzpu9s2p8.skadnetwork",
+    "79pbpufp6p.skadnetwork",
+    "7rz58n8ntl.skadnetwork",
+    "7ug5zh24hu.skadnetwork",
+    "8s468mfl3y.skadnetwork",
+    "9b89h5y424.skadnetwork",
+    "9nlqeag3gk.skadnetwork",
+    "9rd848q2bz.skadnetwork",
+    "9t245vhmpl.skadnetwork",
+    "av6w8kgt66.skadnetwork",
+    "c6k4g5qg8m.skadnetwork",
+    "cg4yq2srnc.skadnetwork",
+    "cj5566h2ga.skadnetwork",
+    "cstr6suwn9.skadnetwork",
+    "ejvt5qm6ak.skadnetwork",
+    "f38h382jlk.skadnetwork",
+    "feyaarzu9v.skadnetwork",
+    "g28c52eehv.skadnetwork",
+    "ggvn48r87g.skadnetwork",
+    "glqzh8vgby.skadnetwork",
+    "gta9lk7p23.skadnetwork",
+    "hs6bdukanm.skadnetwork",
+    "k674qkevps.skadnetwork",
+    "kbd757ywx3.skadnetwork",
+    "klf5c3l5u5.skadnetwork",
+    "ludvb6z3bs.skadnetwork",
+    "m8dbw4sv7c.skadnetwork",
+    "mlmmfzh3r3.skadnetwork",
+    "mtkv5xtk9e.skadnetwork",
+    "n9x2a789qt.skadnetwork",
+    "p78axxw29g.skadnetwork",
+    "ppxm28t8ap.skadnetwork",
+    "prcb7njmu6.skadnetwork",
+    "pwa73g5rt2.skadnetwork",
+    "t38b2kh725.skadnetwork",
+    "tl55sbb4fm.skadnetwork",
+    "uw77j35x4d.skadnetwork",
+    "v72qych5uu.skadnetwork",
+    "wg4vff78zm.skadnetwork",
+    "wzmmz9fp6w.skadnetwork",
+    "xy9t38ct57.skadnetwork",
+    "yclnxrl5pm.skadnetwork",
+    "ydx93a7ass.skadnetwork",
+    "zmvfpc5aq8.skadnetwork",
+}
+iOSProject.addSKNets(nets)
+iOSProject.commit()
+	]]></lua>
+</if>
 
-            	]]></by>
-            </prepend>
-	<prepend>
-		<orig>EB42A05D1D66ED5000766D7E /* plugins.cpp */,</orig>
-            	<by><![CDATA[
-		EB0FCB991DB651890048AD30 /* Ads */,
-            	]]></by>
-	</prepend>
-	<append>
-		<orig>EB42A05E1D66ED5000766D7E /* plugins.cpp in Sources */,</orig>
-            	<by><![CDATA[
-				EB0FCCBF1DB6518A0048AD30 /* AdsState.m in Sources */,
-				EB0FCCBB1DB6518A0048AD30 /* ads.mm in Sources */,
-				EB0FCCBC1DB6518A0048AD30 /* adsbinder.cpp in Sources */,
-				EB0FCCBE1DB6518A0048AD30 /* AdsManager.m in Sources */,
-				EB0FCCBD1DB6518A0048AD30 /* AdsClass.mm in Sources */,
- 				EB0FCCC01DB6518A0048AD30 /* AdsStateChangeListener.m in Sources */,
- 				EB0FCD2D1DB6518A0048AD30 /* Reachability.m in Sources */,
-            	]]></by>
-	</append>		
-            <append>
-            	<orig>FRAMEWORK_SEARCH_PATHS = (</orig>
-            	<by><![CDATA[
- 		"$(PROJECT_DIR)/[[[local.adsfwd]]]",
-            	]]></by>
-            </append>
-	    </replacelist>
+<if condition="[[[plugin.adsFwVungle]]]">
+	<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsVungle.*" exclude="*.framework" />
+	<download source="http://apps.giderosmobile.com/ext/ios/vungle510.zip" dest="[[[sys.cacheDir]]]/vungle.zip" />
+	<unzip source="[[[sys.cacheDir]]]/vungle.zip" dest="[[[local.adsfwd]]]" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.needObjCLinking()
+iOSProject.addSources({
+"AdsVungle.m","AdsVungle.h","VungleSDK.framework"
+},"GroupAdsFrameworks","ios")
+local sysFW={ "AdSupport","SystemConfiguration", "CFNetwork", "CoreMedia","WebKit","MediaPlayer" }
+for _,v in ipairs(sysFW) do
+    iOSProject.addFramework(v..".framework","ios","System/Library/Frameworks/"..v..".framework","$SDKROOT")
+end
+iOSProject.commit()
+	]]></lua>
+</if>
+
+<if condition="[[[plugin.adsFwAdmob]]]">
+	<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsAdmob.*" exclude="*.framework" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addSources({
+"AdsAdmob.m","AdsAdmob.h"
+},"GroupAdsFrameworks","ios")
+iOSProject.pod("Google-Mobile-Ads-SDK",true)
+iOSProject.InfoPlist.GADApplicationIdentifier=Export.getProperty("plugin.adsFwAdmobClient")
+iOSProject.InfoPlist.SKAdNetworkItems=iOSProject.InfoPlist.SKAdNetworkItems or {}
+iOSProject.InfoPlist.SKAdNetworkItems=iOSProject.InfoPlist.SKAdNetworkItems or {}
+local nets={
+      "cstr6suwn9.skadnetwork",
+      "4fzdc2evr5.skadnetwork",
+      "2fnua5tdw4.skadnetwork",
+      "ydx93a7ass.skadnetwork",
+      "p78axxw29g.skadnetwork",
+      "v72qych5uu.skadnetwork",
+      "ludvb6z3bs.skadnetwork",
+      "cp8zw746q7.skadnetwork",
+      "3sh42y64q3.skadnetwork",
+      "c6k4g5qg8m.skadnetwork",
+      "s39g8k73mm.skadnetwork",
+      "wg4vff78zm.skadnetwork",
+      "3qy4746246.skadnetwork",
+      "f38h382jlk.skadnetwork",
+      "hs6bdukanm.skadnetwork",
+      "mlmmfzh3r3.skadnetwork",
+      "v4nxqhlyqp.skadnetwork",
+      "wzmmz9fp6w.skadnetwork",
+      "su67r6k2v3.skadnetwork",
+      "yclnxrl5pm.skadnetwork",
+      "t38b2kh725.skadnetwork",
+      "7ug5zh24hu.skadnetwork",
+      "gta9lk7p23.skadnetwork",
+      "vutu7akeur.skadnetwork",
+      "y5ghdn5j9k.skadnetwork",
+      "v9wttpbfk9.skadnetwork",
+      "n38lu8286q.skadnetwork",
+      "47vhws6wlr.skadnetwork",
+      "kbd757ywx3.skadnetwork",
+      "9t245vhmpl.skadnetwork",
+      "a2p9lx4jpn.skadnetwork",
+      "22mmun2rn5.skadnetwork",
+      "44jx6755aq.skadnetwork",
+      "k674qkevps.skadnetwork",
+      "4468km3ulz.skadnetwork",
+      "2u9pt9hc89.skadnetwork",
+      "8s468mfl3y.skadnetwork",
+      "klf5c3l5u5.skadnetwork",
+      "ppxm28t8ap.skadnetwork",
+      "kbmxgpxpgc.skadnetwork",
+      "uw77j35x4d.skadnetwork",
+      "578prtvx9j.skadnetwork",
+      "4dzt52r2t5.skadnetwork",
+      "tl55sbb4fm.skadnetwork",
+      "c3frkrj4fj.skadnetwork",
+      "e5fvkxwrpn.skadnetwork",
+      "8c4e2ghe7u.skadnetwork",
+      "3rd42ekr43.skadnetwork",
+      "97r2b46745.skadnetwork",
+      "3qcr597p9d.skadnetwork",
+}
+iOSProject.addSKNets(nets)
+iOSProject.commit()
+	]]></lua>
+</if>
+
+<if condition="[[[plugin.adsFwChartboost]]]">
+	<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsChartboost.*" exclude="*.framework" />
+	<download source="http://apps.giderosmobile.com/ext/ios/Chartboost.framework-6.6.3.zip" dest="[[[sys.cacheDir]]]/Chartboost.framework.zip" />
+	<unzip source="[[[sys.cacheDir]]]/Chartboost.framework.zip" dest="[[[local.adsfwd]]]" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addSources({
+"AdsChartboost.m","AdsChartboost.h","Chartboost.framework"
+},"GroupAdsFrameworks","ios")
+iOSProject.commit()
+	]]></lua>
+</if>
+
+<if condition="[[[plugin.adsFwUnity]]]">
+<template name="Unity Ads" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsUnity.*" exclude="*.framework" />
+<download source="http://apps.giderosmobile.com/ext/ios/UnityAds.framework-2.0.5.zip" dest="[[[sys.cacheDir]]]/UnityAds.framework.zip" />
+<unzip source="[[[sys.cacheDir]]]/UnityAds.framework.zip" dest="[[[local.adsfwd]]]" />
+<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addSources({
+"AdsUnity.m","AdsUnity.h","UnityAds.framework"
+},"GroupAdsFrameworks","ios")
+iOSProject.commit()
+]]></lua>
+</if>
+<if condition="[[[plugin.adsFwKiip]]]">
+<template name="Kiip" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsKiip.*" exclude="*.framework">
+<replacelist wildcards="AdsKiip.m">
+<replace orig="GIDEROS_KIIP_APP_KEY" by="[[[plugin.adsFwKiipKeyIos]]]"/>
+</replacelist>
+</template>
+<set key="local.adsVer" value="2.3.0" />
+<set key="local.adsJarVer" value="Kiip-iOS-SDK-v[[[local.adsVer]]].zip" />
+<download source="http://apps.giderosmobile.com/ext/ios/[[[local.adsJarVer]]]" dest="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" />
+<mkdir>KiipSDK</mkdir>
+<unzip source="[[[sys.cacheDir]]]/[[[local.adsJarVer]]]" dest="KiipSDK" />
+<rmdir>[[[local.adsfwd]]]/KiipSDK.framework</rmdir>
+<mv src="KiipSDK/KiipSDK.framework" dst="[[[local.adsfwd]]]/KiipSDK.framework" />"
+<rmdir>[[[local.adsfwd]]]/KiipSDKResources.bundle</rmdir>
+<mv src="KiipSDK/KiipSDKResources.bundle" dst="[[[local.adsfwd]]]/KiipSDKResources.bundle" />"
+<rmdir>KiipSDK</rmdir>
+<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addSources({
+"AdsKiip.m","AdsKiip.h","KiipSDK.framework","KiipSDKResources.bundle"
+},"GroupAdsFrameworks","ios")
+local sysFW={ "AdSupport","PassKit","MediaPlayer","SystemConfiguration","CoreTelephony" }
+for _,v in ipairs(sysFW) do
+    iOSProject.addFramework(v..".framework","ios","System/Library/Frameworks/"..v..".framework","$SDKROOT")
+end
+iOSProject.commit()
+]]></lua>
+</if>
+ </target>
+ <target name="Html5">
+	<if condition="[[[not:[[[project.html5_fbinstant]]]]]]">
+ 		<lua>local h=require("Tools/export_html5")
+ 		h.export("Ads")
+ 		h.exportJS("AdsAdSense")
+ 		h.exportJS("AdsBase") --Set this last because it must be loaded first
+ 		</lua>
+    </if>
+ </target>
+ <target name="WinRT">
+    <template name="sources" path="[[[sys.pluginDir]]]/source/WinRT"  dest="giderosgame/giderosgame.Shared/Plugins"/>
+    <set key="local.adsfwd" value="giderosgame/giderosgame.Shared/Plugins/Ads/frameworks"/>
+    <set key="local.adsfws" value="[[[sys.pluginDir]]]/source/WinRT/Ads/frameworks"/>
+    <mkdir>[[[local.adsfwd]]]</mkdir>
+    <template name="project" path="">
+        <replacelist wildcards="giderosgame.Shared.vcxitems;*.vcxproj">
+	    <append>
+            <orig><![CDATA[<!--GIDEROS-PLUGIN-FILES-->]]></orig>
+            <by><![CDATA[
+			    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\Ads\ads.cpp">
+			      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+			    </ClCompile>
+			    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\Ads\adsbinder.cpp">
+			      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+			    </ClCompile>
+			    <ClInclude Include="$(MSBuildThisFileDirectory)Plugins\Ads\ads.h" />
+			    <ClInclude Include="$(MSBuildThisFileDirectory)Plugins\Ads\AdsAbstract.h" />]]></by>
+        </append>
+       </replacelist>
     </template>
-    <if condition="[[[plugin.adsFwUnity]]]">
-    	<template name="Unity Ads" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsUnity.*" exclude="*.framework" />
-    	<download source="http://giderosmobile.com/ext/ios/UnityAds.framework-2.0.5.zip" dest="[[[sys.cacheDir]]]/UnityAds.framework.zip" />
-    	<unzip source="[[[sys.cacheDir]]]/UnityAds.framework.zip" dest="[[[local.adsfwd]]]/UnityAds.framework" />
-    	<template name="Unity Ads Framework" path="">
-        <replacelist wildcards="project.pbxproj">
-            <prepend>
-            	<orig>/* End PBXFileReference section */</orig>
-            	<by><![CDATA[
- 		EB0FCD251DB6518A0048AD30 /* UnityAds.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB0FCCAF1DB6518A0048AD30 /* UnityAds.framework */; };
- 		EB0FCCCE1DB6518A0048AD30 /* AdsUnity.m in Sources */ = {isa = PBXBuildFile; fileRef = EB0FCBC11DB6518A0048AD30 /* AdsUnity.m */; };
- 		EB0FCBC01DB6518A0048AD30 /* AdsUnity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdsUnity.h; sourceTree = "<group>"; };
- 		EB0FCBC11DB6518A0048AD30 /* AdsUnity.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AdsUnity.m; sourceTree = "<group>"; };
- 		EB0FCCAF1DB6518A0048AD30 /* UnityAds.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = UnityAds.framework; sourceTree = "<group>"; };
-            	]]></by>
-            </prepend>
-	<append>
-		<orig>/* ADS-FRAMEWORKS */</orig>
-            	<by><![CDATA[
- 				EB0FCBC01DB6518A0048AD30 /* AdsUnity.h */,
- 				EB0FCBC11DB6518A0048AD30 /* AdsUnity.m */,
-				EB0FCCAF1DB6518A0048AD30,
-            	]]></by>
-	</append>
-	<append>
-		<orig>EB42A05E1D66ED5000766D7E /* plugins.cpp in Sources */,</orig>
-            	<by><![CDATA[
- 				EB0FCCCE1DB6518A0048AD30 /* AdsUnity.m in Sources */,
-            	]]></by>
-	</append>		
-		<prepend>
-            	<orig>5FD896EC15CED77F00D34824 /* UIKit.framework in Frameworks */,</orig>
-            	<by><![CDATA[
-		EB0FCD251DB6518A0048AD30,
-            	]]></by>
-            </prepend>
-           
-            <prepend>
-            	<orig>5FD896EB15CED77F00D34824 /* UIKit.framework in Frameworks */,</orig>
-            	<by><![CDATA[
- 		EB0FCCAF1DB6518A0048AD30 /* UnityAds.framework in Frameworks */,
-            	]]></by>
-            </prepend>
-
-	    </replacelist>
-    </template>
-	</if>    
+    <if condition="[[[plugin.adsFwVungle]]]">
+		<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="AdsVungle.*" />
+		<template name="" path="[[[local.adsfws]]]" dest="[[[local.adsfwd]]]" include="Vungle" />
+	    <template name="project" path="">
+	        <replacelist wildcards="giderosgame.Shared.vcxitems;*.vcxproj">
+	        <append>
+	            <orig><![CDATA[<!--GIDEROS-PLUGIN-FILES-->]]></orig>
+	            <by><![CDATA[
+				    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\Ads\frameworks\AdsVungle.cpp" />
+				    <ClInclude Include="$(MSBuildThisFileDirectory)Plugins\Ads\frameworks\AdsVungle.h" />]]></by>
+	        </append>	
+	        </replacelist>
+	    </template>
+	    <template name="project" path="">
+	        <replacelist wildcards="giderosgame.Windows.vcxproj">
+	        <prepend>
+	            <orig><![CDATA[</Project>]]></orig>
+	            <by><![CDATA[
+  <ItemGroup>
+    <Reference Include="VungleSDK">
+      <HintPath>..\giderosgame.Shared\Plugins\Ads\frameworks\Vungle\VungleSDK.winmd</HintPath>
+      <IsWinMDFile>true</IsWinMDFile>
+    </Reference>
+  </ItemGroup>
+				]]></by>
+	        </prepend>	
+	        </replacelist>
+	    </template>
+	    <template name="project" path="">
+	        <replacelist wildcards="ads.cpp">
+	        <append>
+	            <orig><![CDATA[//GID-ADS-FRAMEWORKS-INC]]></orig>
+	            <by><![CDATA[
+#include "frameworks/AdsVungle.h"]]></by>
+	        </append>	
+	        <append>
+	            <orig><![CDATA[//GID-ADS-FRAMEWORKS-DEF]]></orig>
+	            <by><![CDATA[
+frameworks["vungle"] = &createInstance<AdsVungle>;]]></by>
+	        </append>	
+	        </replacelist>
+	    </template>
+	</if>        
  </target>
 </plugin>

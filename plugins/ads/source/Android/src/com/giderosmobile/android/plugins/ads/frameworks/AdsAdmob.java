@@ -1,30 +1,48 @@
 package com.giderosmobile.android.plugins.ads.frameworks;
 
 import java.lang.ref.WeakReference;
-import java.math.BigInteger;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Hashtable;
+import java.util.List;
+
 import android.app.Activity;
-import android.provider.Settings;
 import android.util.SparseArray;
 import android.view.KeyEvent;
+
+
+import androidx.annotation.NonNull;
 
 import com.giderosmobile.android.plugins.ads.*;
 import com.google.android.gms.ads.*;
 import com.google.android.gms.ads.AdRequest.Builder;
+import com.google.android.gms.ads.AdSize;
+import com.google.android.gms.ads.initialization.InitializationStatus;
+import com.google.android.gms.ads.initialization.OnInitializationCompleteListener;
+import com.google.android.gms.ads.interstitial.InterstitialAd;
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
+import com.google.android.gms.ads.rewarded.RewardItem;
+import com.google.android.gms.ads.rewarded.RewardedAd;
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.android.ump.ConsentForm;
+import com.google.android.ump.ConsentInformation;
+import com.google.android.ump.ConsentRequestParameters;
+import com.google.android.ump.FormError;
+import com.google.android.ump.UserMessagingPlatform;
 
-public class AdsAdmob implements AdsInterface {
+public class AdsAdmob implements AdsInterface, OnInitializationCompleteListener {
 	
 	private WeakReference<Activity> sActivity;
 	private String adsID = "";
-    private String appID = "";
 	private AdSize currentType = AdSize.BANNER;
 	private String currentName = "banner";
 	private String testID = "";
 	private AdsManager mngr;
+	//rewarded ads and interstitial instance can reused, make as members to access easily
+	private RewardedAd mRewardedAd = null;
+    private  String mRewardedVideoAdId = "";
+	private InterstitialAd interstitial = null;
 	
 	static AdsAdmob me;
 	
@@ -82,22 +100,164 @@ public class AdsAdmob implements AdsInterface {
 		SparseArray<String> param = (SparseArray<String>)parameters;
 		adsID = param.get(0);
     
-        if(param.get(1) != null)  //the second is the appid required by the api
+        if(param.get(1) != null)  //the second is the appid, no longer required but left for compatibility
         {
-            appID = param.get(1);
-            MobileAds.initialize(sActivity.get().getApplicationContext(), appID);
+			if(param.get(2) != null)  //third is the test id
+				testID = param.get(2);
+            MobileAds.initialize(sActivity.get().getApplicationContext(), this);
         }
 
     }
 
-    private void requestNewInterstitial(InterstitialAd interstitial){
-        Builder adRequest = new AdRequest.Builder();
-        if(!testID.equals(""))
-        {
-            adRequest.addTestDevice(testID);
-        }
-        interstitial.loadAd(adRequest.build());
-    }
+	public void adFailed(int errorCode,String type) {
+		if(AdRequest.ERROR_CODE_INTERNAL_ERROR == errorCode)
+			Ads.adFailed(AdsAdmob.me, type, "Internal error");
+		else if(AdRequest.ERROR_CODE_INVALID_REQUEST == errorCode)
+			Ads.adFailed(AdsAdmob.me, type, "Invalid request");
+		else if(AdRequest.ERROR_CODE_NETWORK_ERROR == errorCode)
+			Ads.adFailed(AdsAdmob.me, type, "Network error");
+		else if(AdRequest.ERROR_CODE_NO_FILL == errorCode)
+			Ads.adFailed(AdsAdmob.me, type, "No fill");
+	}
+
+	class InterstitialContext extends InterstitialAdLoadCallback implements AdsStateChangeListener {
+		public String adPlace;
+		public String type;
+		public InterstitialAd ad;
+
+		@Override
+		public void onShow() {
+			ad.show(sActivity.get());
+		}
+
+		@Override
+		public void onDestroy() {
+
+		}
+
+		@Override
+		public void onHide() {
+
+		}
+
+		@Override
+		public void onRefresh() {
+			ad=null;
+			Builder adRequest = new AdRequest.Builder();
+			InterstitialAd.load(sActivity.get().getApplicationContext(),adPlace,adRequest.build(),this);
+		}
+
+		@Override
+		public void onAdFailedToLoad (LoadAdError adError) {
+			adFailed(adError.getCode(),type);
+		}
+
+		@Override
+		public void onAdLoaded (InterstitialAd adT) {
+			ad=adT;
+			ad.setFullScreenContentCallback(new FullScreenContentCallback() {
+				@Override
+				public void onAdClicked() {
+					Ads.adActionBegin(AdsAdmob.me, type);
+				}
+
+				@Override
+				public void onAdDismissedFullScreenContent() {
+					Ads.adDismissed(AdsAdmob.me, type);
+					mngr.getState(type).refresh();
+				}
+
+				@Override
+				public void onAdFailedToShowFullScreenContent(@NonNull AdError adError) {
+					adFailed(adError.getCode(),type);
+				}
+
+				@Override
+				public void onAdImpression() {
+					Ads.adDisplayed(AdsAdmob.me, type);
+				}
+
+				@Override
+				public void onAdShowedFullScreenContent() {
+					Ads.adActionEnd(AdsAdmob.me, type);
+				}
+			});
+			Ads.adReceived(AdsAdmob.me, type);
+			mngr.getState(type).load();
+		}
+	}
+
+	class RewardedContext extends RewardedAdLoadCallback implements AdsStateChangeListener, OnUserEarnedRewardListener {
+		public String adPlace;
+		public String type;
+		public RewardedAd ad;
+
+		@Override
+		public void onShow() {
+			ad.show(sActivity.get(), this);
+		}
+
+		@Override
+		public void onDestroy() {
+
+		}
+
+		@Override
+		public void onHide() {
+
+		}
+
+		@Override
+		public void onRefresh() {
+			ad=null;
+			Builder adRequest = new AdRequest.Builder();
+			RewardedAd.load(sActivity.get().getApplicationContext(),adPlace,adRequest.build(),this);
+		}
+
+		@Override
+		public void onAdFailedToLoad (LoadAdError adError) {
+			adFailed(adError.getCode(),type);
+		}
+
+		@Override
+		public void onAdLoaded (RewardedAd adT) {
+			ad=adT;
+			ad.setFullScreenContentCallback(new FullScreenContentCallback() {
+				@Override
+				public void onAdClicked() {
+					Ads.adActionBegin(AdsAdmob.me, type);
+				}
+
+				@Override
+				public void onAdDismissedFullScreenContent() {
+					Ads.adDismissed(AdsAdmob.me, type);
+					mngr.getState(type).refresh();
+				}
+
+				@Override
+				public void onAdFailedToShowFullScreenContent(@NonNull AdError adError) {
+					adFailed(adError.getCode(),type);
+				}
+
+				@Override
+				public void onAdImpression() {
+					Ads.adDisplayed(AdsAdmob.me, type);
+				}
+
+				@Override
+				public void onAdShowedFullScreenContent() {
+					Ads.adActionEnd(AdsAdmob.me, type);
+				}
+			});
+			Ads.adReceived(AdsAdmob.me, type);
+			mngr.getState(type).load();
+		}
+
+		@Override
+		public void onUserEarnedReward(@NonNull RewardItem rewardItem) {
+			Ads.adRewarded(AdsAdmob.me, type, rewardItem.getAmount());
+		}
+	}
 
 	//load an Ad
 	public void loadAd(final Object parameters)
@@ -111,99 +271,130 @@ public class AdsAdmob implements AdsInterface {
         }
 
         if(type.equals("interstitial"))
+		{
+			InterstitialContext ctx= (InterstitialContext) mngr.get(type);
+			 if (ctx == null) {
+				 ctx=new InterstitialContext();
+				 ctx.adPlace=adPlace;
+				 ctx.type=type;
+				 mngr.set(ctx, type, ctx);
+				 // interstitial should be reused
+				 mngr.setAutoKill(type, false);
+				 mngr.setPreLoad(type, true);
+				 ctx.onRefresh();
+			} else{
+				 ctx.adPlace=adPlace;
+				 ctx.onRefresh();
+		    }
+		}
+		else if(type.equals("rewarded"))
+		{
+			RewardedContext ctx= (RewardedContext) mngr.get(type);
+			if (ctx == null) {
+				ctx=new RewardedContext();
+				ctx.adPlace=adPlace;
+				ctx.type=type;
+				mngr.set(ctx, type, ctx);
+				// interstitial should be reused
+				mngr.setAutoKill(type, false);
+				mngr.setPreLoad(type, true);
+				ctx.onRefresh();
+			} else {
+				ctx.adPlace=adPlace;
+				ctx.onRefresh();
+			}
+		}
+		else  //banner
+		{
+			if(adTypes.get(type) != null)
+			{
+				//if there is an existing ad view
+				//destroy it
+				if(mngr.get(type) == null)
 				{
-                     if (mngr.get(type) == null) {
-                        final InterstitialAd interstitial = new InterstitialAd(sActivity.get());
-                       
-                        mngr.set(interstitial, type, new AdsStateChangeListener() {
-                            @Override
-                            public void onShow() {
-                               
-                                if (interstitial.isLoaded()) {
-                                    Ads.adDisplayed(me, type);
-                                    interstitial.show();
-                                }
-                            }
+					// Create the adView with your publisher ID and type
+					final AdView adView = new AdView(sActivity.get());
+					mngr.set(adView, type, new AdsStateChangeListener(){
 
-                            @Override
-                            public void onDestroy() {
-                                
-                            }
-
-                            @Override
-                            public void onHide() {
-                               
-                            }
-
-                            @Override
-                            public void onRefresh() {
-                               requestNewInterstitial(interstitial);
-                            }
-                        });
-                         // interstitial should be reused
-                         mngr.setAutoKill(type, false);
-                         mngr.setPreLoad(type, true);
-                         interstitial.setAdUnitId(adPlace);
-                         interstitial.setAdListener(new AdsAdmobListener(mngr.getState(type)));
-
-                         requestNewInterstitial(interstitial);
-                    }
-
-				}
-				else
-				{
-					if(adTypes.get(type) != null)
-					{
-						//if there is an existing ad view
-						//destroy it
-						if(mngr.get(type) == null)
-						{
-							// Create the adView with your publisher ID and type
-							final AdView adView = new AdView(sActivity.get());
-							mngr.set(adView, type, new AdsStateChangeListener(){
-
-								@Override
-								public void onShow() {
-									Ads.adDisplayed(me, type);
-									currentName = type;
-									currentType = adTypes.get(type);
-									Ads.addAd(AdsAdmob.me, adView);
-								}	
-								@Override
-								public void onDestroy() {
-									 hideAd(type);
-									 adView.destroy();
-								}
-
-								@Override
-								public void onHide() {
-									Ads.removeAd(AdsAdmob.me, adView);
-									Ads.adDismissed(AdsAdmob.me, type);
-								}
-
-                                @Override
-                                public void onRefresh() {
-
-                                }
-
-                            });
-							mngr.setAutoKill(type, false);
-							adView.setAdUnitId(adPlace);
-							adView.setAdSize(adTypes.get(type));
-						
-							Builder adRequest = new AdRequest.Builder();
-							if(!testID.equals(""))
-								adRequest.addTestDevice(testID);
-
-							adView.setAdListener(new AdsAdmobListener(mngr.getState(type)));
-							adView.loadAd(adRequest.build());
+						@Override
+						public void onShow() {
+							Ads.adDisplayed(me, type);
+							currentName = type;
+							currentType = adTypes.get(type);
+							Ads.addAd(AdsAdmob.me, adView);
 						}
-					}
-					else
-					{
-						Ads.adError(this, "Unknown type: " + type);
-					}
+						@Override
+						public void onDestroy() {
+							 hideAd(type);
+							 adView.destroy();
+						}
+
+						@Override
+						public void onHide() {
+							Ads.removeAd(AdsAdmob.me, adView);
+							Ads.adDismissed(AdsAdmob.me, type);
+						}
+
+						@Override
+						public void onRefresh() {
+
+						}
+
+					});
+					mngr.setAutoKill(type, false);
+					adView.setAdUnitId(adPlace);
+					adView.setAdSize(adTypes.get(type));
+
+					Builder adRequest = new AdRequest.Builder();
+
+					adView.setAdListener(new AdListener() {
+						@Override
+						public void onAdClicked() {
+							Ads.adActionBegin(AdsAdmob.me, type);
+						}
+
+						@Override
+						public void onAdImpression() {
+							Ads.adDisplayed(AdsAdmob.me, type);
+						}
+
+						@Override
+						public void onAdClosed() {
+							Ads.adDismissed(AdsAdmob.me, type);
+							mngr.getState(type).refresh();
+							super.onAdClosed();
+						}
+
+						@Override
+						public void onAdFailedToLoad(@NonNull LoadAdError loadAdError) {
+							adFailed(loadAdError.getCode(),type);
+						}
+
+						@Override
+						public void onAdLoaded() {
+							super.onAdLoaded();
+							Ads.adReceived(AdsAdmob.me, type);
+							mngr.getState(type).load();
+						}
+
+						@Override
+						public void onAdOpened() {
+							super.onAdOpened();
+						}
+
+						@Override
+						public void onAdSwipeGestureClicked() {
+							super.onAdSwipeGestureClicked();
+						}
+					});
+					adView.loadAd(adRequest.build());
 				}
+			}
+			else
+			{
+				Ads.adError(this, "Unknown type: " + type);
+			}
+		}
 	}
 	
 	public void showAd(final Object parameters)
@@ -248,65 +439,48 @@ public class AdsAdmob implements AdsInterface {
 
 	@Override
 	public void enableTesting() {
-		String aid = Settings.Secure.getString(sActivity.get().getContentResolver(), "android_id");
+		List<String> testDeviceIds = Arrays.asList(testID);
+		RequestConfiguration configuration =
+				new RequestConfiguration.Builder().setTestDeviceIds(testDeviceIds).build();
+		MobileAds.setRequestConfiguration(configuration);
+	}
+	
+	@Override
+	public boolean checkConsent(boolean reset,boolean underAge) { 
+	    // Set tag for under age of consent. false means users are not under age
+	    // of consent.
+	    ConsentRequestParameters params = new ConsentRequestParameters
+	        .Builder()
+	        .setTagForUnderAgeOfConsent(underAge)
+	        .build();
 
-		Object obj = null;
-		try {
-		    ((MessageDigest) (obj = MessageDigest.getInstance("MD5"))).update(
-		                                   aid.getBytes(), 0, aid.length());
+	    ConsentInformation consentInformation = UserMessagingPlatform.getConsentInformation(sActivity.get());
+	    if (reset)
+	    	consentInformation.reset();
+	    
+	    consentInformation.requestConsentInfoUpdate(
+	    		sActivity.get(),
+	        params,
+	        (ConsentInformation.OnConsentInfoUpdateSuccessListener) () -> {
+	          UserMessagingPlatform.loadAndShowConsentFormIfRequired(
+	        		  sActivity.get(),
+	            (ConsentForm.OnConsentFormDismissedListener) loadAndShowError -> {
+	              if (loadAndShowError != null) {
+	            	  Ads.adConsent(AdsAdmob.me, loadAndShowError.getMessage(), loadAndShowError.getErrorCode());
+	              }
+	              else
+	            	  Ads.adConsent(AdsAdmob.me, "", 0);
+	            }
+	          );
+	        },
+	        (ConsentInformation.OnConsentInfoUpdateFailureListener) requestConsentError -> {
+          	  Ads.adConsent(AdsAdmob.me, requestConsentError.getMessage(), requestConsentError.getErrorCode());
+	        });
+	  return true;
+	}	
 
-		    obj = String.format("%032X", new Object[] { new BigInteger(1,
-		                                   ((MessageDigest) obj).digest()) });
-		} catch (NoSuchAlgorithmException localNoSuchAlgorithmException) {
-		    obj = aid.substring(0, 32);
-		}
-		
-		testID = obj.toString();
-		
-	}
-	
-}
-
-class AdsAdmobListener extends AdListener{
-	
-	private AdsState state;
-	
-	AdsAdmobListener(AdsState type){
-		state = type;
-	}
-	
-	public void onAdLoaded(){
-		Ads.adReceived(AdsAdmob.me, state.getType());
-		state.load();
-	}
-	
-	public void onAdFailedToLoad(int errorCode){
-		if(AdRequest.ERROR_CODE_INTERNAL_ERROR == errorCode)
-			Ads.adFailed(AdsAdmob.me, state.getType(), "Internal error");
-		else if(AdRequest.ERROR_CODE_INVALID_REQUEST == errorCode)
-			Ads.adFailed(AdsAdmob.me, state.getType(), "Invalid request");
-		else if(AdRequest.ERROR_CODE_NETWORK_ERROR == errorCode)
-			Ads.adFailed(AdsAdmob.me, state.getType(), "Network error");
-		else if(AdRequest.ERROR_CODE_NO_FILL == errorCode)
-			Ads.adFailed(AdsAdmob.me, state.getType(), "No fill");
-		
-		state.reset();
-	}
-	
-	public void onAdOpened(){
-		Ads.adActionBegin(AdsAdmob.me, state.getType());
-	}
-	
-	public void onAdClosed(){
-		String type = state.getType();
-		Ads.adActionEnd(AdsAdmob.me, type);
-		if(type.equals("interstitial")){
-			Ads.adDismissed(AdsAdmob.me, type);
-            state.refresh();
-		}
-	}
-	
-	public void onAdLeftApplication(){
-		
+	@Override
+	public void onInitializationComplete(@NonNull InitializationStatus initializationStatus) {
+		Ads.adReady(AdsAdmob.me, 1);
 	}
 }

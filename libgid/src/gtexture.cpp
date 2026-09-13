@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <string.h>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <set>
 #include <string>
@@ -27,8 +28,37 @@
 #include <algorithm>
 
 
+static ShaderTexture::Format gFormatTosFormat(int iformat) {
+    switch (iformat)
+    {
+    case GTEXTURE_ALPHA: return ShaderTexture::FMT_ALPHA;
+    case GTEXTURE_RGB: return ShaderTexture::FMT_RGB;
+    default:
+    case GTEXTURE_RGBA: return ShaderTexture::FMT_RGBA;
+    case GTEXTURE_LUMINANCE: return ShaderTexture::FMT_Y;
+    case GTEXTURE_LUMINANCE_ALPHA: return ShaderTexture::FMT_YA;
+    case GTEXTURE_DEPTH: return ShaderTexture::FMT_DEPTH;
+    }
+}
+
+static ShaderTexture::Packing gTypeTosPacking(int type)
+{
+	switch (type) {
+	default:
+	case GTEXTURE_UNSIGNED_BYTE: return ShaderTexture::PK_UBYTE;
+	case GTEXTURE_UNSIGNED_SHORT_5_6_5: return ShaderTexture::PK_USHORT_565;
+	case GTEXTURE_UNSIGNED_SHORT_4_4_4_4: return ShaderTexture::PK_USHORT_4444;
+	case GTEXTURE_UNSIGNED_SHORT_5_5_5_1: return ShaderTexture::PK_USHORT_5551;
+	case GTEXTURE_UNSIGNED_SHORT: return ShaderTexture::PK_USHORT;
+	case GTEXTURE_FLOAT: return ShaderTexture::PK_FLOAT;
+	case GTEXTURE_UNSIGNED_INT: return ShaderTexture::PK_UINT;
+	}
+}
+
 namespace g_private {
 static ShaderEngine *engine =NULL;
+static ScreenManager *screenManager = NULL;
+static SpriteProxyFactory *spritefactory=NULL;
 
 struct CommonElement
 {
@@ -39,13 +69,15 @@ struct CommonElement
     int type;
     int wrap;
     int filter;
+    bool renderTarget;
     ShaderTexture *_texture;
 };
 
 struct TextureElement : public CommonElement
 {
     size_t textureSize;
-    std::vector<char> buffer;
+    char *buffer;
+    size_t bufferSize;
     std::vector<char> signature;
     void *udata;
 };
@@ -54,7 +86,9 @@ struct RenderTargetElement : public CommonElement
 {
     ShaderBuffer *_framebuffer;
     size_t textureSize;
-    std::vector<char> buffer;
+    bool depth;
+    char *buffer;
+    size_t bufferSize;
     void *udata;
 };
 
@@ -65,10 +99,15 @@ static int pixelSize(int format, int type)
     case GTEXTURE_UNSIGNED_SHORT_5_6_5:
     case GTEXTURE_UNSIGNED_SHORT_4_4_4_4:
     case GTEXTURE_UNSIGNED_SHORT_5_5_5_1:
+    case GTEXTURE_UNSIGNED_SHORT:
         return 2;
+    case GTEXTURE_FLOAT:
+    case GTEXTURE_UNSIGNED_INT:
+        return 4;
     case GTEXTURE_UNSIGNED_BYTE:
         switch (format)
         {
+        case GTEXTURE_DEPTH:
         case GTEXTURE_ALPHA:
         case GTEXTURE_LUMINANCE:
             return 1;
@@ -119,6 +158,9 @@ public:
         element->wrap = wrap;
         element->filter = filter;
         element->udata = NULL;
+        element->renderTarget = false;
+        element->buffer=NULL;
+        element->bufferSize=0;
 
         genAndUploadTexture(element, pixels);
 
@@ -129,10 +171,13 @@ public:
         if (caching_)
         {
             size_t output_length = snappy_max_compressed_length(element->textureSize);
-            element->buffer.resize(output_length);
-            snappy_compress((const char*)pixels, element->textureSize, &element->buffer[0], &output_length);
-            element->buffer.resize(output_length);
-            bufferMemory_ += element->buffer.size();
+            char *temp=new char[output_length];
+            snappy_compress((const char*)pixels, element->textureSize, temp, &output_length);
+            element->buffer=new char[output_length];
+            memcpy(element->buffer,temp,output_length);
+            delete[] temp;
+            element->bufferSize=output_length;
+            bufferMemory_ += element->bufferSize;
         }
 
         if (siglength > 0)
@@ -165,10 +210,76 @@ public:
         return nextid_++;
     }
 
+    void update(g_id gid,
+    		    int width, int height,
+                int format, int type,
+                int wrap, int filter,
+                const void *pixels)
+    {
+    	G_UNUSED(format); //XXX We should sanity check format and type instead
+    	G_UNUSED(type);
+    	G_UNUSED(wrap);
+    	G_UNUSED(filter);
+    	std::unordered_map<g_id, TextureElement*>::iterator iter = textureElements_.find(gid);
+
+    	if (iter != textureElements_.end())
+    	{
+    	     TextureElement* element = iter->second;
+
+    	        ShaderTexture::Format format = gFormatTosFormat(element->format);
+
+    	        ShaderTexture::Packing type= ShaderTexture::PK_UBYTE;
+    	        switch (element->type)
+    	        {
+    	        case GTEXTURE_UNSIGNED_BYTE:
+    	            type = ShaderTexture::PK_UBYTE;
+    	            break;
+    	        case GTEXTURE_UNSIGNED_SHORT_5_6_5:
+    	            type = ShaderTexture::PK_USHORT_565;
+    	            break;
+    	        case GTEXTURE_UNSIGNED_SHORT_4_4_4_4:
+    	            type = ShaderTexture::PK_USHORT_4444;
+    	            break;
+    	        case GTEXTURE_UNSIGNED_SHORT_5_5_5_1:
+    	            type = ShaderTexture::PK_USHORT_5551;
+    	            break;
+    	        }
+    	        ShaderTexture::Wrap wrap=ShaderTexture::WRAP_CLAMP;
+    	        if (element->wrap==GTEXTURE_REPEAT)
+    	        	wrap=ShaderTexture::WRAP_REPEAT;
+    	        ShaderTexture::Filtering filtering=ShaderTexture::FILT_LINEAR;
+    	        if (element->filter==GTEXTURE_NEAREST)
+    	        	filtering=ShaderTexture::FILT_NEAREST;
+    	        if (element->filter==GTEXTURE_LINEAR_MIPMAP)
+    	        	filtering=ShaderTexture::FILT_LINEAR_MIPMAP;
+             element->width=width;
+             element->height=height;
+    	     element->_texture->updateData(format,type,element->width, element->height,pixels,wrap,filtering);
+
+    	     textureMemory_ -= element->textureSize;
+    	     element->textureSize = width * height * pixelSize(format, type);
+    	     textureMemory_ += element->textureSize;
+
+    	     if (caching_)
+    	     {
+    	    	 bufferMemory_-=element->bufferSize;
+    	    	 size_t output_length = snappy_max_compressed_length(element->textureSize);
+    	         char *temp=new char[output_length];
+    	         snappy_compress((const char*)pixels, element->textureSize, temp, &output_length);
+    	         if (element->buffer) delete[] element->buffer;
+    	         element->buffer=new char[output_length];
+    	         memcpy(element->buffer,temp,output_length);
+   	             delete[] temp;
+   	             element->bufferSize=output_length;
+    	    	 bufferMemory_ += element->bufferSize;
+    	     }
+    	}
+    }
+
     g_bool deleteTexture(g_id id)
     {
         {
-            std::map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
+            std::unordered_map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
 
             if (iter != textureElements_.end())
             {
@@ -178,7 +289,8 @@ public:
                 {
                     textureMemory_ -= element->textureSize;
 
-                    bufferMemory_ -= element->buffer.size();
+                    bufferMemory_ -= element->bufferSize;
+                    if (element->buffer) delete[] element->buffer;
 
                     delete element->_texture;
 
@@ -204,7 +316,7 @@ public:
         }
 
         {
-            std::map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
+            std::unordered_map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
 
             if (iter != renderTargetElements_.end())
             {
@@ -213,6 +325,8 @@ public:
                 textureMemory_ -= element->textureSize;
 
                 glog_v("Deleting render target. Total memory is %g KB.", (bufferMemory_ + textureMemory_) / 1024.0);
+
+                if (element->buffer) delete[] element->buffer;
 
                 delete element->_framebuffer;
 
@@ -236,14 +350,14 @@ public:
     ShaderTexture *getInternalTexture(g_id id)
     {
         {
-            std::map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
+            std::unordered_map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
 
             if (iter != textureElements_.end())
                 return iter->second->_texture;
         }
 
         {
-            std::map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
+            std::unordered_map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
 
             if (iter != renderTargetElements_.end())
                 return iter->second->_texture;
@@ -255,14 +369,14 @@ public:
     void setUserData(g_id id, void *udata)
     {
         {
-            std::map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
+            std::unordered_map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
 
             if (iter != textureElements_.end())
                 iter->second->udata = udata;
         }
 
         {
-            std::map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
+            std::unordered_map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
 
             if (iter != renderTargetElements_.end())
                 iter->second->udata = udata;
@@ -273,14 +387,14 @@ public:
     void *getUserData(g_id id)
     {
         {
-            std::map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
+            std::unordered_map<g_id, TextureElement*>::iterator iter = textureElements_.find(id);
 
             if (iter != textureElements_.end())
                 return iter->second->udata;
         }
 
         {
-            std::map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
+            std::unordered_map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(id);
 
             if (iter != renderTargetElements_.end())
                 return iter->second->udata;
@@ -297,7 +411,7 @@ public:
     void reloadTextures()
     {
         std::set<TextureElement*> textureElements;
-        std::map<g_id, TextureElement*>::iterator iter2, e2 = textureElements_.end();
+        std::unordered_map<g_id, TextureElement*>::iterator iter2, e2 = textureElements_.end();
         for (iter2 = textureElements_.begin(); iter2 != e2; ++iter2)
             textureElements.insert(iter2->second);
 
@@ -306,12 +420,14 @@ public:
         {
             TextureElement *element = *iter;
 
-            size_t output_length;
-            snappy_uncompressed_length(&element->buffer[0], element->buffer.size(), &output_length);
-            char* output = (char*)malloc(output_length);
-            snappy_uncompress(&element->buffer[0], element->buffer.size(), output, &output_length);
-            genAndUploadTexture(element, output);
-            free(output);
+           	if (element->buffer) {
+				size_t output_length;
+				snappy_uncompressed_length(element->buffer, element->bufferSize, &output_length);
+				char* output = (char*)malloc(output_length);
+				snappy_uncompress(element->buffer, element->bufferSize, output, &output_length);
+				genAndUploadTexture(element, output);
+				free(output);
+           	}
         }
     }
 
@@ -320,19 +436,23 @@ public:
         if (renderTargetElements_.empty())
             return;
 
-        std::map<g_id, RenderTargetElement*>::iterator iter, e = renderTargetElements_.end();
+        std::unordered_map<g_id, RenderTargetElement*>::iterator iter, e = renderTargetElements_.end();
         for (iter = renderTargetElements_.begin(); iter != e; ++iter)
         {
             RenderTargetElement *element = iter->second;
 
-            size_t output_length;
-            snappy_uncompressed_length(&element->buffer[0], element->buffer.size(), &output_length);
-            std::vector<char> uncompressed(output_length);
-            snappy_uncompress(&element->buffer[0], element->buffer.size(), &uncompressed[0], &output_length);
-            std::vector<char>().swap(element->buffer);
-            genAndUploadTexture(element, &uncompressed[0]);
+           	if (element->buffer) {
+				size_t output_length;
+				snappy_uncompressed_length(element->buffer, element->bufferSize, &output_length);
+				char* output = (char*)malloc(output_length);
+				snappy_uncompress(element->buffer, element->bufferSize, output, &output_length);
+				delete[] element->buffer;
+				element->buffer=NULL;
+				genAndUploadTexture(element, output);
+				free(output);
 
-            element->_framebuffer=engine->createRenderTarget(element->_texture);
+				element->_framebuffer=engine->createRenderTarget(element->_texture,element->depth);
+           	}
         }
 
     }
@@ -381,23 +501,46 @@ public:
 
 
     g_id RenderTargetCreate(int width, int height,
-                            int wrap, int filter)
+                            int wrap, int filter, int iformat, unsigned char *bpp)
     {
-        int format = GTEXTURE_RGBA;
-        int type = GTEXTURE_UNSIGNED_BYTE;
+
+        ShaderTexture::Format format=gFormatTosFormat(iformat);
+
+        ShaderTexture::Packing pk=engine->getPreferredPackingForTextureFormat(format);
+        int type=GTEXTURE_UNSIGNED_BYTE;
+        switch (pk) {
+        case ShaderTexture::PK_FLOAT: type=GTEXTURE_FLOAT; break;
+        case ShaderTexture::PK_USHORT: type=GTEXTURE_UNSIGNED_SHORT; break;
+        case ShaderTexture::PK_UINT: type=GTEXTURE_UNSIGNED_INT; break;
+        case ShaderTexture::PK_USHORT_4444: type=GTEXTURE_UNSIGNED_SHORT_4_4_4_4; break;
+        case ShaderTexture::PK_USHORT_565: type=GTEXTURE_UNSIGNED_SHORT_5_6_5; break;
+        case ShaderTexture::PK_USHORT_5551: type=GTEXTURE_UNSIGNED_SHORT_5_5_5_1; break;
+        default: type=GTEXTURE_UNSIGNED_BYTE;
+        }
 
         RenderTargetElement *element = new RenderTargetElement;
+
+		//Ensure requested size is never negative or 0
+		if (width <= 0) width = 1;
+		if (height <= 0) height = 1;
+
 
         element->refcount = 1;
         element->width = width;
         element->height = height;
-        element->format = format;
+        element->format = iformat;
         element->type = type;
         element->wrap = wrap;
         element->filter = filter;
         element->udata = NULL;
+        element->renderTarget = true;
+        element->depth=(iformat==GTEXTURE_DEPTH);
+        element->buffer=NULL;
+        element->bufferSize=0;
 
-        element->textureSize = width * height * pixelSize(format, type);
+        *bpp=pixelSize(iformat, type);
+
+        element->textureSize = width * height * (*bpp);
 
         void *pixels = malloc(element->textureSize);
         memset(pixels, 0, element->textureSize);
@@ -408,7 +551,7 @@ public:
         
         glog_v("Creating render target. Total memory is %g KB.", (bufferMemory_ + textureMemory_) / 1024.0);
 
-        element->_framebuffer=engine->createRenderTarget(element->_texture);
+        element->_framebuffer=engine->createRenderTarget(element->_texture,element->depth);
 
         renderTargetElements_[nextid_] = element;
 
@@ -418,7 +561,7 @@ public:
 
     ShaderBuffer *RenderTargetGetFBO(g_id renderTarget)
     {
-        std::map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(renderTarget);
+        std::unordered_map<g_id, RenderTargetElement*>::iterator iter = renderTargetElements_.find(renderTarget);
 
         if (iter == renderTargetElements_.end())
             return 0;
@@ -431,24 +574,32 @@ public:
         if (renderTargetElements_.empty())
             return;
 
-        std::map<g_id, RenderTargetElement*>::iterator iter, e = renderTargetElements_.end();
+        std::unordered_map<g_id, RenderTargetElement*>::iterator iter, e = renderTargetElements_.end();
         for (iter = renderTargetElements_.begin(); iter != e; ++iter)
         {
             RenderTargetElement *element = iter->second;
-            element->buffer.resize(element->width * element->height * 4);
-            element->_framebuffer->readPixels(0, 0, element->width, element->height, ShaderTexture::FMT_RGBA, ShaderTexture::PK_UBYTE, &element->buffer[0]);
-            size_t output_length = snappy_max_compressed_length(element->buffer.size());
-            std::vector<char> compressed(output_length);
-            snappy_compress(&element->buffer[0], element->buffer.size(), &compressed[0], &output_length);
-            compressed.resize(output_length);
-            element->buffer = compressed;
+            int bps=pixelSize(element->format, element->type);
+
+	        ShaderTexture::Format format=gFormatTosFormat(element->format);
+
+	        ShaderTexture::Packing type= gTypeTosPacking(element->type);
+
+            char *pixels=(char *)malloc(element->width * element->height * bps);
+            element->_framebuffer->readPixels(0, 0, element->width, element->height, format, type, pixels);
+            size_t output_length = snappy_max_compressed_length(element->width * element->height * bps);
+            char *temp=(char *)malloc(output_length);
+            snappy_compress(pixels,element->width * element->height * bps, temp, &output_length);
+            free(pixels);
+            element->buffer = new char[output_length];
+            memcpy(element->buffer,temp,output_length);
+            free(temp);
         }
 
     }
 
     g_id TempTextureCreate(int width, int height)
     {
-        std::map<g_id, TempTextureElement*>::iterator iter, e = tempTextureElements_.end();
+        std::unordered_map<g_id, TempTextureElement*>::iterator iter, e = tempTextureElements_.end();
 
         for (iter = tempTextureElements_.begin(); iter != e; ++iter)
             if (iter->second->width == width && iter->second->height == height)
@@ -480,7 +631,7 @@ public:
 
     void TempTextureDelete(g_id id)
     {
-        std::map<g_id, TempTextureElement*>::iterator iter = tempTextureElements_.find(id);
+        std::unordered_map<g_id, TempTextureElement*>::iterator iter = tempTextureElements_.find(id);
         if (iter == tempTextureElements_.end())
             return;
 
@@ -497,7 +648,7 @@ public:
 
     ShaderTexture *TempTextureGetName(g_id id)
     {
-        std::map<g_id, TempTextureElement*>::iterator iter = tempTextureElements_.find(id);
+        std::unordered_map<g_id, TempTextureElement*>::iterator iter = tempTextureElements_.find(id);
         if (iter == tempTextureElements_.end())
             return 0;
 
@@ -515,7 +666,7 @@ public:
     void RestoreTempTextures()
     {
         std::set<TempTextureElement*> tempTextureElements;
-        std::map<g_id, TempTextureElement*>::iterator iter2, e2 = tempTextureElements_.end();
+        std::unordered_map<g_id, TempTextureElement*>::iterator iter2, e2 = tempTextureElements_.end();
         for (iter2 = tempTextureElements_.begin(); iter2 != e2; ++iter2)
             tempTextureElements.insert(iter2->second);
 
@@ -531,62 +682,31 @@ public:
     }
 
 private:
-    std::map<g_id, TempTextureElement*> tempTextureElements_;
+    std::unordered_map<g_id, TempTextureElement*> tempTextureElements_;
 
 private:
     void genAndUploadTexture(CommonElement *element, const void *pixels)
     {
-        ShaderTexture::Format format;
-        switch (element->format)
-        {
-        case GTEXTURE_ALPHA:
-            format = ShaderTexture::FMT_ALPHA;
-            break;
-        case GTEXTURE_RGB:
-            format = ShaderTexture::FMT_RGB;
-            break;
-        case GTEXTURE_RGBA:
-            format = ShaderTexture::FMT_RGBA;
-            break;
-        case GTEXTURE_LUMINANCE:
-            format = ShaderTexture::FMT_Y;
-            break;
-        case GTEXTURE_LUMINANCE_ALPHA:
-            format = ShaderTexture::FMT_YA;
-            break;
-        }
+        ShaderTexture::Format format= gFormatTosFormat(element->format);
+        ShaderTexture::Packing type= gTypeTosPacking(element->type);
 
-        ShaderTexture::Packing type;
-        switch (element->type)
-        {
-        case GTEXTURE_UNSIGNED_BYTE:
-            type = ShaderTexture::PK_UBYTE;
-            break;
-        case GTEXTURE_UNSIGNED_SHORT_5_6_5:
-            type = ShaderTexture::PK_USHORT_565;
-            break;
-        case GTEXTURE_UNSIGNED_SHORT_4_4_4_4:
-            type = ShaderTexture::PK_USHORT_4444;
-            break;
-        case GTEXTURE_UNSIGNED_SHORT_5_5_5_1:
-            type = ShaderTexture::PK_USHORT_5551;
-            break;
-        }
         ShaderTexture::Wrap wrap=ShaderTexture::WRAP_CLAMP;
         if (element->wrap==GTEXTURE_REPEAT)
         	wrap=ShaderTexture::WRAP_REPEAT;
         ShaderTexture::Filtering filtering=ShaderTexture::FILT_LINEAR;
         if (element->filter==GTEXTURE_NEAREST)
         	filtering=ShaderTexture::FILT_NEAREST;
-        element->_texture=engine->createTexture(format,type,element->width, element->height,pixels,wrap,filtering);
+        if (element->filter==GTEXTURE_LINEAR_MIPMAP)
+        	filtering=ShaderTexture::FILT_LINEAR_MIPMAP;
+        element->_texture=engine->createTexture(format,type,element->width, element->height,pixels,wrap,filtering,element->renderTarget);
     }
 
 private:
     bool caching_;
     g_id nextid_;
-    std::map<g_id, TextureElement*> textureElements_;
+    std::unordered_map<g_id, TextureElement*> textureElements_;
     std::map<std::vector<char>, TextureElement*> signatureMap_;
-    std::map<g_id, RenderTargetElement*> renderTargetElements_;
+    std::unordered_map<g_id, RenderTargetElement*> renderTargetElements_;
     size_t textureMemory_;
     size_t bufferMemory_;
 };
@@ -602,6 +722,31 @@ extern "C" {
 void gtexture_set_engine(ShaderEngine *e)
 {
 	engine=e;
+}
+
+ShaderEngine *gtexture_get_engine()
+{
+	return engine;
+}
+
+void gtexture_set_spritefactory(SpriteProxyFactory *e)
+{
+	spritefactory=e;
+}
+
+SpriteProxyFactory *gtexture_get_spritefactory()
+{
+	return spritefactory;
+}
+
+void gtexture_set_screenmanager(ScreenManager *e)
+{
+	screenManager=e;
+}
+
+ScreenManager *gtexture_get_screenmanager()
+{
+	return screenManager;
 }
 
 void gtexture_init()
@@ -626,6 +771,18 @@ g_id gtexture_create(int width, int height,
                              wrap, filter,
                              pixels,
                              signature, siglength);
+}
+
+void gtexture_update(g_id gid,
+					 int width, int height,
+                     int format, int type,
+                     int wrap, int filter,
+                     const void *pixels)
+{
+    return s_manager->update(gid, width, height,
+                             format, type,
+                             wrap, filter,
+                             pixels);
 }
 
 g_bool gtexture_delete(g_id id)
@@ -678,9 +835,9 @@ G_API size_t gtexture_getMemoryUsage()
 }
 
 g_id gtexture_RenderTargetCreate(int width, int height,
-                                 int wrap, int filter)
+                                 int wrap, int filter,int format, unsigned char *bpp)
 {
-    return s_manager->RenderTargetCreate(width, height, wrap, filter);
+    return s_manager->RenderTargetCreate(width, height, wrap, filter, format, bpp);
 }
 
 ShaderBuffer *gtexture_RenderTargetGetFBO(g_id renderTarget)
@@ -721,6 +878,17 @@ void gtexture_RestoreTempTextures()
 ShaderBuffer *gtexture_BindRenderTarget(ShaderBuffer *fbo)
 {
 	return engine->setFramebuffer(fbo);
+}
+
+static void *global_hooks[GID_GLOBALHOOK_MAX];
+void g_setGlobalHook(unsigned int hookn,void *hook) {
+	if (hookn>=GID_GLOBALHOOK_MAX) return;
+	global_hooks[hookn]=hook;
+}
+
+void *g_getGlobalHook(unsigned int hookn) {
+	if (hookn>=GID_GLOBALHOOK_MAX) return NULL;
+	return global_hooks[hookn];
 }
 
 }

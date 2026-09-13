@@ -27,9 +27,9 @@ include $(CLEAR_VARS)
 LOCAL_MODULE           := iab
 LOCAL_ARM_MODE         := arm
 LOCAL_CFLAGS           := -O2
-LOCAL_C_INCLUDES       += $(LOCAL_PATH)/../../../../../Sdk/include $(LOCAL_PATH)/..
-LOCAL_SRC_FILES        := iab.cpp iabbinder.cpp
-LOCAL_LDLIBS           := -ldl -llog
+LOCAL_C_INCLUDES       += $(LOCAL_PATH)/../../../../../Sdk/include $(LOCAL_PATH)/../../Common
+LOCAL_SRC_FILES        := iab.cpp ../../Common/iabbinder.cpp
+LOCAL_LDLIBS           := -ldl -llog 
 LOCAL_SHARED_LIBRARIES := lua gideros
 
 include $(BUILD_SHARED_LIBRARY)

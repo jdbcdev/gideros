@@ -1,10 +1,8 @@
-
-application:configureFrustum(45)
-
 local function face(color,rx,ry)
-	c=Sprite.new()
+	-- Create a colored face
 	s=Shape.new()
-	s:setFillStyle(Shape.SOLID, color,0.8)
+	-- Use translucent color
+	s:setFillStyle(Shape.SOLID, color,0.7)
 	s:beginPath()
 	s:moveTo(-1,-1)
 	s:lineTo(-1,1)
@@ -12,38 +10,42 @@ local function face(color,rx,ry)
 	s:lineTo(1,-1)
 	s:lineTo(-1,-1)
 	s:endPath()
-
-	--[[mesh:setVertexArray(-1,-1,-1,
-	                    -1, 1,-1,
-						 1, 1,-1,
-						 1,-1,-1)
-	mesh:setColorArray(color,0.5,color,1,color,0.5,color,1)
-	mesh:setIndexArray(1,2,3,1,3,4)]]
-	s:setZ(-1)
-	c:addChild(s)
-	c:setRotationX(rx)
-	c:setRotationY(ry)
-	return c;
+	-- Set its orientation
+	s:setRotationX(rx)
+	s:setRotationY(ry)
+	-- Position it at -1 along its local Z axis
+	s:setPosition(s:getMatrix():transformPoint(0,0,-1))
+	return s
 end
 
+--Create a cube
 cube=Mesh.new(true)
-cube:addChild(face(0xFF0000,0,0))
+cube:addChild(face(0xFF8080,0,0))
 cube:addChild(face(0xFFFF00,90,0))
 cube:addChild(face(0xFF00FF,-90,0))
-cube:addChild(face(0x00FF00,180,0))
+cube:addChild(face(0x80FF80,180,0))
 cube:addChild(face(0x00FFFF,0,90))
-cube:addChild(face(0x0000FF,0,-90))
+cube:addChild(face(0x8080FF,0,-90))
 
-cube:setScale(100,100,100)
-cube:setPosition(150,150,-250)
+-- Enable depth sorting for translucency
+cube:setAutoSort(true)
 
-base=Sprite.new()
-base:addChild(cube)
---cube:setClip(-0.5,-0.5,1,1)
+--Set up the 3D view and projection
+local sw,sh=application:getContentWidth(),application:getContentHeight()
+local projection=Matrix.new()
+projection:perspectiveProjection(45,sw/sh,0.1,1000)
+local view=Viewport.new()
+view:setProjection(projection)
+view:setPosition(sw/2,sh/2)
+view:setScale(-sw/2,-sh/2,1)
+stage:addChild(view)
 
-stage:addChild(base)
-stage:addChild(Sprite.new())
+--Add our cube to the scene
+view:setContent(cube)
+--Look at it from -8 units in Z direction
+view:lookAt(0,0,-8,0,0,0,0,1,0)
 
+--Rotate our cube
 cube:addEventListener(Event.ENTER_FRAME,function ()
 	cube:setRotationX(cube:getRotationX()+1)
 	cube:setRotationY(cube:getRotationY()+1.2)

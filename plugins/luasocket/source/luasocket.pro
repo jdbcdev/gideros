@@ -35,7 +35,8 @@ HEADERS +=
 DEFINES += LUA_NOCOMPAT_MODULE
 
 win32 {
-DEFINES += LUASOCKET_INET_PTON 
+equals(QT_VERSION, 5):	DEFINES += LUASOCKET_INET_PTON 
+equals(QT_VERSION, 6):	DEFINES += WINSTORE 
 LIBS += -lws2_32
 }
 
@@ -43,4 +44,9 @@ LIBS += -L"../../../Sdk/lib/desktop" -llua
 
 macx {
 QMAKE_POST_LINK += install_name_tool -change liblua.1.dylib "@executable_path/../Frameworks/liblua.1.dylib" $(TARGET);
+}
+
+#Linux + pi
+unix:!macx {
+    SOURCES += usocket.c
 }

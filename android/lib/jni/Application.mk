@@ -1,7 +1,10 @@
-APP_STL := gnustl_static
+APP_STL := c++_shared
 APP_CPPFLAGS += -fexceptions -frtti
-APP_PLATFORM := android-9
-APP_ABI := armeabi armeabi-v7a x86
+APP_PLATFORM := android-18
+#APP_ABI := all
+ifneq ($(OCULUS),)
+APP_ABI := arm64-v8a armeabi-v7a
+endif
 APP_OPTIM := release
-
+APP_UNIFIED_HEADERS := true
 

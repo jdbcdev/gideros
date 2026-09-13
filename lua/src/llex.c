@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <locale.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define llex_c
 #define LUA_CORE
@@ -24,6 +25,8 @@
 #include "lzio.h"
 #include "lauxlib.h"
 
+#define lua_isalpha(c) ((((c)>0)&&((c)&0x80))||isalpha(c)) //Allow UTF8 identifiers
+#define lua_isalnum(c) ((((c)>0)&&((c)&0x80))||isalnum(c)) //Allow UTF8 identifiers
 
 #define next(ls) (ls->current = ls->mpos < ls->mlen ? char2int(ls->mstr[ls->mpos++]) : zgetc(ls->z))
 
@@ -36,10 +39,27 @@ const char *const luaX_tokens [] = {
   "and", "break", "do", "else", "elseif",
   "end", "false", "for", "function", "if",
   "in", "local", "nil", "not", "or", "repeat",
-  "return", "then", "true", "until", "while",
+  "return", "then", "true", "until", "include", "while",
+  "..", "...", "==", ">=", "<=", "~=", 
+  "<<", ">>", "//",
+  "<>", "><",
+  "^>","^<",
+  "+=", "-=", "*=", "/=", "%=", "^=",
+  "<number>", "<name>", "<string>", "<eof>",
+  NULL
+};
+
+const char *const tokensFR [] = {
+  "et", "sortir", "faire", "sinon", "sinonsi",
+  "fin", "faux", "pour", "fonction", "si",
+  "dans", "local", "rien", "non", "ou", "repeter",
+  "retourne", "alors", "vrai", "jusqua", "inclure", "tantque",
   "..", "...", "==", ">=", "<=", "~=",
   "<<", ">>", "//",
-  "<number>", "<name>", "<string>", "<eof>",
+  "<>", "><",
+  "^>","^<",
+  "+=", "-=", "*=", "/=", "%=", "^=",
+  "<nombre>", "<nom>", "<chaine>", "<fof>",
   NULL
 };
 
@@ -81,7 +101,7 @@ const char *luaX_token2str (LexState *ls, int token) {
                               luaO_pushfstring(ls->L, "%c", token);
   }
   else
-    return luaX_tokens[token-FIRST_RESERVED];
+    return ls->tokens[token-FIRST_RESERVED];
 }
 
 
@@ -144,6 +164,10 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source) {
   ls->linenumber = 1;
   ls->lastline = 1;
   ls->source = source;
+
+  //lua_pushnil(L); XXX Used to clear macro table between each input file
+  //lua_setglobal(L, MACRO);
+
   luaZ_resizebuffer(ls->L, ls->buff, LUA_MINBUFFER);  /* initialize buffer */
   next(ls);  /* read first char */
 }
@@ -294,6 +318,7 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
       switch (ls->current) {
       case 'a': c = '\a'; break;
       case 'b': c = '\b'; break;
+      case 'e': c = 27; break;
       case 'f': c = '\f'; break;
       case 'n': c = '\n'; break;
       case 'r': c = '\r'; break;
@@ -332,6 +357,32 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
                                luaZ_bufflen(ls->buff) - 2);
 }
 
+static int insert_string(LexState *ls, const char* s) {
+    luaZ_resetbuffer(ls->buff);
+    if (ls->mpos < ls->mlen) {
+      int len = strlen(s) + ls->mlen - ls->mpos + 2;
+      char *res = (char*) malloc(len+1);
+      strcpy(res, s);
+      strcat(res, &ls->mstr[ls->mpos-1]);
+      strcat(res, " ");
+      free(ls->mstr);
+      ls->mstr = res;
+      ls->z->n--; ls->z->p++;
+    }
+    else {
+      if (ls->mlen > 0) free(ls->mstr);
+      char *res = (char*) malloc(strlen(s)+1);
+      strcpy(res, s);
+      ls->mstr = res;
+    }
+    ls->mpos = 1;
+    ls->mlen = strlen(ls->mstr);
+    if (ls->mlen > 0) {
+      ls->current = ls->mstr[0];
+      ls->z->n++; ls->z->p--;
+    }
+    return 0;
+}
 
 static int llex (LexState *ls, SemInfo *seminfo) {
   luaZ_resetbuffer(ls->buff);
@@ -344,6 +395,10 @@ static int llex (LexState *ls, SemInfo *seminfo) {
     }
     case '-': {
       next(ls);
+	  if (ls->current == '=') {
+		next(ls);
+	    return TK_SUB_EQ;
+	  }	  
       if (ls->current != '-') return '-';
       /* else is a comment */
       next(ls);
@@ -379,26 +434,73 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       next(ls);
       if (ls->current == '=') { next(ls); return TK_LE; }
       else if (ls->current == '<') { next(ls); return TK_LSHFT; }
+	  else if (ls->current == '>') { next(ls); return TK_MAX; }
       else  return '<';
     }
     case '>': {
       next(ls);
       if (ls->current == '=') { next(ls); return TK_GE; }
       else if (ls->current == '>') { next(ls); return TK_RSHFT; }
+	  else if (ls->current == '<') { next(ls); return TK_MIN; }
       else return '>';
+    }
+    case '^': {
+      next(ls);
+      if (ls->current == '<') { next(ls); return TK_RAD; }
+      else if (ls->current == '>') { next(ls); return TK_DEG; }
+	  else if (ls->current == '=') { next(ls); return TK_POW_EQ; }
+      else return '^';
     }
     case '/': {
       next(ls);
-      if (ls->current != '/') return '/';
-      else { next(ls); return TK_INTDIV; }
+	  if (ls->current == '=') { next(ls); return TK_DIV_EQ; }
+	  else if (ls->current == '/') { next(ls); return TK_INTDIV; }
+	  else return '/';
     }
     case '~': {
       next(ls);
       if (ls->current != '=') return '~';
       else { next(ls); return TK_NE; }
     }
+	
+	  case '+': {
+		next(ls);
+		if (ls->current != '=') return '+';
+		else { next(ls); return TK_ADD_EQ; }
+	  }
+	  case '*': {
+		next(ls);
+		if (ls->current != '=') return '*';
+		else { next(ls); return TK_MUL_EQ; }
+	  }
+	  case '%': {
+		next(ls);
+		if (ls->current != '=') return '%';
+		else { next(ls); return TK_MOD_EQ; }
+	  }
+	
     case '!': {
-      luaX_lexerror(ls, "assembler support is not implemented yet", 0);
+      char lang[2];
+	  next(ls);
+	  lang[0]=ls->current;
+	  next(ls);
+	  lang[1]=ls->current;
+	  if ((lang[0]=='F')&&(lang[1]=='R')) {
+	      int i;
+		  ls->tokens=tokensFR;
+	      while (!currIsNewline(ls) && ls->current != EOZ)
+	        next(ls);
+	      for (i=0; i<NUM_RESERVED; i++) {
+	        TString *ts = luaS_new(ls->L, ls->tokens[i]);
+	        luaS_fix(ts);  /* reserved words are never collected */
+	        lua_assert(strlen(ls->tokens[i])+1 <= TOKEN_LEN);
+	        ts->tsv.reserved = cast_byte(i+1);  /* reserved word */
+	      }
+	      continue;
+	  }
+	  else
+		  luaX_lexerror(ls, "assembler support is not implemented yet", 0);
+	  break;
     }
     case '"':
     case '\'': {
@@ -434,15 +536,15 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         read_numeral(ls, seminfo);
         return TK_NUMBER;
       }
-      else if (isalpha(ls->current) || ls->current == '_') {
+      else if (lua_isalpha(ls->current) || ls->current == '_') {
         TString *ts;
         do {
           save_and_next(ls);
-        } while (isalnum(ls->current) || ls->current == '_');
+        } while (lua_isalnum(ls->current) || ls->current == '_');
         ts = luaX_newstring(ls, luaZ_buffer(ls->buff),
                             luaZ_bufflen(ls->buff));
         while (isspace(ls->current)) {
-          if (ls->current == '\n') ++ls->linenumber;
+          if (currIsNewline(ls)) break;
           next(ls);
         }
         if (ls->current == '@') {
@@ -466,12 +568,14 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           else luaX_lexerror(ls, "cannot allocate enough memory",0);
           lua_pushstring(L, key);
           lua_gettable(L, -2);
+
           if (!lua_isnil(L, -1))
           {
             if (ls->current != '@')
               luaX_lexerror(ls, "definition of existent macro", 0);
           } else if (ls->current == '@')
             luaX_lexerror(ls, "redefinition of nonexistent macro", 0);
+
           if (ls->current == '@') next(ls);
           lua_pop(L, 1);
           lua_pushstring(L, key);
@@ -487,6 +591,8 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           case '(':
           {
             next(ls);
+            if (ls->current == EOZ)
+                luaX_lexerror(ls, "unfinished macro function definition", 0);
             q = ls->current;
             next(ls);
             for(;;) {
@@ -593,10 +699,10 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           }
           default:
           {
-            if (isalpha(ls->current) || ls->current == '_') {
+            if (lua_isalpha(ls->current) || ls->current == '_') {
               do {
                 save_and_next(ls);
-              } while (isalnum(ls->current) || ls->current == '_');
+              } while (lua_isalnum(ls->current) || ls->current == '_');
             } else luaX_lexerror(ls, "invalid macro marker", 0);
           }
           }
@@ -618,8 +724,41 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           free(val);
           continue;
         }
-        if (ts->tsv.reserved > 0)  /* reserved word? */
+        if (ts->tsv.reserved > 0) {  /* reserved word? */
+          if (ts->tsv.reserved == TK_INCLUDE - FIRST_RESERVED + 1) {
+              int t = llex(ls, seminfo);
+              if (t == TK_STRING) {
+                  const char *filename = getstr(seminfo->ts);
+                  char * buffer = 0;
+                  long length;
+                  FILE * f = fopen (filename, "rb");
+
+                  if (f)
+                  {
+                    fseek (f, 0, SEEK_END);
+                    length = ftell (f);
+                    fseek (f, 0, SEEK_SET);
+                    buffer = (char *) malloc (length + 2);
+                    if (buffer)
+                    {
+                      fread (buffer, 1, length, f);
+                      buffer[length] = ' ';
+                      buffer[length+1] = '\0';
+                    }
+                    fclose (f);
+                  }
+
+                  if (buffer)
+                  {
+                    ++ls->mpos;
+                    insert_string(ls, buffer);
+                    continue;
+                  }
+                  luaX_lexerror(ls, "file not found", TK_INCLUDE);
+              } else luaX_lexerror(ls, "string expected", TK_INCLUDE);
+          }
           return ts->tsv.reserved - 1 + FIRST_RESERVED;
+        }
         lua_State *L = ls->L;
         lua_getglobal(L, MACRO);
         if (lua_istable(L, -1)) {
@@ -704,7 +843,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
                   lua_pushstring(L,s);
                 }
                 else
-                  lua_pushstring(L,luaX_tokens[t-FIRST_RESERVED]);
+                  lua_pushstring(L,ls->tokens[t-FIRST_RESERVED]);
                 break;
               }
               lua_rawseti(L,-2,i);
@@ -717,39 +856,18 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           }
 
           if (lua_isstring(L, -1)) {
-            luaZ_resetbuffer(ls->buff);
             const char *s = lua_tostring(L, -1);
-            if (ls->mpos < ls->mlen) {
-              int len = strlen(s) + ls->mlen - ls->mpos + 1;
-              char *res = (char*) malloc(len);
-              strcpy(res, s);
-              strcat(res, &ls->mstr[ls->mpos-1]);
-              strcat(res, " ");
-              free(ls->mstr);
-              ls->mstr = res;
-              ls->z->n--; ls->z->p++;
-            }
-            else {
-              if (ls->mlen > 0) free(ls->mstr);
-              char *res = (char*) malloc(strlen(s)+1);
-              strcpy(res, s);
-              ls->mstr = res;
-            }
-            ls->mpos = 1;
-            ls->mlen = strlen(ls->mstr);
-            if (ls->mlen > 0) {
-              ls->current = ls->mstr[0];
-              ls->z->n++; ls->z->p--;
-            }
+            insert_string(ls, s);
             lua_pop(L, 1);
             lua_pop(L, 1);
             if (ls->mswt++ > 1e6) luaX_lexerror(ls, "possible mutual macro recursion", 0);
             continue;
           }
+
           lua_pop(L, 1);
         }
-        lua_pop(L, 1);
 
+        lua_pop(L, 1);
         seminfo->ts = ts;
         return TK_NAME;
       }
@@ -779,4 +897,3 @@ void luaX_lookahead (LexState *ls) {
   lua_assert(ls->lookahead.token == TK_EOS);
   ls->lookahead.token = llex(ls, &ls->lookahead.seminfo);
 }
-

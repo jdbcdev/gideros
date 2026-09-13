@@ -17,20 +17,24 @@
 
 @interface ViewController : UIViewController<UITableViewDelegate, UITableViewDataSource>
 {
-    EAGLContext *context;
     UITableView *tableView;
 	    
     BOOL animating;
+    BOOL resized;
     NSInteger animationFrameInterval;
     CADisplayLink *displayLink;
 
 	EAGLView* glView;
+    
+    BOOL statusBarHidden;
+    UIStatusBarStyle statusBarStyle;
 }
 
 @property (readonly, nonatomic, getter=isAnimating) BOOL animating;
-@property (nonatomic) NSInteger animationFrameInterval;
-@property (nonatomic, assign) EAGLView* glView;
-@property (nonatomic, assign) UITableView *tableView;
+@property (nonatomic, assign) NSInteger animationFrameInterval;
+@property (nonatomic) EAGLView* glView;
+@property (nonatomic) UITableView *tableView;
+@property (nonatomic) CADisplayLink *displayLink;
 
 - (void)startAnimation;
 - (void)stopAnimation;

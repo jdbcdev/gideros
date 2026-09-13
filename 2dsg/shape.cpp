@@ -12,11 +12,7 @@
 #ifndef M_PI
 #define M_PI 3.141592654
 #endif
-
-static bool isnan(float x)
-{
-    return x != x;
-}
+#include <math.h>
 
 class Tesselator
 {
@@ -56,7 +52,7 @@ public:
 		internal_gluDeleteTess(tess);
 	}
 
-	std::vector<float> triangles;
+    std::vector<double> triangles;
 
 private:
 	static void BeginCallback_s(GLenum type, void* polygon_data)   
@@ -141,7 +137,8 @@ static void createGraphicsBase(const std::vector<std::vector<Point2f> >& polygon
 	int start = result.vertices.size();
 	int ntriangles = tes.triangles.size() / 2;
 
-	for (std::size_t i = 0; i < ntriangles; ++i)
+    RENDER_LOCK();
+    for (std::size_t i = 0; i < ntriangles; ++i)
 	{
 		float x = tes.triangles[i * 2 + 0];
 		float y = tes.triangles[i * 2 + 1];
@@ -160,6 +157,7 @@ static void createGraphicsBase(const std::vector<std::vector<Point2f> >& polygon
 	result.indices.Update();
 	if (texcoords)
 		result.texcoords.Update();
+    RENDER_UNLOCK();
 }
 
 static void lineToPolygon(float x0, float y0, float x1, float y1, float thickness, std::vector<Point2f>& polygon)
@@ -266,9 +264,37 @@ Shape::Shape(Application *application) : Sprite(application)
 	clear();
 }
 
+void Shape::cloneFrom(Shape *s) {
+    Sprite::cloneFrom(s);
+
+    matrix_=s->matrix_;
+    fillr_=s->fillr_, fillg_=s->fillg_, fillb_=s->fillb_, filla_=s->filla_;
+    fillType_=s->fillType_;
+    liner_=s->liner_, lineg_=s->lineg_, lineb_=s->lineb_, linea_=s->linea_;
+    thickness_=s->thickness_;
+    min_=s->min_, max_=s->max_;
+    Point2f min_, max_;
+    windingRule_=s->windingRule_;
+    paths_=s->paths_;
+    textures_=s->textures_;
+    for (std::size_t i = 0; i < textures_.size(); ++i)
+        textures_[i]->ref();
+    texture_=s->texture_;
+    graphicsBases_=s->graphicsBases_;
+    for (GraphicsBaseList::iterator iter = graphicsBases_.begin(), e = graphicsBases_.end(); iter != e; ++iter)
+        iter->cloned();
+}
+
 Shape::~Shape()
 {
 	clear();
+}
+
+std::vector<double> Shape::tesselate(const std::vector<std::vector<Point2f> > & contours, WindingRule windingRule)
+{
+    Tesselator tes;
+    tes.tesselate(contours, windingRule == eEvenOdd);
+    return tes.triangles;
 }
 
 void Shape::clearFillStyle()
@@ -301,6 +327,7 @@ void Shape::setTextureFillStyle(TextureBase* texture, const Matrix4* matrix)
 
 	if (matrix)
 		matrix_ = matrix->inverse();
+	invalidate(INV_GRAPHICS);
 }
 
 void Shape::clear()
@@ -330,6 +357,7 @@ void Shape::clear()
 
 	min_ = Point2f( 1e30f,  1e30f);
 	max_ = Point2f(-1e30f, -1e30f);
+	invalidate(INV_GRAPHICS|INV_BOUNDS);
 }
 
 void Shape::setLineStyle(float thickness, unsigned int color, float alpha)
@@ -437,6 +465,7 @@ void Shape::endPath()
 					graphicsBases_.pop_back();;
 			}
 		}
+		invalidate(INV_GRAPHICS|INV_BOUNDS);
 	}
 
 	paths_.clear();
@@ -469,5 +498,5 @@ void Shape::extraBounds(float* minx, float* miny, float* maxx, float* maxy) cons
 void Shape::doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey)
 {
 	for (GraphicsBaseList::iterator iter = graphicsBases_.begin(), e = graphicsBases_.end(); iter != e; ++iter)
-		iter->draw(shader_);
+		iter->draw(getShader(iter->getShaderType()));
 }

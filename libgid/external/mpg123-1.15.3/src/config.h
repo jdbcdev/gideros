@@ -10,6 +10,9 @@
 
 #define HAVE_STRERROR
 #define HAVE_STRDUP
+#if !defined(WINSTORE) && !defined(HAVE_UNISTD_H)
+#define HAVE_UNISTD_H
+#endif
 
 #if defined(_MSC_VER)
 #include <BaseTsd.h>

@@ -19,6 +19,7 @@
 #include <d3dcompiler.h>
 #include <math.h>
 #include <vector>
+#include <unordered_set>
 #include "Shaders.h"
 #include "Matrices.h"
 #include "gtexture.h"
@@ -39,7 +40,7 @@ extern ID3D11DeviceContext *g_devcon;           // the pointer to our Direct3D d
 #endif
 
 
-
+#define DX11SHADERS_COMMON_GENVBO
 class dx11ShaderProgram : public ShaderProgram
 {
 	friend class dx11ShaderEngine;
@@ -51,29 +52,47 @@ protected:
     std::vector<DataDesc> attributes;
     std::string errorLog;
     static ShaderProgram *current;
-	static ID3D11Buffer *curIndicesVBO;
     void *cbpData;
     void *cbvData;
     bool cbpMod;
     bool cbvMod;
     int cbpsData;
     int cbvsData;
-    ID3D11Buffer *genVBO[16+1];
+#ifdef DX11SHADERS_COMMON_GENVBO
+public:
+	static std::unordered_set<ID3D11Buffer*> nstdVboSet;
+	static std::vector<ID3D11Buffer*> freeVBOs[2];
+protected:
+	static std::vector<ID3D11Buffer*> usedVBOs[2];
+	static std::vector<ID3D11Buffer*> renderedVBOs[2];
+	static ID3D11Buffer* curGenVBO[2];
+	static size_t genBufferOffset[2];
+	static ID3D11Buffer* allocateVBO(bool index,size_t size, bool gen, bool standard);
+#else
+	ID3D11Buffer *genVBO[16+1];
     int genVBOcapacity[16+1];
+#endif
+	static ID3D11Buffer* curIndicesVBO;
 	int flags;
-    void setupBuffer(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache, int stride, int offset);
-    ID3D11Buffer *getGenericVBO(int index,int elmSize,int mult,int count);
-	ID3D11Buffer *getCachedVBO(ShaderBufferCache **cache, bool index, int elmSize, int mult, int count);
+	std::vector<int> textureMap;
+	void setupBuffer(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache, int stride, int offset);
+    ID3D11Buffer *getGenericVBO(int index,int elmSize,int mult,int count, size_t &offset);
+	ID3D11Buffer *getCachedVBO(ShaderBufferCache **cache, bool index, int elmSize, int mult, int count, bool &modified, size_t& offset);
 	void updateConstants();
     void buildShaderProgram(const void *vshader,int vshadersz,const void *pshader,int pshadersz, int flags,
                      const ConstantDesc *uniforms, const DataDesc *attributes);
 public:
-    virtual void activate();
+	static void reset(bool reinit);
+#ifdef DX11SHADERS_COMMON_GENVBO
+	static void deleteVBO(int count, ID3D11Buffer** vbos);
+#endif
+	virtual void bindTexture(int num, ShaderTexture* texture);
+	virtual void activate();
     virtual void deactivate();
-    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache,int stride=0,int offset=0);
+    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache,int stride=0,int offset=0,int bufferingFlags=0);
     virtual void setConstant(int index,ConstantType type, int mult,const void *ptr);
-    virtual void drawArrays(ShapeType shape, int first, unsigned int count);
-    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first=0,unsigned int dcount=0);
+    virtual void drawArrays(ShapeType shape, int first, unsigned int count,unsigned int instances=0);
+    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first=0,unsigned int dcount=0,unsigned int instances=0,int bufferingFlags=0);
     virtual bool isValid();
     virtual const char *compilationLog();
     dx11ShaderProgram(const char *vshader,const char *pshader, int flags,
@@ -93,13 +112,17 @@ protected:
 	static ID3D11SamplerState *samplerClamp;
 	static ID3D11SamplerState *samplerRepeatFilter;
 	static ID3D11SamplerState *samplerClampFilter;
+	static ID3D11SamplerState *samplerDepthCompare;
 	ID3D11Texture2D *tex;
 	ID3D11ShaderResourceView *rsv;
 	int width,height;
 	Wrap wrap;
 	Filtering filter;
+	Format format;
 public:
 	dx11ShaderTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
+	void updateData(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
+	void generateMipmap();
 	virtual ~dx11ShaderTexture();
 };
 
@@ -111,8 +134,9 @@ protected:
 	ID3D11DepthStencilView *depthStencil;
 	ID3D11Texture2D* depthStencilTexture;
 	int width, height;
+	bool forDepth_;
 public:
-	dx11ShaderBuffer(ShaderTexture *texture);
+	dx11ShaderBuffer(ShaderTexture *texture,bool forDepth=false);
 	virtual ~dx11ShaderBuffer();
 	void readPixels(int x,int y,int width,int height,ShaderTexture::Format format,ShaderTexture::Packing packing,void *data);
 	void prepareDraw();
@@ -129,13 +153,20 @@ class dx11ShaderEngine : public ShaderEngine
 	ID3D11DepthStencilState *g_pDSOff;
 	ID3D11DepthStencilState *g_pDSDepth;
 	ID3D11DepthStencilState *g_pCDSState;
-	ID3D11RasterizerState *g_pRSNormal;
-	ID3D11RasterizerState *g_pRSScissor;
+	ID3D11RasterizerState *g_pRSNormalCN;
+	ID3D11RasterizerState *g_pRSNormalCF;
+	ID3D11RasterizerState *g_pRSNormalCB;
+	ID3D11RasterizerState *g_pRSScissorCN;
+	ID3D11RasterizerState *g_pRSScissorCF;
+	ID3D11RasterizerState *g_pRSScissorCB;
 	ID3D11BlendState *g_pBlendState;
 	ID3D11BlendState *g_pCBlendState;
+	bool s_clipEnabled;
 	int s_depthEnable;
 	bool s_depthBufferCleared;
 	D3D11_BLEND blendFactor2D3D11(BlendFactor blendFactor);
+	D3D11_BLEND blendAlpha2D3D11(BlendFactor blendFactor);
+	void updateRasterizer();
 	BlendFactor curSrcFactor, curDstFactor;
 	BlendFactor curCSrcFactor, curCDstFactor;
 public:
@@ -144,14 +175,18 @@ public:
 	void reset(bool reinit=false);
 	const char *getVersion();
 	const char *getShaderLanguage() { return "hlsl"; };
-	ShaderTexture *createTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
-	ShaderBuffer *createRenderTarget(ShaderTexture *texture);
+	ShaderTexture::Packing getPreferredPackingForTextureFormat(ShaderTexture::Format format);
+	ShaderTexture *createTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering,bool forRT=false);
+	ShaderBuffer *createRenderTarget(ShaderTexture *texture,bool forDepth=false);
 	ShaderBuffer *setFramebuffer(ShaderBuffer *fbo);
+    ShaderBuffer *getFramebuffer() { return currentBuffer; };
 	ShaderProgram *createShaderProgram(const char *vshader,const char *pshader,int flags, const ShaderProgram::ConstantDesc *uniforms, const ShaderProgram::DataDesc *attributes);
+	Matrix4 setOrthoFrustum(float l, float r, float b, float t, float n, float f, bool forRT);
 	void setViewport(int x,int y,int width,int height);
 	void resizeFramebuffer(int width,int height);
 	void clearColor(float r,float g,float b,float a);
-	void bindTexture(int num,ShaderTexture *texture);
+	void bindTexture(int num, ShaderTexture* texture);
+	void bindTexture(int num, ShaderTexture* texture,int ntex);
 	void setClip(int x,int y,int w,int h);
 	void setBlendFunc(BlendFactor sfactor, BlendFactor dfactor);
 	virtual Matrix4 setFrustum(float l, float r, float b, float t, float n, float f);

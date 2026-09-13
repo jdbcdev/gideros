@@ -6,7 +6,6 @@
 #include <QMap>
 
 class QAbstractButton;
-class QStringList;
 class UIManager;
 class QLineEdit;
 
@@ -26,8 +25,7 @@ public:
                 QWidget *parent = 0);
 
 protected:
-    virtual void closeEvent(QCloseEvent *);
-
+    void reject();
 private slots:
     void clicked(QAbstractButton *button);
 
@@ -66,7 +64,7 @@ public:
     bool isSecureInput() const;
 
 protected:
-    virtual void closeEvent(QCloseEvent *);
+    void reject();
 
 private slots:
     void clicked(QAbstractButton *button);

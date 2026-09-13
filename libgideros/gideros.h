@@ -13,10 +13,17 @@
 #include "glog.h"
 #include "gapplication.h"
 #include "gevent.h"
+
+#endif
+
+#if defined(__has_include)
+#if __has_include("gideros_build.h")
+# include "gideros_build.h"
+#endif
 #endif
 
 #ifndef GIDEROS_VERSION
-#define GIDEROS_VERSION "2016.10"
+#define GIDEROS_VERSION "2026.8"
 #endif
 
 #endif

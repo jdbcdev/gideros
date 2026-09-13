@@ -108,13 +108,16 @@ static std::map<std::string, std::string> tableToMap(lua_State *L, int index)
     return result;
 }
 
+static const char* ADS_READY = "adsReady";
 static const char *AD_RECEIVED = "adReceived";
 static const char *AD_FAILED = "adFailed";
 static const char *AD_ACTION_BEGIN = "adActionBegin";
 static const char *AD_ACTION_END = "adActionEnd";
 static const char *AD_DISMISSED = "adDismissed";
 static const char *AD_DISPLAYED = "adDisplayed";
+static const char *AD_REWARDED = "adRewarded";
 static const char *AD_ERROR = "adError";
+static const char *AD_CONSENT = "adConsent";
 
 static char keyWeak = ' ';
 
@@ -134,6 +137,11 @@ public:
 		gads_removeCallback(callback_s, this);
 		free((char*)ad_);
     }
+	
+	int hasConnection()
+	{
+		return gads_hasConnection(ad_);
+	}
 	
 	void setKey(gads_Parameter *params)
 	{
@@ -194,6 +202,11 @@ public:
 	{
 		return gads_getHeight(ad_);
 	}
+	
+	bool checkConsent(gads_ConsentRequest *request)
+	{
+		return gads_checkConsent(ad_,request);
+	}
     
 private:
 	static void callback_s(int type, void *event, void *udata)
@@ -223,6 +236,30 @@ private:
 			{
 				gads_AdFailedEvent *event2 = (gads_AdFailedEvent*)event;
 				if(strcmp(event2->ad, ad_) == 0)
+				{
+					shouldDispatch = 1;
+				}
+			}
+			else if (type == GADS_AD_REWARDED_EVENT)
+			{
+				gads_RewardEvent *event2 = (gads_RewardEvent*)event;
+				if(strcmp(event2->ad, ad_) == 0)
+				{
+					shouldDispatch = 1;
+				}
+			}
+			else if (type == GADS_AD_CONSENT_EVENT)
+			{
+				gads_ConsentEvent *event2 = (gads_ConsentEvent*)event;
+				if(strcmp(event2->ad, ad_) == 0)
+				{
+					shouldDispatch = 1;
+				}
+			}
+			else if (type == GADS_ADS_READY_EVENT)
+			{
+				gads_ReadyEvent* event2 = (gads_ReadyEvent*)event;
+				if (strcmp(event2->ad, ad_) == 0)
 				{
 					shouldDispatch = 1;
 				}
@@ -257,6 +294,9 @@ private:
 				
 				switch (type)
 				{
+					case GADS_ADS_READY_EVENT:
+						lua_pushstring(L, ADS_READY);
+						break;
 					case GADS_AD_RECEIVED_EVENT:
 						lua_pushstring(L, AD_RECEIVED);
 						break;
@@ -275,8 +315,14 @@ private:
                     case GADS_AD_DISPLAYED_EVENT:
 						lua_pushstring(L, AD_DISPLAYED);
 						break;
+                    case GADS_AD_REWARDED_EVENT:
+						lua_pushstring(L, AD_REWARDED);
+						break;
 					case GADS_AD_ERROR_EVENT:
 						lua_pushstring(L, AD_ERROR);
+						break;
+					case GADS_AD_CONSENT_EVENT:
+						lua_pushstring(L, AD_CONSENT);
 						break;
 				}
                 
@@ -299,6 +345,32 @@ private:
 					lua_pushstring(L, event2->error);
 					lua_setfield(L, -2, "error");
 				}
+				else if (type == GADS_AD_REWARDED_EVENT)
+				{
+					gads_RewardEvent *event2 = (gads_RewardEvent*)event;
+
+					lua_pushstring(L, event2->type);
+					lua_setfield(L, -2, "type");
+
+					lua_pushinteger(L, event2->amount);
+					lua_setfield(L, -2, "amount");
+				}
+				else if (type == GADS_ADS_READY_EVENT)
+				{
+					gads_ReadyEvent* event2 = (gads_ReadyEvent*)event;
+
+					lua_pushboolean(L,event2->state);
+					lua_setfield(L, -2, "state");
+				}
+				else if (type == GADS_AD_CONSENT_EVENT)
+				{
+					gads_ConsentEvent *event2 = (gads_ConsentEvent*)event;
+
+					lua_pushstring(L, event2->error);
+					lua_setfield(L, -2, "error");
+					lua_pushinteger(L, event2->errorcode);
+					lua_setfield(L, -2, "errorcode");
+				}
 				else
 				{
 					gads_SimpleEvent *event2 = (gads_SimpleEvent*)event;
@@ -318,9 +390,9 @@ private:
 	const char* ad_;
 };
 
-static int destruct(lua_State* L)
+static int destruct(void *p)
 {
-	void *ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	GReferenced* object = static_cast<GReferenced*>(ptr);
 	Ads *ads = static_cast<Ads*>(object->proxy());
 	
@@ -335,6 +407,15 @@ static Ads *getInstance(lua_State* L, int index)
 	Ads *ads = static_cast<Ads*>(object->proxy());
     
 	return ads;
+}
+
+static int hasProvider(lua_State *L)
+{
+    const char *ad = luaL_checkstring(L, 1);
+    bool b=gads_hasProvider(ad);
+    
+    lua_pushboolean(L, b);
+    return 1;
 }
 
 static int init(lua_State *L)
@@ -532,9 +613,36 @@ static int getHeight(lua_State *L)
     return 1;
 }
 
+static int hasConnection(lua_State *L)
+{
+    Ads *ads = getInstance(L, 1);
+    int has = ads->hasConnection();
+    lua_pushboolean(L, has);
+    return 1;
+}
+
+static int checkConsent(lua_State *L)
+{
+	gads_ConsentRequest req;
+    Ads *ads = getInstance(L, 1);
+    luaL_checktype(L,2,LUA_TTABLE);
+
+    lua_getfield(L,2,"reset");
+    req.reset=lua_toboolean(L,-1);
+    lua_pop(L,1);
+
+    lua_getfield(L,2,"underAge");
+    req.underAge=lua_toboolean(L,-1);
+    lua_pop(L,1);
+
+    lua_pushboolean(L,ads->checkConsent(&req));
+    return 1;
+}
+
 static int loader(lua_State *L)
 {
 	const luaL_Reg functionlist[] = {
+        {"hasProvider", hasProvider},
         {"new", init},
         {"setKey", setKey},
         {"loadAd", loadAd},
@@ -552,6 +660,8 @@ static int loader(lua_State *L)
         {"getHeight", getHeight},
 		{"set", set},
 		{"get", get},
+		{"hasConnection",hasConnection},
+		{"checkConsent",checkConsent},
 		{NULL, NULL},
 	};
     
@@ -574,8 +684,14 @@ static int loader(lua_State *L)
 	lua_setfield(L, -2, "AD_DISMISSED");
     lua_pushstring(L, AD_DISPLAYED);
 	lua_setfield(L, -2, "AD_DISPLAYED");
+    lua_pushstring(L, AD_REWARDED);
+	lua_setfield(L, -2, "AD_REWARDED");
+	lua_pushstring(L, ADS_READY);
+	lua_setfield(L, -2, "ADS_READY");
 	lua_pushstring(L, AD_ERROR);
 	lua_setfield(L, -2, "AD_ERROR");
+	lua_pushstring(L, AD_CONSENT);
+	lua_setfield(L, -2, "AD_CONSENT");
 	lua_pop(L, 1);
     
     return 0;
@@ -587,7 +703,7 @@ static void g_initializePlugin(lua_State *L)
     lua_getglobal(L, "package");
 	lua_getfield(L, -1, "preload");
 	
-	lua_pushcfunction(L, loader);
+	lua_pushcnfunction(L, loader,"plugin_init_ads");
 	lua_setfield(L, -2, "ads");
 	
 	lua_pop(L, 2);

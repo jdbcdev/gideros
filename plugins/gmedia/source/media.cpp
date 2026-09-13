@@ -1,11 +1,11 @@
 #include <media.h>
 #include <QApplication>
-#include <QDesktopWidget>
-#include <QCameraInfo>
+#include <QMediaDevices>
+#include <QMediaCaptureSession>
 #include <QMediaPlayer>
-#include <QMediaPlaylist>
+#include <QScreen>
 #include <QVideoWidget>
-#include <QCameraImageCapture>
+#include <QImageCapture>
 #include <QString>
 #include <QFileDialog>
 #include <QPixmap>
@@ -26,7 +26,7 @@
 	
 	bool GMEDIA::isCameraAvailable()
 	{
-        if (QCameraInfo::availableCameras().count() > 0)
+        if (QMediaDevices::videoInputs().count() > 0)
             return true;
         else
             return false;
@@ -36,41 +36,43 @@
 	{
 		if (!camera)
 		{
-        QList<QCameraInfo> cameras = QCameraInfo::availableCameras();
-        foreach (const QCameraInfo &cameraInfo, cameras) {
-            camera = new QCamera(cameraInfo);
-            break;
-        }
+            const QList<QCameraDevice> cameras = QMediaDevices::videoInputs();
+            for (const QCameraDevice &cameraDevice : cameras) {
+               camera = new QCamera(cameraDevice);
+               break;
+            }
 		}
+        if (!camera) return;
 
-        QCameraImageCapture* imageCapture = new QCameraImageCapture(camera);
+        QMediaCaptureSession captureSession;
+        captureSession.setCamera(camera);
+        QImageCapture imageCapture;
+        captureSession.setImageCapture(&imageCapture);
 
-        camera->setCaptureMode(QCamera::CaptureStillImage);
-        camera->start(); // Viewfinder frames start flowing
-
-        //on half pressed shutter button
-        camera->searchAndLock();
+        camera->start();
 
         //on shutter button pressed
+        imageCapture.capture();
+
+
         QDateTime createdDate = QDateTime::currentDateTime();
         QString format = "jpg";
         QString fileName = getAppPath() + "/" + createdDate.toString("yyyyMMdd_HHmmss") + "_gideros." + format;
 
-        connect(imageCapture, SIGNAL(imageSaved(int, const QString &)),
+        connect(&imageCapture, SIGNAL(imageSaved(int, const QString &)),
                          this,  SLOT(pictureSaved(int, const QString &)));
-        imageCapture->capture(fileName);
+        imageCapture.setFileFormat(QImageCapture::JPEG);
+        imageCapture.captureToFile(fileName);
 	}
 
     void GMEDIA::takeScreenshot()
     {
         QDateTime createdDate = QDateTime::currentDateTime();
-        //QPixmap originalPixmap = QPixmap::grabWindow(QApplication::activeWindow()->winId());
         QWidget *widget = QApplication::activeWindow();
-        QPixmap originalPixmap = QPixmap::grabWindow(QApplication::desktop()->winId());
-        QPixmap windowPixmap = originalPixmap.copy(widget->geometry().x(), widget->geometry().y(), widget->width(), widget->height());
+        QPixmap originalPixmap = widget->screen()->grabWindow(widget->winId());
         QString format = "png";
         QString fileName = getAppPath() + "/" + createdDate.toString("yyyyMMdd_HHmmss") + "_gideros." + format;
-        windowPixmap.save(fileName, format.toStdString().c_str());
+        originalPixmap.save(fileName, format.toStdString().c_str());
         onMediaReceived(fileName.toStdString().c_str());
     }
 	
@@ -92,6 +94,24 @@
         }
 	}
 	
+	void GMEDIA::getFile(const char* extensions, const char* initialPath)
+	{
+		QFileDialog *dialog = new QFileDialog(0, QObject::tr("Open File"),initialPath,QObject::tr(extensions));
+		dialog->setFileMode(QFileDialog::ExistingFile);
+		dialog->setAcceptMode(QFileDialog::AcceptOpen);
+
+		connect(dialog, &QFileDialog::finished, [this, dialog](int result) {
+			 if (result) {
+				 QString fileName = dialog->selectedFiles().at(0);
+		         onMediaReceived(fileName.toStdString().c_str());
+			 }
+			 else
+				 onMediaCanceled();
+			 dialog->deleteLater();
+		});
+		dialog->show();
+	}
+
     void GMEDIA::savePicture(const char* path)
 	{
         QFileInfo info(path);
@@ -114,18 +134,46 @@
         }
 	}
 
+void GMEDIA::saveFile(const char* path, const char* initialPath)
+	{
+        QFileInfo info(path);
+        QString format = info.suffix();        
+
+		QFileDialog *dialog = new QFileDialog(0, QObject::tr("Save As"),initialPath,
+                QObject::tr("%1 Files (*.%2);;All Files (*)")
+                .arg(format.toUpper())
+                .arg(format));
+		dialog->setFileMode(QFileDialog::AnyFile);
+		dialog->setAcceptMode(QFileDialog::AcceptSave);
+		connect(dialog, &QFileDialog::finished, [this, dialog, path](int result) {
+			 if (result) {
+				 QString fileName = dialog->selectedFiles().at(0);
+			        if (!fileName.isEmpty())
+			        {
+			            if(QFile::exists(fileName))
+			            {
+			                QFile::remove(fileName);
+			            }
+
+			            QFile::copy(path, fileName);
+			        }
+			 }
+			 dialog->deleteLater();
+		});
+		dialog->show();
+	}
+							
     void GMEDIA::playVideo(const char* path, bool force)
     {
+        G_UNUSED(force);
         QMediaPlayer* player = new QMediaPlayer;
 
-        QMediaPlaylist* playlist = new QMediaPlaylist(player);
-        playlist->addMedia(QUrl(path));
+        player->setSource(QUrl(path));
 
         QVideoWidget* videoWidget = new QVideoWidget;
         player->setVideoOutput(videoWidget);
 
         videoWidget->show();
-        playlist->setCurrentIndex(1);
         player->play();
     }
 
@@ -183,7 +231,7 @@
     void GMEDIA::pictureSaved(int id, const QString & fileName)
     {
         //on shutter button released
-        camera->unlock();
+        G_UNUSED(id);
         camera->stop();
         onMediaReceived(fileName.toStdString().c_str());
     }
@@ -221,10 +269,18 @@ void gmedia_getPicture(){
     s_gmedia->getPicture();
 }
 
+void gmedia_getFile(const char* extensions, const char* initialPath){
+    s_gmedia->getFile(extensions, initialPath);
+}
+	
 void gmedia_savePicture(const char* path){
     s_gmedia->savePicture(path);
 }
 
+void gmedia_saveFile(const char* path, const char* initialPath){
+    s_gmedia->saveFile(path, initialPath);
+}
+	
 void gmedia_playVideo(const char* path, int force){
     s_gmedia->playVideo(path, force);
 }

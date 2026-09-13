@@ -1,5 +1,6 @@
 #include <gaudio.h>
 #include "../ggaudiomanager.h"
+#include <mpg123.h>
 
 #if defined(OPENAL_SUBDIR_OPENAL)
 #include <OpenAL/al.h>
@@ -13,9 +14,13 @@
 #endif
 
 #import <AVFoundation/AVFoundation.h>
+#if !TARGET_OS_OSX
 #import <UIKit/UIKit.h>
+#else
+#import <Cocoa/Cocoa.h>
+#endif
 
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
 @interface GGAVAudioSessionDelegate : NSObject<AVAudioSessionDelegate>
 #else
 @interface GGAVAudioSessionDelegate : NSObject<NSObject>
@@ -39,7 +44,7 @@
 
 - (void)endInterruptionWithFlags:(NSUInteger)flags
 {
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
     if (flags & AVAudioSessionInterruptionFlags_ShouldResume)
         audioManager_->endInterruption();
 #endif
@@ -78,11 +83,11 @@ struct GGAudioSystemData
 void GGAudioManager::systemInit()
 {
     systemData_ = (GGAudioSystemData*)malloc(sizeof(GGAudioSystemData));
-
-    [[AVAudioSession sharedInstance] setActive:YES error:nil];
     
     systemData_->delegate = [[GGAVAudioSessionDelegate alloc] init];
     systemData_->delegate.audioManager = this;
+#if !TARGET_OS_OSX
+    [[AVAudioSession sharedInstance] setActive:YES error:nil];
 #if TARGET_OS_TV == 0
     [[AVAudioSession sharedInstance] setDelegate:systemData_->delegate];
 #endif
@@ -91,12 +96,13 @@ void GGAudioManager::systemInit()
      selector:@selector(applicationDidBecomeActive:)
      name:UIApplicationDidBecomeActiveNotification
      object:nil];
-    
+#endif
     systemData_->device = alcOpenDevice(NULL);
 
     systemData_->context = alcCreateContext(systemData_->device, NULL);
 
     alcMakeContextCurrent(systemData_->context);
+    mpg123_init();
 }
 
 void GGAudioManager::systemCleanup()
@@ -104,13 +110,16 @@ void GGAudioManager::systemCleanup()
     alcMakeContextCurrent(NULL);
     alcDestroyContext(systemData_->context);
     alcCloseDevice(systemData_->device);
+#if !TARGET_OS_OSX
 #if TARGET_OS_TV == 0
     [[AVAudioSession sharedInstance] setDelegate:nil];
 #endif
     [[NSNotificationCenter defaultCenter] removeObserver:systemData_->delegate];
-    [systemData_->delegate release];
-
     [[AVAudioSession sharedInstance] setActive:NO error:nil];
+#endif
+    mpg123_exit();
+
+    [systemData_->delegate release];
 
     free(systemData_);
 }
@@ -149,6 +158,7 @@ void GGAudioManager::endInterruption()
 void GGSoundManager::interfacesInit()
 {
     loaders_["wav"] = GGAudioLoader(gaudio_WavOpen, gaudio_WavClose, gaudio_WavRead, gaudio_WavSeek, gaudio_WavTell);
+    loaders_["mp3"] = GGAudioLoader(gaudio_Mp3Open, gaudio_Mp3Close, gaudio_Mp3Read, gaudio_Mp3Seek, gaudio_Mp3Tell);
     loaders_["mod"] = GGAudioLoader(gaudio_XmpOpen, gaudio_XmpClose, gaudio_XmpRead, gaudio_XmpSeek, gaudio_XmpTell);
     loaders_["xm"] = GGAudioLoader(gaudio_XmpOpen, gaudio_XmpClose, gaudio_XmpRead, gaudio_XmpSeek, gaudio_XmpTell);
     loaders_["it"] = GGAudioLoader(gaudio_XmpOpen, gaudio_XmpClose, gaudio_XmpRead, gaudio_XmpSeek, gaudio_XmpTell);

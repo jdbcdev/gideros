@@ -13,6 +13,8 @@
 #include "progressevent.h"
 #include "keyboardevent.h"
 #include "completeevent.h"
+#include "layoutevent.h"
+#include "permissionevent.h"
 #include "luaapplication.h"
 #include <glog.h>
 #include <algorithm>
@@ -28,6 +30,7 @@ EventDispatcherBinder::EventDispatcherBinder(lua_State* L)
 		{"removeEventListener", EventDispatcherBinder::removeEventListener},
 		{"dispatchEvent", EventDispatcherBinder::dispatchEvent},
 		{"hasEventListener", EventDispatcherBinder::hasEventListener},
+		{"removeAllListeners", EventDispatcherBinder::removeAllListeners},
 		{NULL, NULL},
 	};
 
@@ -43,9 +46,9 @@ int EventDispatcherBinder::create(lua_State* L)
 	return 1;
 }
 
-int EventDispatcherBinder::destruct(lua_State* L)
+int EventDispatcherBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	EventDispatcher* eventDispatcher = static_cast<EventDispatcher*>(ptr);
 	eventDispatcher->unref();
 
@@ -56,8 +59,9 @@ class LuaEvent : public Event
 {
 public:
 	typedef EventType<LuaEvent> Type;
+    lua_State *L;
 
-	LuaEvent(const Type& type) : Event(type.type())
+    LuaEvent(const Type& type,lua_State *L) : Event(type.type()),L(L)
 	{
 	}
 
@@ -80,6 +84,7 @@ public:
 		// 1. there is no need
 		// 2. the EventDispatcher that registers this CppLuaBridge is currently in destruction state
 
+        lua_checkstack(L,5);
 		luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
 		if (!lua_isnil(L, -1))	// bu destruct'in envtable'in set'lenmedigi bir fonksiyondan cagirilma ihtimal var. (bi hata sonrasi olabilior)
 		{
@@ -124,62 +129,82 @@ class EventTypeVisitor : public EventVisitor
 public:
 	virtual void visit(Event* v)
 	{
-		type = eEvent;
+        G_UNUSED(v); type = eEvent;
 	}
 
 	virtual void visit(EnterFrameEvent* v)
 	{
-		type = eEnterFrameEvent;
+        G_UNUSED(v); type = eEnterFrameEvent;
+	}
+
+	virtual void visit(OpenUrlEvent* v)
+	{
+        G_UNUSED(v); type = eOpenUrlEvent;
+	}
+
+	virtual void visit(TextInputEvent* v)
+	{
+        G_UNUSED(v); type = eTextInputEvent;
 	}
 
 	virtual void visit(MouseEvent* v)
 	{
-		type = eMouseEvent;
+        G_UNUSED(v); type = eMouseEvent;
 	}
 
 	virtual void visit(TouchEvent* v)
 	{
-		type = eTouchEvent;
+        G_UNUSED(v); type = eTouchEvent;
 	}
 
 	virtual void visit(TimerEvent* v)
 	{
-		type = eTimerEvent;
+        G_UNUSED(v); type = eTimerEvent;
 	}
 
 	virtual void visit(AccelerometerEvent* v)
 	{
-		type = eAccelerometerEvent;
+        G_UNUSED(v); type = eAccelerometerEvent;
 	}
 
 	virtual void visit(StageOrientationEvent* v)
 	{
-		type = eStageOrientationEvent;
+        G_UNUSED(v); type = eStageOrientationEvent;
 	}
 
 	virtual void visit(ErrorEvent* v)
 	{
-		type = eErrorEvent;
+        G_UNUSED(v); type = eErrorEvent;
 	}
 
 	virtual void visit(ProgressEvent* v)
 	{
-		type = eProgressEvent;
+        G_UNUSED(v); type = eProgressEvent;
 	}
 
 	virtual void visit(KeyboardEvent* v)
 	{
-		type = eKeyboardEvent;
+        G_UNUSED(v); type = eKeyboardEvent;
 	}
 
     virtual void visit(CompleteEvent* v)
     {
-        type = eCompleteEvent;
+        G_UNUSED(v); type = eCompleteEvent;
     }
 
-	virtual void visitOther(Event* v, void* data)
+    virtual void visit(LayoutEvent* v)
+    {
+        G_UNUSED(v); type = eLayoutEvent;
+    }
+
+    virtual void visit(PermissionEvent* v)
+    {
+        G_UNUSED(v); type = ePermissionEvent;
+    }
+
+    virtual void visitOther(Event* v, void* data)
 	{
-		type = eLuaEvent;
+        G_UNUSED(v); G_UNUSED(data); type = eLuaEvent;
 	}
 
 	enum Type
@@ -195,6 +220,10 @@ public:
 		eProgressEvent,
 		eKeyboardEvent,
         eCompleteEvent,
+        eLayoutEvent,
+		eOpenUrlEvent,
+		eTextInputEvent,
+        ePermissionEvent,
 		eLuaEvent,
 	};
 
@@ -372,6 +401,18 @@ public:
 
             lua_pushnumber(L, v->button);
             lua_setfield(L, -2, "button");
+
+            lua_pushnumber(L, v->modifiers);
+            lua_setfield(L, -2, "modifiers");
+
+            switch (v->mouseType){
+                case 0: {lua_pushstring(L, "mouse"); break;}
+                case 1: {lua_pushstring(L, "pen"); break;}
+                case 2: {lua_pushstring(L, "finger"); break;}
+                case 3: {lua_pushstring(L, "penTablet"); break;}
+            }
+            lua_setfield(L, -2, "mouseType");
+
 		}
 		else
 		{
@@ -419,7 +460,12 @@ public:
         lua_pushnumber(L, ry);
         lua_setfield(L, -2, "ry");
 		
-		
+        lua_pushnumber(L, touch->modifiers);
+        lua_setfield(L, -2, "modifiers");
+
+        lua_pushnumber(L, touch->mouseButton);
+        lua_setfield(L, -2, "mouseButton");
+
         lua_pushnumber(L, touch->pressure);
         lua_setfield(L, -2, "pressure");
 
@@ -555,6 +601,7 @@ public:
 
 	virtual void visit(AccelerometerEvent* v)
 	{
+        G_UNUSED(v);
 		//TODO
 
 	}
@@ -597,27 +644,138 @@ public:
 		lua_call(L, 1, 0);
 	}
 
-	virtual void visit(ErrorEvent* v)
-	{
-		StackChecker checker(L, "visit(ErrorEvent* v)", 0);
+    virtual void visit(ErrorEvent* v)
+    {
+        StackChecker checker(L, "visit(ErrorEvent* v)", 0);
 
-		// get closure
-		luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
-		lua_pushlightuserdata(L, bridge_);
-		lua_rawget(L, -2);
-		lua_remove(L, -2);		// remove env["eventClosures"]
+        // get closure
+        luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
+        lua_pushlightuserdata(L, bridge_);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);		// remove env["eventClosures"]
 
-		bool newTable = pushEventTable(v, "Event");
+        bool newTable = pushEventTable(v, "Event");
 
-		if (newTable == true)
-		{
-			lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
-			lua_setfield(L, -2, "type");
-		}
+        if (newTable == true)
+        {
+            lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
+            lua_setfield(L, -2, "type");
+        }
 
-		lua_call(L, 1, 0);
-	}
+        lua_call(L, 1, 0);
+    }
 
+    virtual void visit(LayoutEvent* v)
+    {
+        StackChecker checker(L, "visit(LayoutEvent* v)", 0);
+
+        // get closure
+        luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
+        lua_pushlightuserdata(L, bridge_);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);		// remove env["eventClosures"]
+
+        bool newTable = pushEventTable(v, "Event");
+
+        if (newTable == true)
+        {
+            lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
+            lua_setfield(L, -2, "type");
+        }
+        lua_pushnumber(L, v->width);
+        lua_setfield(L, -2, "width");
+
+        lua_pushnumber(L, v->height);
+        lua_setfield(L, -2, "height");
+
+        lua_call(L, 1, 0);
+    }
+
+    virtual void visit(PermissionEvent* v)
+    {
+        StackChecker checker(L, "visit(PermissionEvent* v)", 0);
+
+        // get closure
+        luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
+        lua_pushlightuserdata(L, bridge_);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);		// remove env["eventClosures"]
+
+        bool newTable = pushEventTable(v, "Event");
+
+        if (newTable == true)
+        {
+            lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
+            lua_setfield(L, -2, "type");
+         }
+
+        lua_newtable(L);
+        for (auto it=v->permissions.begin(); it!=v->permissions.end();it++)
+        {
+            lua_pushboolean(L,it->second);
+            lua_rawsetfield(L,-2,it->first.c_str());
+        }
+        lua_setfield(L, -2, "permissions");
+
+        lua_call(L, 1, 0);
+    }
+
+    virtual void visit(OpenUrlEvent* v)
+    {
+        StackChecker checker(L, "visit(OpenUrlEvent* v)", 0);
+
+        // get closure
+        luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
+        lua_pushlightuserdata(L, bridge_);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);		// remove env["eventClosures"]
+
+        bool newTable = pushEventTable(v, "Event");
+
+        if (newTable == true)
+        {
+            lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
+            lua_setfield(L, -2, "type");
+        }
+
+        lua_pushstring(L, v->url());
+        lua_setfield(L, -2, "url");
+
+        lua_call(L, 1, 0);
+    }
+
+    virtual void visit(TextInputEvent* v)
+    {
+        StackChecker checker(L, "visit(TextInputEvent* v)", 0);
+
+        // get closure
+        luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
+        lua_pushlightuserdata(L, bridge_);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);		// remove env["eventClosures"]
+
+        bool newTable = pushEventTable(v, "Event");
+
+        if (newTable == true)
+        {
+            lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
+            lua_setfield(L, -2, "type");
+        }
+
+        lua_pushstring(L, v->text());
+        lua_setfield(L, -2, "text");
+
+        lua_pushstring(L, v->context());
+        lua_setfield(L, -2, "context");
+
+        lua_pushinteger(L, v->selStart());
+        lua_setfield(L, -2, "selectionStart");
+
+        lua_pushinteger(L, v->selEnd());
+        lua_setfield(L, -2, "selectionEnd");
+
+        lua_call(L, 1, 0);
+    }
 
 	virtual void visit(ProgressEvent* v)
 	{
@@ -635,13 +793,13 @@ public:
 		{
 			lua_pushstring(L, v->type()); // TODO: buna artik ihtiyac yok. direk Event'te getType() fonksiyonu var
 			lua_setfield(L, -2, "type");
-
-			lua_pushinteger(L, v->bytesLoaded);
-			lua_setfield(L, -2, "bytesLoaded");
-
-			lua_pushinteger(L, v->bytesTotal);
-			lua_setfield(L, -2, "bytesTotal");
 		}
+
+		lua_pushinteger(L, v->bytesLoaded);
+		lua_setfield(L, -2, "bytesLoaded");
+
+		lua_pushinteger(L, v->bytesTotal);
+		lua_setfield(L, -2, "bytesTotal");
 
 		lua_call(L, 1, 0);
 	}
@@ -682,6 +840,11 @@ public:
 
             lua_pushstring(L, v->charCode.c_str());
             lua_setfield(L, -2, "text");
+
+            if (v->modifiers!=-1) {
+                lua_pushinteger(L, v->modifiers);
+                lua_setfield(L, -2, "modifiers");
+            }
 		}
 		else
 		{
@@ -814,14 +977,14 @@ private:
 
 void CppLuaBridge::luaEvent(LuaEvent* event)
 {
-	StackChecker checker(L, "CppLuaBridge::luaEvent", 0);
-
 	EventTypeVisitor v;
 	event->apply(&v);
 
 	if (v.type == EventTypeVisitor::eLuaEvent)
 	{
-		// get closure
+        lua_State *L=event->L;
+        StackChecker checker(L, "CppLuaBridge::luaEvent", 0);
+        // get closure
 		luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key_eventClosures);
 		lua_pushlightuserdata(L, this);
 		lua_rawget(L, -2);
@@ -833,6 +996,7 @@ void CppLuaBridge::luaEvent(LuaEvent* event)
 	}
 	else
 	{
+        StackChecker checker(L, "CppLuaBridge::luaEvent", 0);
 #if 1
 		PushEventVisitor v(L, this);
 		event->apply(&v);
@@ -998,6 +1162,7 @@ int EventDispatcherBinder::addEventListener(lua_State* L)
 
 	const char* event = lua_tostring(L, 2);
 	int eventid = StringId::instance().id(event);
+	const char *cevent=StringId::instance().str(eventid);
 
 	const std::vector<CppLuaBridge*>& bridges = map[eventid]; 
 
@@ -1057,7 +1222,7 @@ int EventDispatcherBinder::addEventListener(lua_State* L)
 		lua_pushvalue(L, 3);	// function
         lua_rawseti(L, -2, 2);
 
-        lua_pushcclosure(L, &eventClosure, 1);
+        lua_pushcnclosure(L, &eventClosure, 1, cevent);
 	}
 	else
 	{
@@ -1074,7 +1239,7 @@ int EventDispatcherBinder::addEventListener(lua_State* L)
         lua_pushvalue(L, 4);	// data
         lua_rawseti(L, -2, 3);
 
-        lua_pushcclosure(L, &eventClosureWithData, 1);
+        lua_pushcnclosure(L, &eventClosureWithData, 1, cevent);
 	}
 	lua_rawset(L, -3);					// envtable["eventClosures"][bridge] = closure
 	lua_pop(L, 1);						// pop envtable["eventClosures"]
@@ -1084,13 +1249,13 @@ int EventDispatcherBinder::addEventListener(lua_State* L)
 	if (hasData == false)
 	{
 		lua_pushvalue(L, 3);	// function
-		lua_pushcclosure(L, &eventCheckClosure, 1);
+		lua_pushcnclosure(L, &eventCheckClosure, 1, cevent);
 	}
 	else
 	{
 		lua_pushvalue(L, 3);	// function
 		lua_pushvalue(L, 4);	// data
-		lua_pushcclosure(L, &eventCheckClosureWithData, 2);
+		lua_pushcnclosure(L, &eventCheckClosureWithData, 2, cevent);
 	}
 	lua_rawset(L, -3);
 	
@@ -1119,18 +1284,19 @@ int EventDispatcherBinder::dispatchEvent(lua_State* L)
 	lua_call(L, 1, 1);
 	std::string event = luaL_checkstring(L, -1);
 	lua_pop(L, 1);
-	LuaEvent e = LuaEvent(LuaEvent::Type(event.c_str()));
+    LuaEvent e = LuaEvent(LuaEvent::Type(event.c_str()),L);
 
-    LuaApplication *application = (LuaApplication*)luaL_getdata(L);
-    lua_State *mainL = application->getLuaState();
+    //LuaApplication *application = (LuaApplication*)luaL_getdata(L);
+    //lua_State *mainL = application->getLuaState();
 
     lua_pushvalue(L, 2);    // push event to main thread
-    if (mainL != L)
-        lua_xmove(L, mainL, 1);
+    /*if (mainL != L)
+        lua_xmove(L, mainL, 1);*/
 
     eventDispatcher->dispatchEvent(&e);
 
-    lua_pop(mainL, 1);      // pop event from main thread
+    //lua_pop(mainL, 1);      // pop event from main thread
+    lua_pop(L,1);
 
 	return 0;
 }
@@ -1237,4 +1403,21 @@ int EventDispatcherBinder::hasEventListener(lua_State* L)
 	}
 
 	return 1;
+}
+
+int EventDispatcherBinder::removeAllListeners(lua_State* L)
+{
+	StackChecker checker(L, "EventDispatcherBinder::removeAllListener", 0);
+
+	Binder binder(L);
+	EventDispatcher* eventDispatcher = static_cast<EventDispatcher*>(binder.getInstance("EventDispatcher"));
+
+	eventDispatcher->removeEventListeners();
+
+    //EventBinderMap *map=static_cast<EventBinderMap*>(eventDispatcher->data(&key_map));
+    eventDispatcher->setData(&key_map, nullptr);
+    lua_pushnil(L);
+    lua_setfield(L,1,"__events");
+
+	return 0;
 }

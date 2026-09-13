@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>584</width>
-    <height>391</height>
+    <width>777</width>
+    <height>436</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -42,27 +42,17 @@ target platform to export the application source.</string>
        </property>
        <item>
         <property name="text">
-         <string>iOS</string>
+         <string>Apple</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>Android</string>
+         <string>Desktop</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>Windows Desktop</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>Mac OS X Desktop</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>WinRT</string>
+         <string>UWP</string>
         </property>
        </item>
        <item>
@@ -73,6 +63,11 @@ target platform to export the application source.</string>
        <item>
         <property name="text">
          <string>Win32</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Linux</string>
         </property>
        </item>
        <item>
@@ -104,7 +99,7 @@ target platform to export the application source.</string>
      </property>
      <widget class="QWidget" name="tab">
       <attribute name="title">
-       <string>iOS</string>
+       <string>Apple</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_51">
        <item>
@@ -112,7 +107,7 @@ target platform to export the application source.</string>
          <item>
           <widget class="QLabel" name="label1">
            <property name="text">
-            <string>Bundle ID:   </string>
+            <string>iOS Bundle ID:   </string>
            </property>
           </widget>
          </item>
@@ -122,6 +117,48 @@ target platform to export the application source.</string>
             <string>com.yourdomain.yourapp</string>
            </property>
           </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_10">
+         <item>
+          <widget class="QLabel" name="label_12">
+           <property name="text">
+            <string>Apple TV Bundle ID:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="atv_bundle"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_11">
+         <item>
+          <widget class="QLabel" name="label_13">
+           <property name="text">
+            <string>MacOS Bundle ID:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="macos_bundle"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_12">
+         <item>
+          <widget class="QLabel" name="label_14">
+           <property name="text">
+            <string>MacOS Application category:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="macos_category"/>
          </item>
         </layout>
        </item>
@@ -140,152 +177,48 @@ target platform to export the application source.</string>
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="tab_2">
-      <attribute name="title">
-       <string>Android</string>
-      </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_3">
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_33">
-         <item>
-          <widget class="QLabel" name="label2">
-           <property name="toolTip">
-            <string>Defines the package name of the Android application.
-
-Generally speaking, the first 2 package &quot;words&quot; are your
-web address in reverse.
-
-Example: com.giderosmobile.timthetimber</string>
-           </property>
-           <property name="text">
-            <string>Select Template:</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QComboBox" name="android_template">
-           <property name="minimumSize">
-            <size>
-             <width>90</width>
-             <height>0</height>
-            </size>
-           </property>
-           <item>
-            <property name="text">
-             <string>Eclipse</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Android Studio</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_39">
-         <item>
-          <widget class="QLabel" name="label3_3">
-           <property name="toolTip">
-            <string>Defines the package name of the Android application.
-
-Generally speaking, the first 2 package &quot;words&quot; are your
-web address in reverse.
-
-Example: com.giderosmobile.timthetimber</string>
-           </property>
-           <property name="text">
-            <string>Package Name:</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="packageName">
-           <property name="text">
-            <string>com.yourdomain.yourapp</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_2">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>72</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="tab_3">
-      <attribute name="title">
-       <string>Windows Desktop</string>
-      </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_52">
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_40">
-         <item>
-          <widget class="QLabel" name="label4_2">
-           <property name="text">
-            <string>Organization:</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="win_org">
-           <property name="text">
-            <string>GiderosMobile</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_3">
-         <item>
-          <widget class="QLabel" name="label5_2">
-           <property name="text">
-            <string>Domain:       </string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="win_domain">
-           <property name="text">
-            <string>giderosmobile.com</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <spacer name="verticalSpacer11">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>41</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-      </layout>
-     </widget>
      <widget class="QWidget" name="tab_4">
       <attribute name="title">
-       <string>Mac OS X Desktop</string>
+       <string>QT Desktop</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_5">
+       <item>
+        <widget class="QLabel" name="label_15">
+         <property name="text">
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;Warning&lt;/span&gt; This exports requires you to comply with or acquire a &lt;a href=&quot;https://www.qt.io/licensing/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;QT License&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_13">
+         <item>
+          <widget class="QLabel" name="label_5">
+           <property name="text">
+            <string>Platform:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="qtexp_platform">
+           <item>
+            <property name="text">
+             <string>Windows</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Mac OS</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Linux</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+        </layout>
+       </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_38">
          <item>
@@ -296,7 +229,7 @@ Example: com.giderosmobile.timthetimber</string>
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="osx_org">
+          <widget class="QLineEdit" name="qtexp_org">
            <property name="text">
             <string>GiderosMobile</string>
            </property>
@@ -314,7 +247,7 @@ Example: com.giderosmobile.timthetimber</string>
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="osx_domain">
+          <widget class="QLineEdit" name="qtexp_domain">
            <property name="text">
             <string>giderosmobile.com</string>
            </property>
@@ -327,7 +260,7 @@ Example: com.giderosmobile.timthetimber</string>
          <item>
           <widget class="QLabel" name="label6">
            <property name="text">
-            <string>Bundle ID:      </string>
+            <string>Bundle ID (OSX):      </string>
            </property>
           </widget>
          </item>
@@ -345,7 +278,7 @@ Example: com.giderosmobile.timthetimber</string>
          <item>
           <widget class="QLabel" name="label3_2">
            <property name="text">
-            <string>App Category:</string>
+            <string>App Category (OSX):</string>
            </property>
           </widget>
          </item>
@@ -368,6 +301,34 @@ Example: com.giderosmobile.timthetimber</string>
         </layout>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_6">
+         <item>
+          <widget class="QLabel" name="label_8">
+           <property name="text">
+            <string>Signing identity (OSX):</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="osx_signingid"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_7">
+         <item>
+          <widget class="QLabel" name="label_10">
+           <property name="text">
+            <string>Installer signing identity (OSX):</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="osx_installerid"/>
+         </item>
+        </layout>
+       </item>
+       <item>
         <spacer name="verticalSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -384,7 +345,7 @@ Example: com.giderosmobile.timthetimber</string>
      </widget>
      <widget class="QWidget" name="tab1">
       <attribute name="title">
-       <string>WinRT</string>
+       <string>UWP</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_61">
        <item>
@@ -459,7 +420,7 @@ A universal solution is created containing a Windows Phone and Windows Store pro
        <item>
         <widget class="QLabel" name="label_7">
          <property name="text">
-          <string>(ALPHA) Generate a single .GApp file playable by QT-Based desktop players.</string>
+          <string>Generate a single .GApp file playable by QT-Based desktop players.</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -489,19 +450,24 @@ A universal solution is created containing a Windows Phone and Windows Store pro
        <item>
         <widget class="QLabel" name="label_6">
          <property name="text">
-          <string>
-Beta version. Should be feature complete but use with caution!
-
-This is the same as Windows Desktop export except it produces a lightweight export without Qt libraries. The package is smaller and may run smoother. 
-
-The exported program will attempt to use VSYNC to time the drawing of frames (30 or 60 fps, whichever you have selected). If VSYNC (which is graphics card dependent) is not detected on the PC, it will fall back to Windows timer events. To overide this behaviour, and ALWAYS uses timer events, launch with &quot;win32 timer&quot;
-
-win32.exe and win32console.exe in export are identical except the latter runs without a console window popping up.
-
-* No extra settings for Win32.</string>
+          <string>The exported program will attempt to use VSYNC to time the drawing of frames (30 or 60 fps, whichever you have selected). If VSYNC (which is graphics card dependent) is not detected on the PC, it will fall back to Windows timer events. To overide this behaviour, and ALWAYS uses timer events, launch with &quot;win32 timer&quot;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="win32_console">
+         <property name="text">
+          <string>Open console</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="win32_gapp">
+         <property name="text">
+          <string>Package assets</string>
          </property>
         </widget>
        </item>
@@ -520,6 +486,24 @@ win32.exe and win32console.exe in export are identical except the latter runs wi
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tab_2">
+      <attribute name="title">
+       <string>Linux</string>
+      </attribute>
+      <widget class="QLabel" name="label_16">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>721</width>
+         <height>16</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Export a Linux project. No specific settings yet.</string>
+       </property>
+      </widget>
+     </widget>
      <widget class="QWidget" name="tab_6">
       <attribute name="title">
        <string>Html5</string>
@@ -536,6 +520,66 @@ win32.exe and win32console.exe in export are identical except the latter runs wi
         </widget>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_8">
+         <item>
+          <widget class="QCheckBox" name="html5_fbinstant">
+           <property name="text">
+            <string>Facebook Instant Game</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_9">
+           <property name="text">
+            <string>Preload amount</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="html5_fbload">
+           <property name="suffix">
+            <string> %</string>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="singleStep">
+            <number>10</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_4">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="horizontalLayout_4">
          <item>
           <widget class="QLabel" name="label_4">
@@ -550,16 +594,47 @@ win32.exe and win32console.exe in export are identical except the latter runs wi
         </layout>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <layout class="QHBoxLayout" name="horizontalLayout_5"/>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="html5_pwa">
+         <property name="text">
+          <string>Enable PWA</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="html5_pack">
+         <property name="text">
+          <string>Compress files: lower download time but higher memory usage during loading</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="html5_symbols">
+         <property name="text">
+          <string>Output symbols (for debugging)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QDialogButtonBox" name="buttonBox_2">
+         <property name="standardButtons">
+          <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_9">
          <item>
-          <widget class="QLabel" name="label_5">
+          <widget class="QLabel" name="label_11">
            <property name="text">
-            <string>Maximum memory usage (in MB), adjust according to your app needs:</string>
+            <string>Crash reporting URL:</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="html5_mem"/>
+          <widget class="QLineEdit" name="html5_crash"/>
          </item>
         </layout>
        </item>
@@ -618,13 +693,6 @@ win32.exe and win32console.exe in export are identical except the latter runs wi
       <widget class="QCheckBox" name="encryptCode">
        <property name="text">
         <string>Encrypt code files</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="plugins_choose">
-       <property name="text">
-        <string>Select plugins...</string>
        </property>
       </widget>
      </item>

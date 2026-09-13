@@ -9,9 +9,13 @@
 #endif
 #include <QList>
 #include <deque>
-#include <Qsci/qsciscintilla.h>
 #include <QFontMetrics>
 #include <QListWidget>
+#include "addons.h"
+#include "bytebuffer.h"
+#include <QTemporaryDir>
+
+#include <QColorDialog>
 
 #define NEW_CLIENT
 
@@ -30,6 +34,7 @@ class FindInFilesDialog;
 class QSplitter;
 class QProcess;
 class QComboBox;
+class OutlineWidget;
 
 #include "mdiarea.h"
 
@@ -52,7 +57,7 @@ public:
 		QFont f("Courier New", 8);
 #endif
 		QFontMetrics fm(f);
-		setTabStopWidth(fm.width("1234"));
+        setTabStopDistance(fm.horizontalAdvance("1234"));
 		df_.setFont(f);
 
         found = false;
@@ -157,6 +162,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = 0);
 	~MainWindow();
+    static QTemporaryDir *tempDir;
 
 private:
 	virtual void timerEvent(QTimerEvent*);
@@ -164,12 +170,19 @@ private:
 
     virtual void keyPressEvent(QKeyEvent * event);
     virtual void keyReleaseEvent(QKeyEvent * event);
+    QVariant deserializeValue(ByteBuffer &buffer,QString &vtype);
 
 private slots:
 	void onSingleShot();
 	void onTimer();
 	void start();
-	void stop();
+    void startDebug();
+    void startProfile();
+    void resume();
+    void stepOver();
+    void stepInto();
+    void stepReturn();
+    void stop();
 	void startAllPlayers();
 	void newProject();
 	void closeProject();
@@ -179,12 +192,17 @@ private slots:
     void reloadProject();
 //	void onModified();
 	void startPlayer();
+	void startTexturePacker();
+	void startFontCreator();
+	void setWrap();
+	void insertColorInCode();
 	void fileAssociations();
 	void exportProject();
 	void exportPack();
+    void cloneProject();
+    void consolidateProject();
 
 	void save();
-	void saveAll();
 	bool maybeSave();
 
 	void compile();
@@ -197,12 +215,14 @@ private slots:
 	void hideStartPage();
 
 	void openAboutDialog();
-	void developerCenter();
+    void openPreferencesDialog();
 	void helpAndSupport();
-	void apiDocumentation();
     void giderosDocumentation();
 
+    void toggleFullscreen();
 	void closeMdiTab(int);
+
+    void lookupSymbol(QString sym,int x,int y);
 
 private slots:
 	void onOpenRequest(const QString& itemName, const QString& fileName);
@@ -212,6 +232,8 @@ private slots:
 
 private:
 	TextEdit* openFile(const QString& fileName, bool suppressErrors = false);
+    void resumeDebug(int mode);
+    void clearDebugHighlights();
 
 private slots:
 	void outputMouseDoubleClick(QMouseEvent* e);
@@ -230,22 +252,26 @@ private:
 	unsigned int sendStopMessage();
 
 	Ui::MainWindowClass ui;
-
+	AddonsServer *addonsServer_;
 	LibraryWidget* libraryWidget_;
 	QTextEditEx* outputWidget_;
 	PreviewWidget* previewWidget_;
+	OutlineWidget* outlineWidget_;
 	QComboBox *players_;
 #ifndef NEW_CLIENT
 	Client* client_;
 #else
 	GiderosNetworkClient* client_;
 #endif
+	bool clientIsWeb_;
 //	std::map<int, QString> sentMap_;
 	std::deque<QPair<QString, QString> > fileQueue_;
 
 	void cancelUpload();
 	bool isTransferring_;
-
+	bool isBreaked_;
+    bool isDebug_;
+    bool isProfile_;
 
 private:
 //	void enableUI();
@@ -255,6 +281,7 @@ private:
 	QDockWidget* libraryDock_;
 	QDockWidget* outputDock_;
 	QDockWidget* previewDock_;
+    QDockWidget* outlineDock_;
 	MdiArea* mdiArea_;
 
 	QSplitter* splitter1_;
@@ -266,6 +293,8 @@ private:
 	QString projectDirectory() const;
 	QString projectFileName_;
     QString makeProjectRelativePath(const QString& path) const;
+    QPoint lookupSymbolPoint;
+    TextEdit *lookupSymbolWidget;
 
 #if 0
 private slots:
@@ -285,14 +314,14 @@ private slots:
 	void openRecentProject();
 
 private:
-	FindDialog* findDialog_;
-	ReplaceDialog* replaceDialog_;
-	FindInFilesDialog* findInFilesDialog_;
-	QString findWhat_;
-	bool wholeWord_;
-	bool matchCase_;
-    bool wrapSearch_;
-    bool regexp_;
+	//~ FindDialog* findDialog_;
+	//~ ReplaceDialog* replaceDialog_;
+	//~ FindInFilesDialog* findInFilesDialog_;
+	//~ QString findWhat_;
+	//~ bool wholeWord_;
+	//~ bool matchCase_;
+    //~ bool wrapSearch_;
+    //~ bool regexp_;
 
     bool inChooseTab_;
     int changeTabKeyPressState_;
@@ -300,7 +329,11 @@ private:
 private:
 	QList<QStringList> fileAssociations_;
 
-	
+private slots:
+    void zoom(int zoom);
+private:
+    int globalZoomLevel_;
+
 private slots:
 	void find();
 	void findFirst();
@@ -315,6 +348,8 @@ private slots:
 	void findInFiles();
 
     void actionLocalhostToggle(bool checked);
+    void actionLiveSyntaxChecking(bool checked);
+    void actionLiveTypeChecking(bool checked);
     void clearOutput();
     void searchOutput( const QString &text);
 
@@ -327,6 +362,7 @@ private slots:
 private slots:
 	void undo();
 	void redo();
+	void autoIndent();
 
 private slots:
 	void goToLine();
@@ -344,7 +380,7 @@ private slots:
 #endif
 
 private slots:
-	void playerChanged(const QString & text);
+    void playerChanged(int);
 	void showOutputPanel();
 	void showLibraryManager();
 
@@ -364,6 +400,7 @@ private:
 	void loadMD5();
 	void saveMD5();
 	std::vector<std::pair<QString, QString> > updateMD5(bool downsizing = false);
+	void launchAddon(QString name,QString forFile);
 
 private slots:
 	void downsize(const QString& filename);
@@ -376,6 +413,7 @@ private:
     QProcess *makeProcess_;
     QProcess *luaProcess_;
 private slots:
+	void addonTriggered();
     void stdoutToOutput();
     void stderrToOutput();
     void makeStarted();
@@ -386,6 +424,26 @@ private slots:
     void on_actionReset_UI_and_Editor_Theme_triggered();
     void on_actionFold_Unfold_All_triggered();
     void on_actionFold_Unfold_Top_triggered();
+    void on_actionBlock_un_comment_triggered();
+
+public:
+    static MainWindow *lua_instance;
+    void notifyAddon(QString clientId,const char *data);
+	void toggleToolBar(bool append);
+	
+	FindDialog* findDialog_;
+	ReplaceDialog* replaceDialog_;
+	FindInFilesDialog* findInFilesDialog_;
+	QString findWhat_;
+	bool wholeWord_;
+	bool matchCase_;
+	bool wrapSearch_;
+	bool regexp_;
+	
+	void showStatusbarMessage(QString message, int timeout);
+	
+public slots:
+    void saveAll();
 };
 
 #endif // MAINWINDOW_H

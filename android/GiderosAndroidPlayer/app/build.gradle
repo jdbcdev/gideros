@@ -1,0 +1,35 @@
+apply plugin: 'com.android.library'
+
+android {
+    defaultConfig {
+        minSdkVersion 9
+        targetSdkVersion 19
+        compileSdk 34
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+    dependencies {
+    }
+    namespace 'com.giderosmobile.android.player'
+}
+
+android.libraryVariants.all { variant ->
+    String variantCap = variant.name.capitalize();
+    String taskName = String.format("stripRedefined%sClasses", variantCap)
+    String preTaskName = String.format("compile%sJavaWithJavac", variantCap)
+    task "${taskName}"  {
+        doLast {
+            String gpath="${buildDir}/intermediates/javac/${variant.name}/compile${variant.name}JavaWithJavac/classes/com/giderosmobile/android";
+            file("${gpath}/GiderosSettings.class").delete()
+            file("${gpath}/player/BuildConfig.class").delete()
+            file("${gpath}/player/R.class").delete()
+        }
+    }
+    
+    tasks.named(preTaskName) { finalizedBy(taskName) }    
+}

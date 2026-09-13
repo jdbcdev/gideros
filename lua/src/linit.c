@@ -25,6 +25,9 @@ static const luaL_Reg lualibs[] = {
   {LUA_DBLIBNAME, luaopen_debug},
   {LUA_UTF8LIBNAME, luaopen_utf8},
   {LUA_INT64LIBNAME, luaopen_int64},
+#ifdef GIDEROS_DESKTOP_EXTRALIBS
+  {"lfs", luaopen_lfs},
+#endif
   {NULL, NULL}
 };
 
@@ -32,7 +35,7 @@ static const luaL_Reg lualibs[] = {
 LUALIB_API void luaL_openlibs (lua_State *L) {
   const luaL_Reg *lib = lualibs;
   for (; lib->func; lib++) {
-    lua_pushcfunction(L, lib->func);
+    lua_pushcnfunction(L, lib->func, lib->name);
     lua_pushstring(L, lib->name);
     lua_call(L, 1, 0);
   }

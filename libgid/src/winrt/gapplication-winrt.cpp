@@ -1,5 +1,6 @@
 #include <gapplication.h>
 #include <gapplication-winrt.h>
+#include <giderosapi.h>
 
 using namespace Windows::Graphics::Display;
 using namespace Windows::ApplicationModel::Core;
@@ -18,15 +19,19 @@ public:
         gevent_RemoveEventsWithGid(gid_);
     }
 	
-	int getScreenDensity()
+	int getScreenDensity(int *ldpi)
     {   
-		DisplayInformation ^dinfo = DisplayInformation::GetForCurrentView();
-		return (dinfo->RawDpiX+dinfo->RawDpiY)/2;
+		int dpi;
+		gdr_dispatchUi([&] {
+			DisplayInformation ^dinfo = DisplayInformation::GetForCurrentView();
+			dpi= (dinfo->RawDpiX + dinfo->RawDpiY) / 2;
+			*ldpi = dinfo->LogicalDpi;
+		}, true);
+		return dpi;
     }
 
 	void exit()
 	{
-		//App.Current.Exit();
 	}
 
     g_id addCallback(gevent_Callback callback, void *udata)
@@ -95,8 +100,8 @@ void gapplication_exit()
 	s_manager->exit();
 }
 
-int gapplication_getScreenDensity(){
-	return s_manager->getScreenDensity();
+int gapplication_getScreenDensity(int *ldpi) {
+	return s_manager->getScreenDensity(ldpi);
 }
 
 void gapplication_enqueueEvent(int type, void *event, int free)

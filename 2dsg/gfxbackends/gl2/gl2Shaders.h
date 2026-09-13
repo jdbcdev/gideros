@@ -13,26 +13,40 @@
 #include "Matrices.h"
 #include "gtexture.h"
 
+
 #ifdef __APPLE__
    #include <TargetConditionals.h>
 #endif
 
-#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+#ifdef QT_CORE_LIB
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
+#include <QOpenGLExtraFunctions>
+#define GLCALL_CHECK if (!QOpenGLContext::currentContext()) return;
+#define GLCALL_INIT QOpenGLFunctions *glFuncs = QOpenGLContext::currentContext()->functions();
+#define GLCALL glFuncs->
+#define GLECALL_INIT QOpenGLExtraFunctions *gleFuncs = QOpenGLContext::currentContext()->extraFunctions();
+#define GLECALL gleFuncs->
+#define OPENGL_ES
+#elif TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
 #ifdef GIDEROS_GL1
     #include <OpenGLES/ES1/gl.h>
     #include <OpenGLES/ES1/glext.h>
 #else
-	#include <OpenGLES/ES2/gl.h>
-	#include <OpenGLES/ES2/glext.h>
+	#include <OpenGLES/ES3/gl.h>
+	#include <OpenGLES/ES3/glext.h>
 #endif
 #define OPENGL_ES
+#elif TARGET_OS_OSX
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
 #elif __ANDROID__
 #ifdef GIDEROS_GL1
     #include <GLES/gl.h>
     #include <GLES/glext.h>
 #else
-    #include <GLES2/gl2.h>
-    #include <GLES2/gl2ext.h>
+    #include <GLES3/gl3.h>
+    #include <GLES3/gl3ext.h>
 #endif
 #define OPENGL_ES
 #elif WINSTORE
@@ -40,11 +54,11 @@
 #define OPENGL_DESKTOP
 #elif EMSCRIPTEN
 #define	OPENGL_ES
-    #include <GLES2/gl2.h>
-    #include <GLES2/gl2ext.h>
+    #include <GLES3/gl3.h>
+//    #include <GLES3/gl3ext.h>
 #elif RASPBERRY_PI
-    #include <GLES2/gl2.h>
-    #include <GLES2/gl2ext.h>
+    #include <GLES3/gl3.h>
+//    #include <GLES3/gl3ext.h>
 #define OPENGL_ES
 #else
 #include <GL/glew.h>
@@ -53,6 +67,14 @@
 
 #ifdef OPENGL_DESKTOP
 #include "glcompat.h"
+#endif
+
+#ifndef GLCALL
+#define GLCALL
+#define GLCALL_INIT
+#define GLCALL_CHECK
+#define GLECALL
+#define GLECALL_INIT
 #endif
 
 #ifdef OPENGL_ES
@@ -68,6 +90,7 @@
 #endif
 
 
+#define GL2SHADERS_COMMON_GENVBO
 class ogl2ShaderProgram : public ShaderProgram
 {
 	friend class ogl2ShaderEngine;
@@ -83,30 +106,52 @@ class ogl2ShaderProgram : public ShaderProgram
     unsigned long uninit_uniforms;
     void *cbData;
     int cbsData;
-    static GLint curProg;
+#ifdef GL2SHADERS_COMMON_GENVBO
+    static std::vector<GLuint> freeVBOs[2];
+    static std::vector<GLuint> usedVBOs[2];
+    static std::vector<GLuint> renderedVBOs[2];
+    static GLuint curGenVBO[2];
+    static size_t genBufferOffset[2];
+    static GLuint allocateVBO(GLuint type);
+#else
+    static GLuint genVBO[16+1];
+#endif
+    static GLuint curAttribs[16];
+    static GLuint curArrayBuffer,curElementBuffer;
+    static GLuint curProg;
     static ShaderProgram *current;
     static std::vector<ogl2ShaderProgram *> shaders;
+    static void bindBuffer(GLuint type, GLuint buf);
+
     void buildProgram(const char *vshader1,const char *vshader2,
                      const char *fshader1, const char *fshader2,
 					 const ConstantDesc *uniforms, const DataDesc *attributes);
+    static GLuint getGenericVBO(int index,unsigned int sz, const void *&ptr,int bufferingFlags);
+    static GLuint getCachedVBO(ShaderBufferCache **cache,bool &modified,GLuint type,unsigned int size, const void *&ptr,int bufferingFlags);
 public:
+    static void deleteVbo(int count,GLuint *vbos);
+    static int vboFreeze, vboUnfreeze;
+	static bool supportInstances;
+	static bool vboForceGeneric;
     virtual void activate();
     virtual void deactivate();
-    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache,int stride=0,int offset=0);
+    virtual void setData(int index,DataType type,int mult,const void *ptr,unsigned int count, bool modified, ShaderBufferCache **cache,int stride=0,int offset=0,int bufferingFlags=0);
     virtual void setConstant(int index,ConstantType type, int mult,const void *ptr);
-    virtual void drawArrays(ShapeType shape, int first, unsigned int count);
-    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first=0,unsigned int dcount=0);
+    virtual void drawArrays(ShapeType shape, int first, unsigned int count,unsigned int instances=0);
+    virtual void drawElements(ShapeType shape, unsigned int count, DataType type, const void *indices, bool modified, ShaderBufferCache **cache,unsigned int first=0,unsigned int dcount=0,unsigned int instances=0,int bufferingFlags=0);
     virtual bool isValid();
     virtual const char *compilationLog();
 
     virtual void recreate();
+    virtual void resetUniforms();
     static void resetAll();
+    static void resetAllUniforms();
 
     ogl2ShaderProgram(const char *vshader1,const char *vshader2,
                      const char *fshader1, const char *fshader2,
 					 const ConstantDesc *uniforms, const DataDesc *attributes);
     ogl2ShaderProgram(const char *vshader,const char *fshader,int flags,
-					 const ConstantDesc *uniforms, const DataDesc *attributes);
+					 const ConstantDesc *uniforms, const DataDesc *attributes, bool isGLES);
     virtual ~ogl2ShaderProgram();
     void useProgram();
 };
@@ -122,7 +167,9 @@ protected:
 	bool native;
 public:
 	ogl2ShaderTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
+	void updateData(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
 	void setNative(void *externalTexture);
+	void generateMipmap();
 	void *getNative();
 	virtual ~ogl2ShaderTexture();
 };
@@ -130,16 +177,16 @@ public:
 class ogl2ShaderBuffer : public ShaderBuffer
 {
 	friend class ogl2ShaderEngine;
-	static int qualcommFix_;
 	g_id tempTexture_;
 	GLuint textureId_;
+	bool forDepth_;
 protected:
 	GLuint _depthRenderBuffer;
 	GLuint glid;
 	int width,height;
 	static GLint bindBuffer(GLint n);
 public:
-	ogl2ShaderBuffer(ShaderTexture *texture);
+	ogl2ShaderBuffer(ShaderTexture *texture,bool forDepth);
 	virtual ~ogl2ShaderBuffer();
 	void readPixels(int x,int y,int width,int height,ShaderTexture::Format format,ShaderTexture::Packing packing,void *data);
 	void prepareDraw();
@@ -151,24 +198,33 @@ class ogl2ShaderEngine : public ShaderEngine
 {
 	ShaderBuffer *currentBuffer;
 	GLuint _depthRenderBuffer;
-	GLuint s_texture;
 	bool s_depthEnable;
 	bool s_depthBufferCleared;
 	GLenum blendFactor2GLenum(BlendFactor blendFactor);
 	int devWidth,devHeight;
+	GLint defaultFramebuffer;
+    int currentTextureUnit;
+    GLuint currentTextures[16];
+    DepthStencil appliedDs;
 public:
-	ogl2ShaderEngine(int sw,int sh);
+    static bool isGLES;
+    static float version;
+	static bool quirk_Qualcomm;
+    ogl2ShaderEngine(int sw,int sh);
 	virtual ~ogl2ShaderEngine();
 	const char *getVersion();
 	const char *getShaderLanguage() { return "glsl"; };
 	void reset(bool reinit=false);
-	ShaderTexture *createTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering);
-	ShaderBuffer *createRenderTarget(ShaderTexture *texture);
-	ShaderBuffer *setFramebuffer(ShaderBuffer *fbo);
-	ShaderProgram *createShaderProgram(const char *vshader,const char *pshader,int flags, const ShaderProgram::ConstantDesc *uniforms, const ShaderProgram::DataDesc *attributes);
+	ShaderTexture::Packing getPreferredPackingForTextureFormat(ShaderTexture::Format format);
+	ShaderTexture *createTexture(ShaderTexture::Format format,ShaderTexture::Packing packing,int width,int height,const void *data,ShaderTexture::Wrap wrap,ShaderTexture::Filtering filtering,bool forRT=false);
+	ShaderBuffer *createRenderTarget(ShaderTexture *texture,bool forDepth=false);
+    ShaderBuffer *setFramebuffer(ShaderBuffer *fbo);
+    ShaderBuffer *getFramebuffer() { return currentBuffer; };
+    ShaderProgram *createShaderProgram(const char *vshader,const char *pshader,int flags, const ShaderProgram::ConstantDesc *uniforms, const ShaderProgram::DataDesc *attributes);
 	void setViewport(int x,int y,int width,int height);
 	void adjustViewportProjection(Matrix4 &vp, float width, float height);
 	void resizeFramebuffer(int width,int height);
+	Matrix4 setOrthoFrustum(float l, float r, float b, float t, float n, float f,bool forRenderTarget);
 	void setProjection(const Matrix4 p);
 	void setModel(const Matrix4 m);
 	void clearColor(float r,float g,float b,float a);
@@ -176,6 +232,10 @@ public:
 	void setClip(int x,int y,int w,int h);
 	void setBlendFunc(BlendFactor sfactor, BlendFactor dfactor);
 	void setDepthStencil(DepthStencil state);
+	void setVBOThreshold(int freeze,int unfreeze) { ogl2ShaderProgram::vboFreeze=freeze; ogl2ShaderProgram::vboUnfreeze=unfreeze; };
+	void getProperties(std::map<std::string,std::string> &props);
+    void prepareDraw(ShaderProgram *program);
+    void applyDepthStencil();
 };
 
 

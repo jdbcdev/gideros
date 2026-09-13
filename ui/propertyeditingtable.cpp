@@ -7,7 +7,7 @@
 #include <QHeaderView>
 #include <QFileDialog>
 
-PropertyEditingTable::PropertyEditingTable(QWidget *parent) :
+PropertyEditingTable::PropertyEditingTable(QDir projectDir, QWidget *parent) :
 		QTableWidget(parent) {
 	QStringList labels;
 	labels << "Property" << "Value" << "";
@@ -17,16 +17,18 @@ PropertyEditingTable::PropertyEditingTable(QWidget *parent) :
      setSelectionMode(QAbstractItemView::SingleSelection);
 
 	mapper = new QSignalMapper(this);
+    projectDir_=projectDir;
 
-connect(mapper, SIGNAL(mapped(int)),
+    connect(mapper, SIGNAL(mappedInt(int)),
 		this, SLOT(onBrowse(int)));
 }
 
 void PropertyEditingTable::fill(QDomElement xml,
 	QMap<QString, QString> values) {
-	clearContents();
+	setRowCount(0);
 QDomNodeList exprops = xml.elementsByTagName("property");
 setRowCount(exprops.count());
+props.clear();
 for (int k = 0; k < exprops.count(); k++) {
 	QDomElement exprop = exprops.at(k).toElement();
 
@@ -65,7 +67,7 @@ for (int k = 0; k < exprops.count(); k++) {
 		setItem(k, 1, item);
 	}
 
-	if ((propType == "dir")||(propType == "file")) {
+	if ((propType == "dir")||(propType == "file")||(propType == "adir")||(propType == "afile")) {
 		QPushButton *bt = new QPushButton("Browse");
 		mapper->setMapping(bt, k);
 		connect(bt, SIGNAL(clicked()), mapper, SLOT(map()));
@@ -104,13 +106,27 @@ void PropertyEditingTable::onBrowse(int row) {
                                                  QFileDialog::ShowDirsOnly
                                                  | QFileDialog::DontResolveSymlinks);
 	 if (!dir.isEmpty())
-		 item(row,1)->setText(dir);
+         item(row,1)->setText(projectDir_.relativeFilePath(dir));
  }
  else if (type=="file")
  {
 	 QString file = QFileDialog::getOpenFileName(this,"",item(row,1)->text(),"");
 	 if (!file.isEmpty())
-		 item(row,1)->setText(file);
+         item(row,1)->setText(projectDir_.relativeFilePath(file));
+ }
+ else if (type=="adir")
+ {
+	 QString dir = QFileDialog::getExistingDirectory(this,"",item(row,1)->text(),
+                                                 QFileDialog::ShowDirsOnly
+                                                 | QFileDialog::DontResolveSymlinks);
+	 if (!dir.isEmpty())
+         item(row,1)->setText(dir);
+ }
+ else if (type=="afile")
+ {
+	 QString file = QFileDialog::getOpenFileName(this,"",item(row,1)->text(),"");
+	 if (!file.isEmpty())
+         item(row,1)->setText(file);
  }
 }
 

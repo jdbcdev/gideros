@@ -14,6 +14,15 @@
 #ifdef WINSTORE
 #define sscanf sscanf_s
 #endif
+#ifdef _UNICODE
+static char gaibuf[256];
+char *str_tous(WCHAR *str)
+{
+    if (!str) return NULL;
+    WideCharToMultiByte(CP_UTF8, 0, str, wcslen(str), gaibuf, sizeof(gaibuf),NULL,NULL);
+    return gaibuf;
+}
+#endif
 
 /*=========================================================================*\
 * Internal function prototypes.
@@ -62,9 +71,11 @@ int inet_open(lua_State *L)
 * or ip address
 \*-------------------------------------------------------------------------*/
 static int inet_gethost(const char *address, struct hostent **hp) {
-    struct in_addr addr;
-    if (inet_aton(address, &addr))
-        return socket_gethostbyaddr((char *) &addr, sizeof(addr), hp);
+    char addr[16];
+    if (inet_pton(AF_INET, address, addr))
+        return socket_gethostbyaddr(addr, 4, hp);
+    else if (inet_pton(AF_INET6, address, addr))
+        return socket_gethostbyaddr(addr, 16, hp);
     else
         return socket_gethostbyname(address, hp);
 }
@@ -255,7 +266,7 @@ int inet_meth_getpeername(lua_State *L, p_socket ps, int family)
         port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
     if (err) {
         lua_pushnil(L);
-        lua_pushstring(L, gai_strerror(err));
+        lua_pushstring(L, tous(gai_strerror(err)));
         return 2;
     }
     lua_pushstring(L, name);
@@ -289,7 +300,7 @@ int inet_meth_getsockname(lua_State *L, p_socket ps, int family)
 		name, INET6_ADDRSTRLEN, port, 6, NI_NUMERICHOST | NI_NUMERICSERV);
     if (err) {
         lua_pushnil(L);
-        lua_pushstring(L, gai_strerror(err));
+        lua_pushstring(L, tous(gai_strerror(err)));
         return 2;
     }
     lua_pushstring(L, name);

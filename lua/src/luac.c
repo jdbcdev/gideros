@@ -3,7 +3,6 @@
 ** Lua compiler (saves bytecodes to files; also list bytecodes)
 ** See Copyright Notice in lua.h
 */
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +13,7 @@
 
 #include "lua.h"
 #include "lauxlib.h"
+#include "lualib.h"
 
 #include "ldo.h"
 #include "lfunc.h"
@@ -144,7 +144,7 @@ static const Proto* combine(lua_State* L, int n)
  }
 }
 
-static int writer(lua_State* L, const void* p, size_t size, void* u)
+static int luac_writer(lua_State* L, const void* p, size_t size, void* u)
 {
  UNUSED(L);
  return (fwrite(p,size,1,(FILE*)u)!=1) && (size!=0);
@@ -162,6 +162,10 @@ static int pmain(lua_State* L)
  char** argv=s->argv;
  const Proto* f;
  int i;
+ lua_gc(L, LUA_GCSTOP, 0);  /* stop collector during initialization */
+ luaL_openlibs(L);  /* open libraries */
+ lua_gc(L, LUA_GCRESTART, 0);
+
  if (!lua_checkstack(L,argc)) fatal("too many input files");
  for (i=0; i<argc; i++)
  {
@@ -175,7 +179,7 @@ static int pmain(lua_State* L)
   FILE* D= (output==NULL) ? stdout : fopen(output,"wb");
   if (D==NULL) cannot("open");
   lua_lock(L);
-  luaU_dump(L,f,writer,D,stripping);
+  luaU_dump(L,f,luac_writer,D,stripping);
   lua_unlock(L);
   if (ferror(D)) cannot("write");
   if (fclose(D)) cannot("close");

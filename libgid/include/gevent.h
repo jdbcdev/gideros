@@ -30,12 +30,16 @@ enum
     GAPPLICATION_FOREGROUND_EVENT,
     GAPPLICATION_MEMORY_LOW_EVENT,
     GAPPLICATION_ORIENTATION_CHANGE_EVENT,
+	GAPPLICATION_TEXT_INPUT_EVENT,
+	GAPPLICATION_PERMISSION_EVENT,
 
     GINPUT_MOUSE_DOWN_EVENT,
     GINPUT_MOUSE_MOVE_EVENT,
     GINPUT_MOUSE_HOVER_EVENT,
     GINPUT_MOUSE_UP_EVENT,
-	GINPUT_MOUSE_WHEEL_EVENT,
+    GINPUT_MOUSE_WHEEL_EVENT,
+    GINPUT_MOUSE_ENTER_EVENT,
+    GINPUT_MOUSE_LEAVE_EVENT,
 
     GINPUT_TOUCH_BEGIN_EVENT,
     GINPUT_TOUCH_MOVE_EVENT,
@@ -83,10 +87,15 @@ extern "C" {
 
 G_API void gevent_Init();
 G_API void gevent_Cleanup();
+G_API void gevent_SetFlusher(void (*flusher)());
+G_API void gevent_AllowEventMerge(int allow);
+
 
 G_API void gevent_Tick();
+G_API void gevent_Flush();
 
 G_API void gevent_EnqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata);
+G_API void gevent_MergeEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata);
 G_API void gevent_RemoveEventsWithGid(g_id gid);
 
 G_API g_id gevent_AddCallback(gevent_Callback callback, void *udata);
@@ -99,17 +108,19 @@ G_API void gevent_RemoveCallbackWithGid(g_id gid);
 
 #ifdef __cplusplus
 #include <vector>
+#include <map>
+#include <string>
 class G_API gevent_CallbackList
 {
 public:
-    gevent_CallbackList();
-    ~gevent_CallbackList();
+    G_KEEP gevent_CallbackList();
+    G_KEEP ~gevent_CallbackList();
 
-    g_id addCallback(gevent_Callback callback, void *udata);
-    void removeCallback(gevent_Callback callback, void *udata);
-    void removeCallbackWithGid(g_id gid);
+    G_KEEP g_id addCallback(gevent_Callback callback, void *udata);
+    G_KEEP void removeCallback(gevent_Callback callback, void *udata);
+    G_KEEP void removeCallbackWithGid(g_id gid);
 
-    void dispatchEvent(int type, void *event);
+    G_KEEP void dispatchEvent(int type, void *event);
 
 private:
     struct Callback
@@ -148,6 +159,9 @@ private:
     std::vector<Callback> callbacks_;
     std::vector<CallbackCommand> callbackCommands_;
 };
+
+G_API void gevent_EnqueuePermissionsResult(std::map<std::string,int> &perms);
+
 #endif
 
 #ifdef __cplusplus
@@ -167,7 +181,6 @@ G_API void *gevent_CreateEventStruct3(size_t structSize,
 #ifdef __cplusplus
 }
 #endif
-
 
 #endif
 

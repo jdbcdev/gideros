@@ -20,11 +20,19 @@ LibraryWidget::~LibraryWidget()
 
 }
 
-QDomDocument LibraryWidget::toXml() const
+void LibraryWidget::toXml(QXmlStreamWriter &out) const
 {
-	return ui.treeWidget->toXml();
+    ui.treeWidget->toXml(out);
 }
 
+void LibraryWidget::toXml(QIODevice &file) const
+{
+    QXmlStreamWriter out(&file);
+    out.setAutoFormatting(true);
+    out.writeStartDocument();
+    toXml(out);
+    out.writeEndDocument();
+}
 
 void LibraryWidget::clear()
 {
@@ -41,6 +49,20 @@ void LibraryWidget::newProject(const QString& projectFileName)
 	ui.treeWidget->newProject(projectFileName);
 }
 
+void LibraryWidget::cloneProject(const QString& projectFileName)
+{
+    ui.treeWidget->cloneProject(projectFileName);
+}
+
+std::vector<std::pair<QString, QString> > LibraryWidget::fileList(bool downsizing, bool webClient, bool justLua) {
+    return ui.treeWidget->fileList(downsizing,webClient, justLua);
+}
+
+void LibraryWidget::consolidateProject()
+{
+    ui.treeWidget->consolidateProject();
+}
+
 void LibraryWidget::setModified(bool m)
 {
 	ui.treeWidget->setModified(m);
@@ -50,13 +72,23 @@ bool LibraryWidget::isModified() const
 	return ui.treeWidget->isModified();
 }
 
+QMap<QString, QString> LibraryWidget::usedPlugins()
+{
+	return ui.treeWidget->usedPlugins();
+}
+
 QString LibraryWidget::fileName(const QString& itemName) const
 {
-	return ui.treeWidget->fileName(itemName);
+    return ui.treeWidget->fileName(itemName);
+}
+
+QString LibraryWidget::itemName(QDir dir, const QString& fileName) const
+{
+    return ui.treeWidget->itemName(dir, fileName);
 }
 
 void LibraryWidget::onModificationChanged(bool m)
 {
-	ui.label->setText(tr("Project") + (m ? "*" : ""));
+	//ui.label->setText(tr("Project") + (m ? "*" : ""));
 	emit modificationChanged(m);
 }

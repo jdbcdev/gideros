@@ -10,7 +10,7 @@ public:
 
 private:
 	static int create(lua_State* L);
-	static int destruct(lua_State* L);
+	static int destruct(void *p);
 
 	static int setLineColor(lua_State* L);
 	static int setFillColor(lua_State* L);
@@ -19,7 +19,10 @@ private:
 	static int setFontPath(lua_State* L);
 	static int setTexture(lua_State* L);
 	static int setLineThickness(lua_State* L);
-	static int setConvex(lua_State* L);
+    static int setConvex(lua_State* L);
+	static int getPathPoints(lua_State* L);
+    static int getPathOffset(lua_State* L);
+    static int getSegmentSize(lua_State* L);
 };
 
 #endif

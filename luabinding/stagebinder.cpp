@@ -15,8 +15,9 @@ StageBinder::StageBinder(lua_State* L, Application* application)
 		{"getClearColorBuffer", StageBinder::getClearColorBuffer},
 		{"setClearColorBuffer", StageBinder::setClearColorBuffer},
 		{"setBackgroundColor",  StageBinder::setBackgroundColor},
-		{"getBackgroundColor",  StageBinder::getBackgroundColor},
-		{NULL, NULL},
+        {"getBackgroundColor",  StageBinder::getBackgroundColor},
+        {"validateLayout",  StageBinder::validateLayout},
+        {NULL, NULL},
 	};
 
 	binder.createClass("Stage", "Sprite", 0, destruct, functionList);
@@ -42,9 +43,9 @@ StageBinder::StageBinder(lua_State* L, Application* application)
 	lua_setglobal(L, "stage");
 }
 
-int StageBinder::destruct(lua_State* L)
+int StageBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	Stage* stage = static_cast<Stage*>(ptr);
 	stage->unref();
 
@@ -62,6 +63,7 @@ int StageBinder::getOrientation(lua_State* L)
 	switch (stage->application()->orientation())
 	{
 	case ePortrait:
+	case eFixed:
 		lua_getfield(L, 1, "PORTRAIT");
 		break;
 	case ePortraitUpsideDown:
@@ -172,17 +174,28 @@ int StageBinder::setBackgroundColor(lua_State* L)
 
 int StageBinder::getBackgroundColor(lua_State* L)
 {
-	StackChecker checker(L, "StageBinder::getBackgroundColor", 3);
+    StackChecker checker(L, "StageBinder::getBackgroundColor", 3);
 
-	Binder binder(L);
-	Stage* stage = static_cast<Stage*>(binder.getInstance("Stage", 1));
+    Binder binder(L);
+    Stage* stage = static_cast<Stage*>(binder.getInstance("Stage", 1));
 
-	float r, g, b;
-	stage->application()->getBackgroundColor(&r, &g, &b);
+    float r, g, b;
+    stage->application()->getBackgroundColor(&r, &g, &b);
 
-	lua_pushnumber(L, r);
-	lua_pushnumber(L, g);
-	lua_pushnumber(L, b);
+    lua_pushnumber(L, r);
+    lua_pushnumber(L, g);
+    lua_pushnumber(L, b);
 
-	return 3;
+    return 3;
+}
+
+int StageBinder::validateLayout(lua_State* L)
+{
+    StackChecker checker(L, "StageBinder::validateLayout", 0);
+
+    Binder binder(L);
+    Stage* stage = static_cast<Stage*>(binder.getInstance("Stage", 1));
+    stage->validateLayout();
+
+    return 0;
 }

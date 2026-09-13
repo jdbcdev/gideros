@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include <QDockWidget>
 #include "librarywidget.h"
+#include "outlinewidget.h"
 #include <QAction>
 #include <QIcon>
 #include <QPixmap>
@@ -16,6 +17,7 @@
 #include <QTextEdit>
 #include "newprojectdialog.h"
 #include <QDir>
+#include <QDirIterator>
 #include <QMessageBox>
 #include <QTextStream>
 #include <QFileDialog>
@@ -51,18 +53,59 @@
 #include "mdiarea.h"
 #include <QToolBar>
 #include <QKeySequence>
+#include "addons.h"
+#include <QToolTip>
+#include <QRegularExpression>
+#include "preferencesdialog.h"
+#include "profilerreport.h"
+#include <QStandardPaths>
+#include <QTimer>
+
+#include <QInputDialog>
+#include <QXmlStreamWriter>
+
+MainWindow *MainWindow::lua_instance=NULL;
+QTemporaryDir *MainWindow::tempDir=NULL;
+
+static int ltw_notifyClient(lua_State *L) {
+    if (!MainWindow::lua_instance) return 0;
+    const char *cid=luaL_optstring(L,1,NULL);
+    const char *data=luaL_checkstring(L,2);
+    QString clientId;
+    if (cid) clientId=QString(cid);
+    MainWindow::lua_instance->notifyAddon(clientId,data);
+    return 0;
+}
+
+static int ltw_saveAll(lua_State *L) {
+    Q_UNUSED(L);
+    if (!MainWindow::lua_instance) return 0;
+    MainWindow::lua_instance->saveAll();
+    return 0;
+}
+
+void MainWindow::notifyAddon(QString clientId,const char *data) {
+    if (addonsServer_)
+        addonsServer_->notify(clientId,data);
+}
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    globalZoomLevel_ = 0;
     inChooseTab_ = false;
     changeTabKeyPressState_ = 0;
     tabListWidget_ = NULL;
 
 	ui.setupUi(this);
 
-	mdiArea_ = new MdiArea(this);
+    tempDir=new QTemporaryDir();
 
+	mdiArea_ = new MdiArea(this);
+	
+	setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
+	
     // Load the theme at startup
     QSettings settings;
 
@@ -94,7 +137,7 @@ MainWindow::MainWindow(QWidget *parent)
 /*	mdiArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	mdiArea_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	mdiArea_->setViewMode(QMdiArea::TabbedView);
-	mdiArea_->setDocumentMode(true); */
+    mdiArea_->setDocumentMode(true); */
 
 //	mdiArea_->setTabShape(QTabWidget::Triangular);
 
@@ -107,7 +150,11 @@ MainWindow::MainWindow(QWidget *parent)
 		connect(tab, SIGNAL(tabCloseRequested(int)),
 				this, SLOT(closeMdiTab(int)));
 	}
-
+	
+	// set toolbar position by settings value
+	//qDebug() << "toggleToolBar value:" << settings.value("toggleToolBar").toBool();
+	toggleToolBar(settings.value("toggleToolBar").toBool());
+	
 	ui.mainToolBar->setIconSize(QSize(16, 16));
 
 	ui.actionNew->setIcon(IconLibrary::instance().icon(0, "new"));
@@ -120,6 +167,9 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui.actionSave_All, SIGNAL(triggered()), this, SLOT(saveAll()));
 
     ui.actionExport_Project->setIcon(IconLibrary::instance().icon(0, "export"));
+
+    connect(ui.actionClone_Project, SIGNAL(triggered()), this, SLOT(cloneProject()));
+    connect(ui.actionConsolidate_Project, SIGNAL(triggered()), this, SLOT(consolidateProject()));
 
 	ui.actionUndo->setIcon(IconLibrary::instance().icon(0, "undo"));
 	ui.actionRedo->setIcon(IconLibrary::instance().icon(0, "redo"));
@@ -135,10 +185,40 @@ MainWindow::MainWindow(QWidget *parent)
 
 	ui.actionStart_Player->setIcon(IconLibrary::instance().icon(0, "gamepad"));
 	connect(ui.actionStart_Player, SIGNAL(triggered()), this, SLOT(startPlayer()));
+	
+	connect(ui.actionTexture_Packer, SIGNAL(triggered()), this, SLOT(startTexturePacker()));
+	connect(ui.actionFont_Creator, SIGNAL(triggered()), this, SLOT(startFontCreator()));
+	
+	ui.actionWrap->setIcon(IconLibrary::instance().icon(0, "wrap"));
+	connect(ui.actionWrap, SIGNAL(triggered()), this, SLOT(setWrap()));
+	
+	ui.actionColorPicker->setIcon(IconLibrary::instance().icon(0, "color picker"));
+	connect(ui.actionColorPicker, SIGNAL(triggered()), this, SLOT(insertColorInCode()));
 
 	ui.actionStart->setIcon(IconLibrary::instance().icon(0, "start"));
 	ui.actionStart->setEnabled(false);
+	ui.actionStart->setShortcuts( QList<QKeySequence>() << tr("Ctrl+R") << tr("F5") );
 	connect(ui.actionStart, SIGNAL(triggered()), this, SLOT(start()));
+
+	ui.actionDebug->setIcon(IconLibrary::instance().icon(0, "debug"));
+	ui.actionDebug->setEnabled(false);
+	connect(ui.actionDebug, SIGNAL(triggered()), this, SLOT(startDebug()));
+
+    ui.actionResume->setIcon(IconLibrary::instance().icon(0, "resume"));
+    ui.actionResume->setEnabled(false);
+    connect(ui.actionResume, SIGNAL(triggered()), this, SLOT(resume()));
+
+    ui.actionStepOver->setIcon(IconLibrary::instance().icon(0, "step over"));
+    ui.actionStepOver->setEnabled(false);
+    connect(ui.actionStepOver, SIGNAL(triggered()), this, SLOT(stepOver()));
+
+    ui.actionStepInto->setIcon(IconLibrary::instance().icon(0, "step into"));
+    ui.actionStepInto->setEnabled(false);
+    connect(ui.actionStepInto, SIGNAL(triggered()), this, SLOT(stepInto()));
+
+    ui.actionStepReturn->setIcon(IconLibrary::instance().icon(0, "step return"));
+    ui.actionStepReturn->setEnabled(false);
+    connect(ui.actionStepReturn, SIGNAL(triggered()), this, SLOT(stepReturn()));
 
 	ui.actionStartAll->setIcon(IconLibrary::instance().icon(0, "start all"));
 	ui.actionStartAll->setEnabled(true);
@@ -147,6 +227,10 @@ MainWindow::MainWindow(QWidget *parent)
 	ui.actionStop->setIcon(IconLibrary::instance().icon(0, "stop"));
 	ui.actionStop->setEnabled(false);
 	connect(ui.actionStop, SIGNAL(triggered()), this, SLOT(stop()));
+
+    ui.actionProfile->setIcon(IconLibrary::instance().icon("profiler",QStringList()));
+    ui.actionProfile->setEnabled(false);
+    connect(ui.actionProfile, SIGNAL(triggered()), this, SLOT(startProfile()));
 
     connect(ui.actionCheck_Syntax, SIGNAL(triggered()), this, SLOT(compile()));
     connect(ui.actionCheck_Syntax_All, SIGNAL(triggered()), this, SLOT(compileAll()));
@@ -193,6 +277,7 @@ MainWindow::MainWindow(QWidget *parent)
 	previewDock_ = NULL;
 
 	libraryWidget_ = new LibraryWidget;
+	//connect(libraryWidget_, SIGNAL(modificationChanged(bool)), libraryDock_, SLOT(setWindowModified(bool))); TODO
 
     outputWidget_ = new QTextEditEx;
 	outputWidget_->setReadOnly(true);
@@ -203,7 +288,7 @@ MainWindow::MainWindow(QWidget *parent)
 	{
 		outputContainer = new QWidget;
 		outputContainer->setLayout(new QVBoxLayout);
-		outputContainer->layout()->setMargin(0);
+        outputContainer->layout()->setContentsMargins(0,0,0,0);
 		outputContainer->layout()->setSpacing(0);
 
         QLineEdit *edit = new QLineEdit();
@@ -217,43 +302,56 @@ MainWindow::MainWindow(QWidget *parent)
 		outputWidget_->setMidLineWidth(0);
 		outputWidget_->setFrameShape(QFrame::NoFrame);
 		outputWidget_->setFrameShadow(QFrame::Plain);
-	}
+    }
 
     outputDock_ = new QDockWidget(tr("Output"), this);
-    outputDock_->setAllowedAreas(Qt::BottomDockWidgetArea);
+    outputDock_->setAllowedAreas(Qt::BottomDockWidgetArea|Qt::RightDockWidgetArea|Qt::LeftDockWidgetArea);
     outputDock_->setObjectName("output");
-    outputDock_->setFeatures(QDockWidget::DockWidgetFloatable);
+    outputDock_->setFeatures(QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable);
     outputDock_->setWidget(outputContainer);
+    addDockWidget(Qt::BottomDockWidgetArea,outputDock_);
 
+	QDockWidget *dock;
 	previewWidget_ = new PreviewWidget;
+	dock = new QDockWidget(tr("Preview"), this);
+	dock->setAllowedAreas(Qt::RightDockWidgetArea|Qt::LeftDockWidgetArea);
+	dock->setObjectName("preview");
+	dock->setFeatures(QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable);
+    dock->setWidget(previewWidget_);
+	addDockWidget(Qt::LeftDockWidgetArea,dock);
 
-	splitter1_ = new QSplitter(Qt::Vertical);
-	splitter2_ = new QSplitter(Qt::Horizontal);
-	splitter3_ = new QSplitter(Qt::Vertical);
+	dock = new QDockWidget(tr("Library"), this);
+	dock->setAllowedAreas(Qt::RightDockWidgetArea|Qt::LeftDockWidgetArea);
+	dock->setObjectName("library");
+	dock->setFeatures(QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable);
+	dock->setWidget(libraryWidget_);
+	addDockWidget(Qt::LeftDockWidgetArea,dock);
 
-	splitter3_->addWidget(libraryWidget_);
-	splitter3_->addWidget(previewWidget_);
+	outlineWidget_=new OutlineWidget();
+	dock = new QDockWidget(tr("Outline"), this);
+	dock->setAllowedAreas(Qt::RightDockWidgetArea|Qt::LeftDockWidgetArea);
+	dock->setObjectName("outline");
+	dock->setFeatures(QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable);
+	dock->setWidget(outlineWidget_);
+    outlineDock_=dock;
+	addDockWidget(Qt::RightDockWidgetArea,dock);
 
-	splitter2_->addWidget(splitter3_);
-	splitter2_->addWidget(mdiArea_);
+	//splitter3_->setSizes(QList<int>() << 200 << 200);
 
-	splitter1_->addWidget(splitter2_);
-    splitter1_->addWidget(outputDock_);
-
-	splitter3_->setSizes(QList<int>() << 200 << 200);
-
-	setCentralWidget(splitter1_);
+	setCentralWidget(mdiArea_);
 #endif
 
 	//Target player combobox
 	players_ = new QComboBox;
 	players_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 	ui.mainToolBar->insertWidget(ui.actionStart_Player,players_);
-	connect(players_,SIGNAL(currentIndexChanged(const QString &)),this,SLOT(playerChanged(const QString &)));
+    connect(players_,SIGNAL(currentIndexChanged(int)),this,SLOT(playerChanged(int)));
 
     //QSettings settings;
 	QString playerip = settings.value("player ip", QString("127.0.0.1")).toString();
     ui.actionLocalhostToggle->setChecked(settings.value("player localhost", true).toBool());
+    ui.actionLive_syntax_checking->setChecked(settings.value("syntaxcheck_live",true).toBool());
+    ui.actionType_checking->setChecked(settings.value("typecheck_live",false).toBool());
 
 #ifndef NEW_CLIENT
 	client_ = new Client(qPrintable(playerip), 15000);
@@ -285,7 +383,7 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui.actionExport_Pack, SIGNAL(triggered()), this, SLOT(exportPack()));
 
 //	connect(libraryWidget_, SIGNAL(modified()), this, SLOT(onModified()));
-	connect(libraryWidget_, SIGNAL(openRequest(const QString&, const QString&)), this, SLOT(onOpenRequest(const QString&, const QString&)));
+    connect(libraryWidget_, SIGNAL(openRequest(const QString&, const QString&)), this, SLOT(onOpenRequest(const QString&, const QString&)));
 	connect(libraryWidget_, SIGNAL(previewRequest(const QString&, const QString&)), this, SLOT(onPreviewRequest(const QString&, const QString&)));
 	connect(libraryWidget_, SIGNAL(insertIntoDocument(const QString&)), this, SLOT(onInsertIntoDocument(const QString&)));
 	connect(libraryWidget_, SIGNAL(automaticDownsizingEnabled(const QString&)), this, SLOT(downsize(const QString&)));
@@ -312,13 +410,15 @@ MainWindow::MainWindow(QWidget *parent)
 
 	connect(ui.actionExit, SIGNAL(triggered()), this, SLOT(close()));
 
+    connect(ui.actionFullscreen, SIGNAL(triggered()), this, SLOT(toggleFullscreen()));
 
-	connect(ui.actionPlayer_Settings, SIGNAL(triggered()), this, SLOT(playerSettings()));
+    connect(ui.actionPlayer_Settings, SIGNAL(triggered()), this, SLOT(playerSettings()));
     connect(ui.actionLocalhostToggle, SIGNAL(triggered(bool)), this, SLOT(actionLocalhostToggle(bool)));
-	connect(ui.actionAbout_Gideros_Studio, SIGNAL(triggered()), this, SLOT(openAboutDialog()));
-	connect(ui.actionDeveloper_Center, SIGNAL(triggered()), this, SLOT(developerCenter()));
+    connect(ui.actionLive_syntax_checking, SIGNAL(triggered(bool)), this, SLOT(actionLiveSyntaxChecking(bool)));
+    connect(ui.actionType_checking, SIGNAL(triggered(bool)), this, SLOT(actionLiveTypeChecking(bool)));
+    connect(ui.actionAbout_Gideros_Studio, SIGNAL(triggered()), this, SLOT(openAboutDialog()));
+    connect(ui.actionPreferences, SIGNAL(triggered()), this, SLOT(openPreferencesDialog()));
 	connect(ui.actionHelp_Support, SIGNAL(triggered()), this, SLOT(helpAndSupport()));
-	connect(ui.actionAPI_Documentation, SIGNAL(triggered()), this, SLOT(apiDocumentation()));
     connect(ui.actionDocumentation, SIGNAL(triggered()), this, SLOT(giderosDocumentation()));
 
 	connect(mdiArea_, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(updateUI()));
@@ -333,6 +433,7 @@ MainWindow::MainWindow(QWidget *parent)
 		findDialog_ = new FindDialog(this);
 		connect(ui.actionFind, SIGNAL(triggered()), this, SLOT(find()));
 		connect(findDialog_, SIGNAL(findNext()), this, SLOT(findFirst()));
+		connect(findDialog_, SIGNAL(findPrevious()), this, SLOT(findPrevious()));
 		connect(ui.actionFind_Next, SIGNAL(triggered()), this, SLOT(findNext()));
 		connect(ui.actionFind_Previous, SIGNAL(triggered()), this, SLOT(findPrevious()));
 
@@ -355,25 +456,26 @@ MainWindow::MainWindow(QWidget *parent)
 		connect(ui.actionClear_Bookmarks, SIGNAL(triggered()), this, SLOT(clearBookmarks()));
 	}
 
-	// undo-redo
+	// undo-redo-indent
 	{
 		connect(ui.actionUndo, SIGNAL(triggered()), this, SLOT(undo()));
 		connect(ui.actionRedo, SIGNAL(triggered()), this, SLOT(redo()));
+		connect(ui.actionAuto_indent, SIGNAL(triggered()), this, SLOT(autoIndent()));
 	}
 
 	connect(ui.actionGo_To_Line, SIGNAL(triggered()), this, SLOT(goToLine()));
 
-    splitter1_->setSizes(QList<int>() << 550 << 200);
+/*    splitter1_->setSizes(QList<int>() << 550 << 200);
     splitter2_->setSizes(QList<int>() << 200 << 800);
-
+*/
 	{
 		QSettings settings;
 		restoreGeometry(settings.value("geometry").toByteArray());
 		restoreState(settings.value("windowState").toByteArray());
 
-		splitter1_->restoreState(settings.value("splitter1").toByteArray());
+	/*	splitter1_->restoreState(settings.value("splitter1").toByteArray());
 		splitter2_->restoreState(settings.value("splitter2").toByteArray());
-		splitter3_->restoreState(settings.value("splitter3").toByteArray());
+		splitter3_->restoreState(settings.value("splitter3").toByteArray());*/
 	}
 
 	connect(ui.actionOutput_Panel, SIGNAL(triggered()), outputDock_, SLOT(show()));
@@ -414,11 +516,206 @@ MainWindow::MainWindow(QWidget *parent)
     env.insert("LUA_CPATH", toolsDir.path() + "/?.so");
 #endif
     luaProcess_->setProcessEnvironment(env);
+
+    lua_instance=this;
+    //Register addons
+    lua_State *L=AddonsManager::getLua();
+    luaL_Reg reg[] = {
+        { "_notifyClient", ltw_notifyClient },
+        { "saveAll", ltw_saveAll },
+        { NULL, NULL }
+    };
+    luaL_register(L,"Studio",reg);
+    lua_pop(L,1);
+
+    addonsServer_=new AddonsServer(this);
+    std::vector<Addon> addons=AddonsManager::loadAddons(true);
+    for (std::vector<Addon>::iterator it=addons.begin();it!=addons.end();it++) {
+    	QAction *action=new QAction(QString::fromStdString(it->title),this);
+    	action->setData(QString::fromStdString(it->name));
+    	ui.menuAddons->addAction(action);
+        connect(action, SIGNAL(triggered()), this, SLOT(addonTriggered()));
+    }
+
+        isBreaked_=false;
+
+#define ACTION(n) { #n, ui.n }
+        struct {
+            QString n;
+            QAction *a;
+        }
+        ActionList[]={
+            ACTION(actionNew_Project),
+               ACTION(actionOpen_Project),
+               ACTION(actionClose_Project),
+               ACTION(actionSave_Project),
+               ACTION(actionFile_Associations),
+               ACTION(actionStart),
+               ACTION(actionStop),
+               ACTION(actionStart_Player),
+               ACTION(actionNew),
+               ACTION(actionOpen),
+               ACTION(actionSave),
+               ACTION(actionSave_All),
+               ACTION(actionUndo),
+               ACTION(actionRedo),
+               ACTION(actionCut),
+               ACTION(actionCopy),
+               ACTION(actionPaste),
+               ACTION(actionWrap),
+               ACTION(actionColorPicker),
+               ACTION(actionToggle_Bookmark),
+               ACTION(actionNext_Bookmark),
+               ACTION(actionPrevious_Bookmark),
+               ACTION(actionClear_Bookmarks),
+               ACTION(actionCheck_Syntax),
+               ACTION(actionCheck_Syntax_All),
+               ACTION(actionCancel),
+               ACTION(actionExit),
+               ACTION(actionProject1),
+               ACTION(actionProject2),
+               ACTION(actionProject3),
+               ACTION(actionProject4),
+               ACTION(actionProject5),
+               ACTION(actionPlayer_Settings),
+               ACTION(actionFind),
+               ACTION(actionReplace),
+               ACTION(actionFind_Next),
+               ACTION(actionFind_Previous),
+               ACTION(actionGo_To_Line),
+               ACTION(actionOutput_Panel),
+               ACTION(actionLibrary_Manager),
+               ACTION(actionExport_Project),
+               ACTION(actionFind_in_Files),
+               ACTION(actionPreview),
+               ACTION(actionStart_Page),
+               ACTION(actionAbout_Gideros_Studio),
+               ACTION(actionExport_Pack),
+               ACTION(actionHelp_Support),
+               ACTION(actionProject6),
+               ACTION(actionProject7),
+               ACTION(actionProject8),
+               ACTION(actionProject9),
+               ACTION(actionProject10),
+               ACTION(actionProject11),
+               ACTION(actionProject12),
+               ACTION(actionProject13),
+               ACTION(actionProject14),
+               ACTION(actionProject15),
+               ACTION(actionLocalhostToggle),
+               ACTION(actionClear_Output),
+               ACTION(actionDocumentation),
+               ACTION(actionStartAll),
+               ACTION(actionUI_Theme),
+               ACTION(actionEditor_Theme),
+               ACTION(actionUI_and_Editor_Theme),
+               ACTION(actionReset_UI_and_Editor_Theme),
+               ACTION(actionFold_Unfold_All),
+               ACTION(actionFold_Unfold_Top),
+               ACTION(actionMacro_Support),
+               ACTION(actionAuto_indent),
+               ACTION(actionLive_syntax_checking),
+               ACTION(actionFullscreen),
+               ACTION(actionDebug),
+               ACTION(actionStepOver),
+               ACTION(actionStepInto),
+               ACTION(actionStepReturn),
+               ACTION(actionResume),
+               ACTION(actionPreferences),
+               ACTION(actionProfile),
+               ACTION(actionClone_Project),
+               ACTION(actionConsolidate_Project),
+               ACTION(actionType_checking),
+               ACTION(actionBlock_un_comment),
+               { QString(),nullptr },
+        };
+#undef ACTION
+        QDir shared(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
+        shared.mkpath("Gideros");
+        bool sharedOk = shared.cd("Gideros");
+        if (sharedOk) {
+            QSettings kmap(shared.absoluteFilePath("keymap.ini"), QSettings::IniFormat);
+            kmap.beginGroup("main");
+            auto alist=ActionList;
+            while (!alist->n.isEmpty()) {
+                auto v=kmap.value(alist->n);
+                if ((!v.isNull())&&alist->a)
+                    alist->a->setShortcut(v.toString());
+                alist++;
+            }
+            kmap.endGroup();
+        }
 }
 
 MainWindow::~MainWindow()
 {
+	delete addonsServer_;
 	delete client_;
+    delete tempDir;
+}
+
+void MainWindow::addonTriggered() {
+	QAction* action = (QAction *) sender();
+	QString name=action->data().toString();
+	launchAddon(name,QString());
+}
+
+static QString luaquote(QString q) {
+    return q.replace("\\","\\\\").replace("\"","\\\"");
+}
+void MainWindow::launchAddon(QString name,QString forFile) {
+    QString base = QFileInfo(projectFileName_).path();
+	std::string env="{ ";
+	env=env+"serverPort="+QString::number(addonsServer_->port()).toStdString()+",";
+    env=env+"projectFile=\""+luaquote(projectFileName_).toStdString()+"\",";
+    env=env+"projectDir=\""+luaquote(base).toStdString()+"\",";
+	if (!forFile.isEmpty())
+        env=env+"editFile=\""+luaquote(forFile).toStdString()+"\",";
+	env+=" }";
+    AddonsManager::launch(name.toStdString(),env);
+}
+
+
+void MainWindow::toggleToolBar(bool append)
+{
+    QSettings settings;
+    const char* key = "toggleToolBar";
+
+	QWidget* wrapper = new QWidget();
+	wrapper->setLayout(new QHBoxLayout());
+	wrapper->layout()->setContentsMargins(0,0,0,0);
+    if (append)
+    {
+		settings.setValue(key, true);
+
+		wrapper->layout()->addWidget(ui.menuBar);
+		wrapper->layout()->addWidget(ui.mainToolBar);
+		this->layout()->setMenuBar(wrapper);
+    } else {
+        settings.setValue(key, false);
+		
+		removeToolBar(ui.mainToolBar);
+		wrapper->layout()->update();
+		addToolBar(Qt::TopToolBarArea, ui.mainToolBar);
+		ui.mainToolBar->show();
+    }
+}
+
+void MainWindow::toggleFullscreen()
+{
+    QSettings settings;
+    const char* key = "toggleFullscreen_wasMaximized";
+    bool wasMaximized = settings.value(key, false).toBool();
+    if (this->isFullScreen())
+    {
+        if (wasMaximized)
+            this->showMaximized();
+        else
+            this->showNormal();
+    } else {
+        settings.setValue(key, isMaximized());
+        this->showFullScreen();
+    }
 }
 
 void MainWindow::closeMdiTab(int i)
@@ -435,7 +732,11 @@ void MainWindow::closeMdiTab(int i)
 
 void MainWindow::onSingleShot()
 {
-	showStartPage();
+    QStringList args=QCoreApplication::arguments();
+    if (args.size()>1)
+    	openProject(args[1].toUtf8().data());
+    else
+    	showStartPage();
 }
 
 void MainWindow::showStartPage()
@@ -487,29 +788,101 @@ void MainWindow::advertisement(const QString& host,unsigned short port,unsigned 
 		if (QString("%1|%2|%3").arg(parts[0]).arg(parts[1]).arg(parts[2])==nitem)
 		{
 			players_->setItemData(k,nfull);
-			return;
+            if (!client_->isConnected())
+                playerChanged(0);
+            return;
 		}
  	}
 
 	players_->addItem(QString("%1 (%2:%3)").arg(name).arg(host).arg(port),nfull);
+    if (!client_->isConnected())
+        playerChanged(0);
 }
 
-void MainWindow::playerChanged(const QString & text)
+void MainWindow::playerChanged(int)
 {
-	QString hostData=text;
+    QString hostData;
 	if (players_->currentData().isValid())
-		hostData=players_->currentData().toString();
-	QStringList parts=hostData.split('|');
+        hostData=players_->currentData().toString();
+    else
+        return;
+    QStringList parts=hostData.split('|');
 	if (parts.count()==1)
 		client_->connectToHost(parts[0],15000);
 	else
 		client_->connectToHost(parts[0],parts[1].toInt());
+	clientIsWeb_=(parts[0]=="[ws]");
 }
 
 void MainWindow::start()
 {
-	if (prepareStartOnPlayer())
+    if (isBreaked_) resumeDebug(0x00);
+    isDebug_=false;
+    isProfile_=false;
+    if (prepareStartOnPlayer())
 		startOnPlayer();
+}
+
+void MainWindow::startDebug()
+{
+    if (isBreaked_) resumeDebug(0x00);
+    isDebug_=true;
+    isProfile_=false;
+    if (prepareStartOnPlayer())
+		startOnPlayer();
+	else
+		isDebug_=false;
+}
+
+void MainWindow::startProfile()
+{
+    if (isBreaked_) resumeDebug(0x00);
+    isDebug_=false;
+    isProfile_=true;
+    if (prepareStartOnPlayer())
+        startOnPlayer();
+    else
+        isProfile_=false;
+}
+
+
+void MainWindow::resume() {
+    resumeDebug(0x84); // Mask LINE + BKPT
+}
+
+void MainWindow::stepOver() {
+    resumeDebug(0x44); //Mask LINE + ignore subs
+}
+
+void MainWindow::stepInto() {
+    resumeDebug(0x04);    //Mask LINE
+}
+
+void MainWindow::stepReturn() {
+    resumeDebug(0x46); //Mask LINE  + ignore subs + RET
+}
+
+void MainWindow::resumeDebug(int mode) {
+    isBreaked_=false;
+    clearDebugHighlights();
+    ui.actionResume->setEnabled(false);
+    ui.actionStepOver->setEnabled(false);
+    ui.actionStepInto->setEnabled(false);
+    ui.actionStepReturn->setEnabled(false);
+    ByteBuffer buffer;
+    buffer << (char) 22;
+    buffer << (char) mode;
+    int nbreakpoints=TextEdit::breakpoints.size();
+	buffer << nbreakpoints;
+    foreach(QString bp, TextEdit::breakpoints) {
+        int ls=bp.lastIndexOf(':');
+        std::string source=(QString("@")+bp.mid(0,ls)).toStdString();
+        int line=bp.mid(ls+1).toInt()+1;
+        buffer << line;
+        buffer << source;
+    }
+
+    client_->sendCommand(buffer.data(),buffer.size());
 }
 
 bool MainWindow::prepareStartOnPlayer()
@@ -552,12 +925,15 @@ void MainWindow::startOnPlayer()
 	isTransferring_ = true;
 
 	client_->sendStop();
+	isBreaked_=false;
 	client_->sendProjectName(QFileInfo(projectFileName_).baseName());
 	client_->sendGetFileList();
 }
 
 void MainWindow::startAllPlayers()
 {
+	isDebug_=false;
+    isProfile_=false;
 	if (!prepareStartOnPlayer())
 		return;
 	int pc=players_->count();
@@ -580,6 +956,7 @@ void MainWindow::startNextPlayer()
 		client_->connectToHost(parts[0],15000);
 	else
 		client_->connectToHost(parts[0],parts[1].toInt());
+	clientIsWeb_=(parts[0]=="[ws]");
 }
 
 void MainWindow::playStarted()
@@ -855,7 +1232,7 @@ void MainWindow::timerEvent(QTimerEvent*)
 			{
 				QStringList luafiles = s1.split("|");	
 				outputWidget_->append("Uploading finished.\n");
-				client_->sendProjectProperties(libraryWidget_->getProjectProperties());
+                client_->sendProjectProperties(libraryWidget_->getProjectProperties(), QFileInfo(projectFileName_).baseName());
 				sendPlayMessage(luafiles);
 				isTransferring_ = false;
 			}
@@ -895,6 +1272,29 @@ unsigned int MainWindow::sendPlayMessage(const QStringList& luafiles)
 	char play = 2;
 	client_->sendData(&play, sizeof(char));
 #else
+	if (isDebug_)
+	{
+		//Collect breakpoints
+		ByteBuffer buffer;
+		buffer << (char) 21;
+        buffer << (char) 0x84; //Break line
+        int nbreakpoints=TextEdit::breakpoints.size();
+		buffer << nbreakpoints;
+        foreach(QString bp, TextEdit::breakpoints) {
+            int ls=bp.lastIndexOf(':');
+            std::string source=(QString("@")+bp.mid(0,ls)).toStdString();
+            int line=bp.mid(ls+1).toInt()+1;
+            buffer << line;
+            buffer << source;
+        }
+
+		client_->sendCommand(buffer.data(),buffer.size());
+	}
+    else if (isProfile_) {
+        ByteBuffer buffer;
+        buffer << (char) 30;
+        client_->sendCommand(buffer.data(),buffer.size());
+    }
 	unsigned int code=client_->sendPlay(luafiles);
 	playStarted();
 	return code;
@@ -913,7 +1313,8 @@ unsigned int MainWindow::sendStopMessage()
 
 void MainWindow::stop()
 {
-	fileQueue_.clear();
+    if (isBreaked_) resumeDebug(0x00);
+    fileQueue_.clear();
 	sendStopMessage();
 }
 
@@ -965,7 +1366,7 @@ void MainWindow::newProject()
 
 			libraryWidget_->newProject(fileName);
 
-			QTextStream(&file) << libraryWidget_->toXml().toString();
+            libraryWidget_->toXml(file);
 
 			file.close();
 
@@ -982,7 +1383,6 @@ void MainWindow::newProject()
 			settings.setValue("location", newProjectDialog->location());
 
 			addToRecentProjects(projectFileName_);
-
 		}
 	}
 }
@@ -1016,17 +1416,119 @@ void MainWindow::closeProject()
 
 void MainWindow::saveProject()
 {
-	QFile file(projectFileName_);
+    QFile file(projectFileName_);
 
-	if (file.open(QIODevice::WriteOnly | QIODevice::Text) == false)
-	{
-		QMessageBox::information(this, "Information", "Could not save the project file: " + projectFileName_);
-		return;
-	}
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+    {
+#if defined(Q_OS_MAC)
+        QString ex = "../../Examples/";
+#else
+        QString ex = "Examples/";
+#endif
+        if (!projectFileName_.startsWith(ex))
+            QMessageBox::information(this, "Information", "Could not save the project file: " + projectFileName_);
+        else
+            outputWidget_->append("Could not save the example project file: " + projectFileName_+"\n");
+        return;
+    }
 
-	QTextStream(&file) << libraryWidget_->toXml().toString();
-	file.close();
-	libraryWidget_->setModified(false);
+    libraryWidget_->toXml(file);
+
+    file.close();
+    libraryWidget_->setModified(false);
+}
+
+void MainWindow::cloneProject()
+{
+    if (maybeSave())
+    {
+        NewProjectDialog* newProjectDialog = new NewProjectDialog(this);
+        if (newProjectDialog->exec() == QDialog::Accepted)
+        {
+            // try to create directory
+            QString dir = newProjectDialog->fullDirectory();
+            if (QDir().mkpath(dir) == false)
+            {
+                QMessageBox::information(this, "Information", "Could not create the directory: " + dir);
+                return;
+            }
+
+            // try to create project
+            QString fileName = newProjectDialog->fullName();
+            QFile file(fileName);
+            if (file.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+            {
+                QMessageBox::information(this, "Information", "Could not create the project: " + fileName);
+                return;
+            }
+
+            storeOpenFiles();
+
+            outputWidget_->clear();
+            previewWidget_->setFileName("", "");
+
+            foreach (MdiSubWindow* window, mdiArea_->subWindowList())
+            {
+                if (window != mdiArea_->activeSubWindow())
+                    mdiArea_->setActiveSubWindow(window);
+
+                mdiArea_->closeActiveSubWindow();
+            }
+
+            libraryWidget_->cloneProject(fileName);
+
+            libraryWidget_->toXml(file);
+
+            file.close();
+
+            hideStartPage();
+
+            projectFileName_ = fileName;
+            md5_.clear();
+
+            updateUI();
+
+            setWindowTitle(projectName() + "[*] - " + tr("Gideros"));
+
+            QSettings settings;
+            settings.setValue("location", newProjectDialog->location());
+
+            addToRecentProjects(projectFileName_);
+
+            //shouldn't be needed, but due to a crash in library widget when trying to change project name, just close and reopen as a workaround
+            closeProject();
+            openProject(fileName);
+
+        }
+    }
+}
+
+void MainWindow::consolidateProject()
+{
+    int reply = QMessageBox::question(this, "Consolidate Project", "This operation will remove all links and copy all files into the project directory. Are you sure you want to do this ? This cannot be undone.",
+                                  QMessageBox::Yes|QMessageBox::Cancel);
+    if (reply == QMessageBox::Cancel)
+        return;
+
+    if (maybeSave())
+    {
+        storeOpenFiles();
+
+        outputWidget_->clear();
+        previewWidget_->setFileName("", "");
+
+        foreach (MdiSubWindow* window, mdiArea_->subWindowList())
+        {
+            if (window != mdiArea_->activeSubWindow())
+                mdiArea_->setActiveSubWindow(window);
+
+            mdiArea_->closeActiveSubWindow();
+        }
+
+        libraryWidget_->consolidateProject();
+
+        saveProject();
+    }
 }
 
 void MainWindow::openProject()
@@ -1094,11 +1596,21 @@ void MainWindow::reloadProject()
     if (textEdit)
     {
         int line, index;
+#ifdef SCINTILLAEDIT_H
+        sptr_t pos=textEdit->sciScintilla()->currentPos();
+        index=textEdit->sciScintilla()->column(pos);
+        line=textEdit->sciScintilla()->lineFromPosition(pos);
+#else
         textEdit->sciScintilla()->getCursorPosition(&line, &index);
+#endif
         QString rp = projectFileName_;
         closeProject();
         openProject(rp);
+#ifdef SCINTILLAEDIT_H
+        textEdit->sciScintilla()->setCurrentPos(textEdit->sciScintilla()->findColumn(line, index));
+#else
         textEdit->sciScintilla()->setCursorPosition(line, index);
+#endif
     }
 }
 
@@ -1129,11 +1641,51 @@ void MainWindow::onModified()
 void MainWindow::startPlayer()
 {
 #if defined(Q_OS_MAC)
-        QProcess::startDetached("open \"../../Gideros Player.app\"");
+    QProcess *process = new QProcess();
+    QStringList args;
+    process->setProgram("open");
+    args << "../../Gideros Player.app";
+    process->setArguments(args);
+    process->startDetached(nullptr);
+    delete process;
 #elif defined(Q_OS_WIN)
 	QProcess::startDetached("GiderosPlayer.exe");
 #else
-	QProcess::startDetached("GiderosPlayer");
+	QProcess::startDetached("./GiderosPlayer");
+#endif
+}
+
+void MainWindow::startTexturePacker()
+{
+#if defined(Q_OS_MAC)
+    QProcess *process = new QProcess();
+    QStringList args;
+    process->setProgram("open");
+    args << "../../Gideros Texture Packer.app";
+    process->setArguments(args);
+    process->startDetached(nullptr);
+    delete process;
+#elif defined(Q_OS_WIN)
+	QProcess::startDetached("GiderosTexturePacker.exe");
+#else
+	QProcess::startDetached("./GiderosTexturePacker");
+#endif
+}
+
+void MainWindow::startFontCreator()
+{
+#if defined(Q_OS_MAC)
+    QProcess *process = new QProcess();
+    QStringList args;
+    process->setProgram("open");
+    args << "../../Gideros Font Creator.app";
+    process->setArguments(args);
+    process->startDetached(nullptr);
+    delete process;
+#elif defined(Q_OS_WIN)
+	QProcess::startDetached("GiderosFontCreator.exe");
+#else
+	QProcess::startDetached("./GiderosFontCreator");
 #endif
 }
 
@@ -1158,8 +1710,10 @@ TextEdit* MainWindow::createTextEdit()
 {
 	TextEdit* textEdit = new TextEdit;
 	connect(textEdit, SIGNAL(copyAvailable(bool)), this, SLOT(updateUI()));
-	connect(textEdit, SIGNAL(textChanged()), this, SLOT(updateUI()));
-	return textEdit;
+    connect(textEdit, SIGNAL(textChanged()), this, SLOT(updateUI()));
+    connect(textEdit, SIGNAL(lookupSymbol(QString,int,int)), this, SLOT(lookupSymbol(QString,int,int)));
+    connect(textEdit->sciScintilla(), SIGNAL(zoom(int)), this, SLOT(zoom(int)));
+    return textEdit;
 }
 
 TextEdit* MainWindow::findTextEdit(const QString& fileName) const
@@ -1174,14 +1728,120 @@ TextEdit* MainWindow::findTextEdit(const QString& fileName) const
 	return 0;
 }
 
+void MainWindow::insertColorInCode()
+{
+	
+#ifdef SCINTILLAEDIT_H
+	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+
+    if(textEdit)
+    {
+        QColor c;
+
+        if (textEdit->hasSelectedText())
+        {
+            QString sel = textEdit->getSelectedText();
+
+            if (!sel.isEmpty() && sel.startsWith("0x"))
+            {
+                c.setNamedColor(sel.replace("0x", "#"));
+            }
+            else
+            {
+                QMessageBox::information(this, "Information", "The selected text is not a valid color syntax!");
+                return;
+            }
+        }
+        else
+        {
+            c = Qt::white;
+        }
+
+        const QColor color = QColorDialog::getColor(c, nullptr, "Select Color", QColorDialog::ColorDialogOption::DontUseNativeDialog);
+
+        if (color.isValid())
+        {
+            textEdit->sciScintilla()->beginUndoAction();
+
+            const QString& replaceText = color.name().replace("#", "0x");
+
+            if (textEdit->hasSelectedText())
+            {
+                auto from = textEdit->sciScintilla()->selectionStart();
+                auto to = textEdit->sciScintilla()->selectionEnd();
+
+                textEdit->sciScintilla()->setTargetRange(from,to);
+                textEdit->sciScintilla()->replaceTarget(replaceText.length(), replaceText.toUtf8());
+                textEdit->sciScintilla()->setSel(from, from + replaceText.length());
+                textEdit->sciScintilla()->setFocus(true);
+            }
+            else
+            {
+                auto from = textEdit->sciScintilla()->currentPos();
+
+                textEdit->sciScintilla()->insertText(from, replaceText.toUtf8());
+                textEdit->sciScintilla()->setSel(from, from + replaceText.length());
+                textEdit->sciScintilla()->setFocus(true);
+            }
+            textEdit->sciScintilla()->endUndoAction();
+        }
+#endif
+    }
+}
+
+void MainWindow::setWrap()
+{
+	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+	
+	if (textEdit == NULL)
+		return;
+		
+    bool wrap_mode = false;
+
+#ifdef SCINTILLAEDIT_H
+	wrap_mode = textEdit->sciScintilla()->wrapMode();
+	textEdit->sciScintilla()->setWrapMode(wrap_mode ? 0 : 1);
+	textEdit->sciScintilla()->setWrapVisualFlags(SC_WRAPVISUALFLAG_END);
+	
+	if (wrap_mode)
+	{
+		ui.actionWrap->setIcon(IconLibrary::instance().icon(0, "wrap"));
+	}
+	else
+	{
+		ui.actionWrap->setIcon(IconLibrary::instance().icon(0, "unwrap"));
+	}
+#endif
+}
+
+void MainWindow::clearDebugHighlights() {
+    foreach (MdiSubWindow* window, mdiArea_->subWindowList())
+    {
+        TextEdit* textEdit = qobject_cast<TextEdit*>(window);
+        if (textEdit)
+            textEdit->highlightDebugLine(-1);
+    }
+}
+
 void MainWindow::onOpenRequest(const QString& itemName, const QString& fileName)
 {
+    Q_UNUSED(itemName);
 	QString suffix = QFileInfo(fileName).suffix().toLower();
 
-	if (suffix == "txt" || suffix == "lua" || suffix == "glsl" || suffix=="hlsl")
+    if (suffix == "txt" || suffix == "lua" || suffix == "glsl" || suffix=="hlsl" || suffix=="xml" || suffix=="json")
 		openFile(fileName);
-	else
-		QDesktopServices::openUrl(QUrl::fromLocalFile(fileName));
+	else {
+		std::string aname=AddonsManager::addonForExtension(suffix.toStdString());
+        if (aname.empty())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(fileName));
+        else
+            launchAddon(QString::fromStdString(aname), fileName);
+	}
+}
+
+void MainWindow::autoIndent()
+{
+
 }
 
 void MainWindow::updateUI()
@@ -1216,6 +1876,9 @@ void MainWindow::updateUI()
 	ui.actionFind_Next->setEnabled(hasMdiChild);
 	ui.actionFind_Previous->setEnabled(hasMdiChild);
 	ui.actionGo_To_Line->setEnabled(hasMdiChild);
+
+    outlineWidget_->setDocument(textEdit,ui.actionLive_syntax_checking->isChecked(),ui.actionType_checking->isChecked());
+    outlineDock_->setVisible(isProjectOpen);
 }
 
 void MainWindow::save()
@@ -1241,6 +1904,12 @@ void MainWindow::saveAll()
 
 	if (itemsSaved == true)
 		statusBar()->showMessage(tr("Items(s) Saved"), 2000);
+}
+
+
+void MainWindow::showStatusbarMessage(QString message, int timeout)
+{
+	statusBar()->showMessage(message, timeout);
 }
 
 #if 0
@@ -1368,6 +2037,10 @@ CompileThread* MainWindow::createCompileAllThread() const
 		if (type == "file")
 		{
 			QString fileName = e.attribute("source");
+			if (fileName.isEmpty())
+			{
+				fileName = e.attribute("file");
+			}
 			if (QFileInfo(fileName).suffix().toLower() == "lua")
 				fileNames << QDir::cleanPath(dir.absoluteFilePath(fileName));
 		}
@@ -1432,29 +2105,9 @@ void MainWindow::compileAll()
 
     QStringList fileNames;
     {
-        QDir dir = QFileInfo(projectFileName_).dir();
-
-        QDomDocument doc = libraryWidget_->toXml();
-
-        std::stack<QDomNode> stack;
-        stack.push(doc.documentElement());
-
-        while (stack.empty() == false)
-        {
-            QDomNode n = stack.top();
-            QDomElement e = n.toElement();
-            stack.pop();
-
-            if (e.tagName() == "file")
-            {
-                QString fileName = e.attribute("source");
-                if (QFileInfo(fileName).suffix().toLower() == "lua")
-                    fileNames << fileName;
-            }
-
-            QDomNodeList childNodes = n.childNodes();
-            for (int i = 0; i < childNodes.size(); ++i)
-                stack.push(childNodes.item(i));
+        auto flist=libraryWidget_->fileList(false,false,true);
+        for (auto fp: flist) {
+            fileNames << fp.second;
         }
     }
 
@@ -1583,13 +2236,14 @@ static bool parseFileLineString(const QString& l, QString* fileName = 0, unsigne
 // check if string starts with [space]*[digit]+[:]
 static bool lineNumber(const QString& str, int* line = NULL)
 {
-	QRegExp regexp("^\\s*(\\d+)\\:");
+    QRegularExpression regexp("^\\s*(\\d+)\\:");
 
-	if (regexp.indexIn(str) == -1)
+    QRegularExpressionMatch match=regexp.match(str);
+    if (!match.hasMatch())
 		return false;
 
 	if (line)
-		*line = regexp.cap(1).toInt();
+        *line = match.captured(1).toInt();
 
 	return true;
 }
@@ -1608,7 +2262,10 @@ void MainWindow::outputMouseDoubleClick(QMouseEvent* e)
 			TextEdit* textEdit = openFile(fileName);
 
 			if (textEdit)
+            {
 				textEdit->setCursorPosition(lineNumber - 1, 0);
+                textEdit->setFocusToEdit();
+            }
 
 			return;
 		}
@@ -1629,8 +2286,10 @@ void MainWindow::outputMouseDoubleClick(QMouseEvent* e)
 			{
 				TextEdit* textEdit = openFile(text.left(text.size() - 1));
 
-				if (textEdit)
+                if (textEdit) {
 					textEdit->setCursorPosition(line - 1, 0);
+                    textEdit->setFocusToEdit();
+                }
 //				printf("%s%d\n", qPrintable(text), line);
 				break;
 			}
@@ -1642,15 +2301,18 @@ void MainWindow::outputMouseDoubleClick(QMouseEvent* e)
 TextEdit* MainWindow::openFile(const QString& fn, bool suppressErrors/* = false*/)
 {
 	QString fileName;
+    QString itemName;
 
-	if (QFileInfo(fn).isRelative())
+    QDir dir(QFileInfo(projectFileName_).path());
+    if (QFileInfo(fn).isRelative())
 	{
-		QDir dir(QFileInfo(projectFileName_).path());
 		fileName = QDir::cleanPath(dir.absoluteFilePath(libraryWidget_->fileName(fn)));
+        itemName=fn;
 	}
 	else
 	{
 		fileName = fn;
+        itemName = libraryWidget_->itemName(dir,fn);
 	}
 
 	TextEdit* existing = findTextEdit(fileName);
@@ -1661,17 +2323,18 @@ TextEdit* MainWindow::openFile(const QString& fn, bool suppressErrors/* = false*
 		return existing;
 	}
 
-	TextEdit* child = createTextEdit();
-	if (child->loadFile(fileName, suppressErrors) == true)
-	{
-		mdiArea_->addSubWindow(child);
-		child->showMaximized();
-	}
-	else
-	{
-		child->close();
-		child = 0;
-	}
+    TextEdit* child = createTextEdit();
+    if (child->loadFile(fileName, itemName, suppressErrors) == true)
+    {
+        mdiArea_->addSubWindow(child);
+        child->showMaximized();
+        child->sciScintilla()->setZoom(globalZoomLevel_);
+    }
+    else
+    {
+        child->close();
+        child = nullptr;
+    }
 
 	return child;
 }
@@ -1749,10 +2412,12 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
 		QSettings settings;
 		settings.setValue("geometry", saveGeometry());
-		settings.setValue("windowState", saveState());
-		settings.setValue("splitter1", splitter1_->saveState());
+        settings.setValue("windowState", saveState());
+/*		settings.setValue("splitter1", splitter1_->saveState());
 		settings.setValue("splitter2", splitter2_->saveState());
-		settings.setValue("splitter3", splitter3_->saveState());
+		settings.setValue("splitter3", splitter3_->saveState());*/
+
+        outlineWidget_->saveSettings();
 
 		event->accept();
 	} 
@@ -1782,6 +2447,16 @@ void MainWindow::actionLocalhostToggle(bool checked){
     #endif
 }
 
+void MainWindow::actionLiveSyntaxChecking(bool checked){
+    QSettings settings;
+    settings.setValue("syntaxcheck_live", checked);
+}
+
+void MainWindow::actionLiveTypeChecking(bool checked){
+    QSettings settings;
+    settings.setValue("typecheck_live", checked);
+}
+
 void MainWindow::playerSettings()
 {
 	PlayerSettingsDialog dialog(this);
@@ -1789,7 +2464,9 @@ void MainWindow::playerSettings()
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		ui.actionStart->setEnabled(false);
-		ui.actionStop->setEnabled(false);
+		ui.actionDebug->setEnabled(false);
+        ui.actionProfile->setEnabled(false);
+        ui.actionStop->setEnabled(false);
 		
 		//sentMap_.clear();
 		
@@ -1811,13 +2488,45 @@ void MainWindow::cancelUpload()
 
 }
 
+void MainWindow::zoom(int zoom)
+{
+    foreach (MdiSubWindow* window, mdiArea_->subWindowList())
+    {
+        TextEdit* textEdit = qobject_cast<TextEdit*>(window);
+        if (textEdit)
+            textEdit->sciScintilla()->setZoom(zoom);
+    }
+    globalZoomLevel_ = zoom;
+    showStatusbarMessage(QString("Zoom level: %1").arg(zoom), 3500);
+}
+
 void MainWindow::find()
 {
+    QPoint od_Pos = this->outputDock_->mapToGlobal(this->outputDock_->rect().topRight());
+//    QPoint fd_Pos = this->findDialog_->mapToGlobal(this->findDialog_->rect().topLeft());
+//    this->findDialog_->move(od_Pos.x() - findDialog_->width(), od_Pos.y());
+	this->findDialog_->move( (od_Pos.x() - findDialog_->width())*0.5, od_Pos.y()); // new 20221029 XXX
+    
 	replaceDialog_->hide();
 //	findInFilesDialog_->hide();
 	findDialog_->show();
+	
     findDialog_->raise();
     findDialog_->activateWindow();
+
+	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+    if (textEdit->hasSelectedText())
+    {
+		QString sel = textEdit->getSelectedText();
+		if (!sel.isEmpty()){
+			findDialog_->setSelectedText(sel);
+		}
+
+	}
+	else
+	{
+		findDialog_->setSelectedText("");
+	}
 	findDialog_->focusToFindWhat();
 }
 
@@ -1832,7 +2541,7 @@ void MainWindow::findFirst()
 		wholeWord_ = findDialog_->wholeWord();
         regexp_ = findDialog_->regexp();
         wrapSearch_ = findDialog_->wrap();
-		bool forward = findDialog_->forward();
+		bool forward = true;
 
 		if (findWhat_.isEmpty() == false)
             if (textEdit->findFirst(findWhat_, regexp_, matchCase_, wholeWord_, wrapSearch_, forward) == false)
@@ -1844,10 +2553,16 @@ void MainWindow::findNext()
 {
 	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
 
-	if (textEdit)
+	if (textEdit && textEdit->hasSelectedText())
 	{
-		if (findWhat_.isEmpty() == false)
-            if (textEdit->findFirst(findWhat_, regexp_, matchCase_, wholeWord_, wrapSearch_, true) == false)
+		findWhat_ = findDialog_->findWhat();
+		matchCase_ = findDialog_->matchCase();
+		wholeWord_ = findDialog_->wholeWord();
+        	regexp_ = findDialog_->regexp();
+        	wrapSearch_ = findDialog_->wrap();
+        
+		findWhat_ = textEdit->getSelectedText();
+	            if (textEdit->findFirst(findWhat_, regexp_, matchCase_, wholeWord_, wrapSearch_, true) == false)
 				QMessageBox::information(findDialog_, tr("Gideros"), tr("The specified text could not be found."));
 	}
 }
@@ -1856,21 +2571,47 @@ void MainWindow::findPrevious()
 {
 	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
 
-	if (textEdit)
+	if (textEdit && textEdit->hasSelectedText())
 	{
-		if (findWhat_.isEmpty() == false)
-            if (textEdit->findFirst(findWhat_, regexp_, matchCase_, wholeWord_, wrapSearch_, false) == false)
+		findWhat_ = findDialog_->findWhat();
+		matchCase_ = findDialog_->matchCase();
+		wholeWord_ = findDialog_->wholeWord();
+		regexp_ = findDialog_->regexp();
+		wrapSearch_ = findDialog_->wrap();
+        
+		findWhat_ = textEdit->getSelectedText();
+	            if (textEdit->findFirst(findWhat_, regexp_, matchCase_, wholeWord_, wrapSearch_, false) == false)
 				QMessageBox::information(findDialog_, tr("Gideros"), tr("The specified text could not be found."));
 	}
 }
 
 void MainWindow::replace()
 {
+    QPoint od_Pos = this->outputDock_->mapToGlobal(this->outputDock_->rect().topRight());
+//    QPoint fd_Pos = this->replaceDialog_->mapToGlobal(this->replaceDialog_->rect().topLeft());
+//    this->replaceDialog_->move(od_Pos.x() - replaceDialog_->width(), od_Pos.y());
+	this->replaceDialog_->move((od_Pos.x() - replaceDialog_->width()) * 0.5, od_Pos.y()); // new 20221029 XXX
+    
 	findDialog_->hide();
-//	findInFilesDialog_->hide();
 	replaceDialog_->show();
+	
     replaceDialog_->raise();
     replaceDialog_->activateWindow();
+    
+	TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+    if (textEdit->hasSelectedText())
+    {
+		QString sel = textEdit->getSelectedText();
+		if (!sel.isEmpty()){
+			replaceDialog_->setSelectedText(sel);
+		}
+
+	}
+	else
+	{
+		replaceDialog_->setSelectedText("");
+	}
+	
     replaceDialog_->focusToFindWhat();
 }
 
@@ -1928,20 +2669,16 @@ void MainWindow::goToLine()
 
 	if (textEdit)
 	{
-		int line, index;
-        textEdit->sciScintilla()->getCursorPosition(&line, &index);
-
-		int lines = textEdit->sciScintilla()->lines();
-
-		GoToLineDialog dialog(this);
-		dialog.setLineNumbers(line + 1, lines);
-		if (dialog.exec() == QDialog::Accepted)
-		{
-			int lineNumber = dialog.lineNumber();
-			lineNumber = qMin(qMax(lineNumber, 1), lines);
-
-			textEdit->sciScintilla()->setCursorPosition(lineNumber - 1, 0);
+		int lineCount = textEdit->sciScintilla()->lineCount();
+		bool ok;
+		int line = QInputDialog::getInt(this, tr("Line number"), tr("Go to line"),
+			1, 1, lineCount + 1, 1, &ok);
+		if (ok) {
+			textEdit->sciScintilla()->gotoLine(line - 1);
 		}
+		
+		textEdit->sciScintilla()->setFirstVisibleLine(line - 12);
+
 	}
 }
 
@@ -1954,7 +2691,9 @@ void MainWindow::connected()
 	isTransferring_ = false;
 
 	ui.actionStart->setEnabled(true);
-	ui.actionStop->setEnabled(true);
+	ui.actionDebug->setEnabled(true);
+    ui.actionProfile->setEnabled(true);
+    ui.actionStop->setEnabled(true);
 	printf("other side connected\n");
 
 	if (!allPlayersPlayList.empty())
@@ -1963,14 +2702,53 @@ void MainWindow::connected()
 
 void MainWindow::disconnected()
 {
+    if (isBreaked_) resumeDebug(0);
 	if (!allPlayersPlayList.empty())
 		return;
 	fileQueue_.clear();
 	isTransferring_ = false;
 
 	ui.actionStart->setEnabled(false);
+	ui.actionDebug->setEnabled(false);
 	ui.actionStop->setEnabled(false);
-	printf("other side closed connection\n");
+    ui.actionProfile->setEnabled(false);
+    printf("other side closed connection\n");
+}
+
+QVariant MainWindow::deserializeValue(ByteBuffer &buffer, QString &vtype) {
+    char type;
+    buffer >> type;
+    std::string value;
+    QString stype;
+    QMap<QString,QVariant> table;
+    char b;
+    vtype=(type==20)?"ref":QString(lua_typename(NULL,type));
+    switch (type) {
+        case LUA_TNONE: return QVariant();
+        case LUA_TNIL: return QVariant();
+        case LUA_TBOOLEAN:
+            buffer >> b;
+            return QVariant::fromValue((bool)b);
+        case LUA_TTABLE:
+            buffer >> value; //table ref, for future use
+            while (true)  {
+                QVariant key=deserializeValue(buffer,stype);
+                if (key.isNull()) break;
+                QVariant val=deserializeValue(buffer,stype);
+                table[key.toString()]=val;
+            }
+            return QVariant::fromValue(table);
+        case LUA_TNUMBER:
+            buffer >> value;
+            return QVariant::fromValue(QString::fromStdString(value).toDouble());
+        case LUA_TSTRING:
+            buffer >> value;
+            return QVariant::fromValue(QString::fromStdString(value));
+        default:
+            buffer >> value;
+            return QVariant::fromValue(QPair<QString,QString>(vtype,QString::fromStdString(value)));
+    }
+
 }
 
 void MainWindow::dataReceived(const QByteArray& d)
@@ -1986,15 +2764,11 @@ void MainWindow::dataReceived(const QByteArray& d)
         //outputWidget_->append(QString::fromUtf8(str.c_str()));
         QString strU = QString::fromUtf8(str.c_str());
         if (strU.startsWith("<") && strU.endsWith(">"))
-        {
             outputWidget_->insertHtml(strU);
-            outputWidget_->moveCursor(QTextCursor::End);
-        }
         else
-        {
             outputWidget_->append(strU);
-        }
-	}
+        outputWidget_->moveCursor(QTextCursor::End);
+    }
 	if (data[0] == 6 && isTransferring_ == true)
 	{
 		printf("file list has got\n");
@@ -2012,6 +2786,19 @@ void MainWindow::dataReceived(const QByteArray& d)
 				localFileMapReverse[fileList[i].second] = fileList[i].first;
 			}
 		}
+        bool mainluaOnly=libraryWidget_->getProjectProperties().mainluaOnly;
+        std::vector<std::pair<QString, bool> > topologicalSort = libraryWidget_->topologicalSort(localFileMapReverse);
+		for (std::size_t i = 0; i < topologicalSort.size(); ++i)
+            if ((topologicalSort[i].second == false)&&(!mainluaOnly)&&(localFileMapReverse[topologicalSort[i].first]!="main.lua")) {
+            	//Masquerade all supposedly merged files except main.lua, to trigger 'require' issues
+            	//on player as it would happen on exported project
+            	QString fPath=topologicalSort[i].first;
+            	QString luaFile=localFileMapReverse[fPath];
+            	QString luaFileMasq=luaFile+".gideros_merged";
+            	localFileMap.erase(luaFile);
+				localFileMap[luaFileMasq] = fPath;
+				localFileMapReverse[fPath] = luaFileMasq;
+            }
 
 		std::map<QString, std::pair<int, QByteArray> > remoteFileMap;
 
@@ -2051,6 +2838,7 @@ void MainWindow::dataReceived(const QByteArray& d)
 		}
 
 		// upload files
+		QStringList luaFiles;
 		QDir path(QFileInfo(projectFileName_).path());
 		for (std::map<QString, QString>::iterator iter = localFileMap.begin(); iter != localFileMap.end(); ++iter)
 		{
@@ -2082,22 +2870,111 @@ void MainWindow::dataReceived(const QByteArray& d)
 				fileQueue_.push_back(qMakePair(iter->first, localfile));
 			else
 				printf("don't upload: %s\n", qPrintable(iter->first));
+
+			if (iter->first.startsWith("_LuaPlugins_/")&&iter->first.endsWith("/_preload.lua"))
+				luaFiles << iter->first;
 		}
 
-        std::vector<std::pair<QString, bool> > topologicalSort = libraryWidget_->topologicalSort();
-
-		QStringList luaFiles;
 		for (std::size_t i = 0; i < topologicalSort.size(); ++i)
-            if (topologicalSort[i].second == false)
+            if ((topologicalSort[i].second == false)&&((!mainluaOnly)||(localFileMapReverse[topologicalSort[i].first]=="main.lua")))
                 luaFiles << localFileMapReverse[topologicalSort[i].first];
 
-		if (luaFiles.empty() == false)
+        if (luaFiles.empty() == false)
 			fileQueue_.push_back(qMakePair(luaFiles.join("|"), QString("play")));
 	}
+	if (data[0]==23) //Breaked
+	{
+		ByteBuffer buffer(d.constData(), d.size());
+
+		char chr;
+		int line;
+		std::string source;
+		buffer >> chr;
+		buffer >> line;
+		buffer >> source;
+		isBreaked_=true;
+        ui.actionResume->setEnabled(true);
+        ui.actionStepOver->setEnabled(true);
+        ui.actionStepInto->setEnabled(true);
+        ui.actionStepReturn->setEnabled(true);
+        TextEdit *srcFile=openFile(QString::fromStdString(source.substr(1)),true);
+        clearDebugHighlights();
+        if (srcFile) {
+            srcFile->highlightDebugLine(line-1);
+        }
+    }
+    if (data[0]==24) //Symbol looked up
+    {
+        ByteBuffer buffer(d.constData(), d.size());
+
+        char chr;
+        buffer >> chr;
+        QString vtype;
+        QVariant value=deserializeValue(buffer,vtype);
+
+        TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+
+        if (textEdit==lookupSymbolWidget) {
+            QString tipInfo;
+            if (vtype=="table")
+            {
+                tipInfo="<table>";
+                QMap<QString,QVariant> tmap=value.value<QMap<QString,QVariant>>();
+                QMap<QString,QString> smap;
+                QStringList klst;
+                for (const auto &sk : tmap.keys()) {
+                    klst << sk;
+                    auto val=tmap[sk];
+                    QString vi=val.toString().toHtmlEscaped();
+                    if (val.canConvert<QMap<QString,QVariant>>()) {
+                        vi="<i>table</i>";
+                    }
+                    else if (val.canConvert<QPair<QString,QString>>()) {
+                        vi="<i>"+val.value<QPair<QString,QString>>().first+"</i>";
+                    }
+                    else if (val.isNull())
+                        vi="<i>nil</i>";
+                    smap[sk]=QString("<tr><td><b>%1</b></td><td>%2</td></tr>").arg(sk.toHtmlEscaped()).arg(vi);
+                }
+                klst.sort();
+                for (const auto &sk:klst)
+                    tipInfo+=smap[sk];
+                tipInfo+="</table>";
+            }
+            else {
+                tipInfo=QString("<i>%1</i> <b>%2</b>").arg(vtype).arg(value.toString().toHtmlEscaped());
+            }
+            QToolTip::showText(textEdit->mapToGlobal(lookupSymbolPoint),tipInfo,textEdit);
+        }
+    }
+    if (data[0]==31) { //Profiling report
+        ByteBuffer buffer(d.constData(), d.size());
+
+        char chr;
+        buffer >> chr;
+        QString vtype;
+        QVariant value=deserializeValue(buffer,vtype);
+        if (vtype=="table") {
+            ProfilerReport::displayReport(value);
+        }
+    }
+}
+
+void MainWindow::lookupSymbol(QString sym,int x,int y)
+{
+    if (isBreaked_) {
+        lookupSymbolWidget=(TextEdit *) QObject::sender();
+        lookupSymbolPoint=QPoint(x,y);
+        ByteBuffer buffer;
+        buffer << (char) 20;
+        buffer << sym.toStdString();
+        client_->sendCommand(buffer.data(),buffer.size());
+    }
 }
 
 void MainWindow::ackReceived(unsigned int id)
 {
+    Q_UNUSED(id);
 /*	std::map<int, QString>::iterator iter = sentMap_.find(id);
 	if (iter != sentMap_.end())
 	{
@@ -2166,6 +3043,7 @@ bool MainWindow::maybeSave()
 
 void MainWindow::onPreviewRequest(const QString& itemName, const QString& fileName)
 {
+    Q_UNUSED(itemName);
 	QString title = QFileInfo(projectFileName_).dir().relativeFilePath(fileName);
 	previewWidget_->setFileName(fileName, title);
 }
@@ -2183,9 +3061,8 @@ static void fileCopy(	const QString& srcName,
 		bool submatch = false;
 		for (int i = 0; i < wildcards[j].size(); ++i)
 		{
-			QRegExp rx(wildcards[j][i]);
-			rx.setPatternSyntax(QRegExp::Wildcard);
-            if (rx.exactMatch(srcName2))
+            QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(wildcards[j][i])));
+            if (rx.match(srcName2).hasMatch())
 			{
 				submatch = true;
 				break;
@@ -2230,9 +3107,8 @@ static bool shouldCopy(const QString &fileName, const QStringList &include, cons
 
     for (int i = 0; i < include.size(); ++i)
     {
-        QRegExp rx(include[i]);
-        rx.setPatternSyntax(QRegExp::Wildcard);
-        if (rx.exactMatch(fileName2))
+        QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(include[i])));
+        if (rx.match(fileName2).hasMatch())
         {
             result = true;
             break;
@@ -2241,9 +3117,8 @@ static bool shouldCopy(const QString &fileName, const QStringList &include, cons
 
     for (int i = 0; i < exclude.size(); ++i)
     {
-        QRegExp rx(exclude[i]);
-        rx.setPatternSyntax(QRegExp::Wildcard);
-        if (rx.exactMatch(fileName2))
+        QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(exclude[i])));
+        if (rx.match(fileName2).hasMatch())
         {
             result = false;
             break;
@@ -2352,7 +3227,7 @@ quint32 _ntohl(quint32 x) {
 
 void MainWindow::exportProject()
 {
-    ExportProjectDialog dialog(&libraryWidget_->getProjectProperties(), true, this);
+    ExportProjectDialog dialog(&libraryWidget_->getProjectProperties(), QFileInfo(projectFileName_).dir(), true, this);
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		QString exportType = dialog.exportType();
@@ -2363,28 +3238,17 @@ void MainWindow::exportProject()
         QString templatename;
         QString templatenamews;
 
-
-        if (exportType=="iOS")
+        if (exportType=="Apple")
         {
             arguments << "-platform" << "ios";
             arguments << "-bundle" << dialog.ios_bundle();
+            arguments << "-bundle_atv" << dialog.atv_bundle();
+            arguments << "-bundle_macos" << dialog.macos_bundle();
+            arguments << "-category" << dialog.macos_category();
             templatedir = "Xcode4";
             templatename = "iOS Template";
             templatenamews = "iOS_Template";
-        } else if (exportType=="Android") {
-            templatename = "Android Template";
-            templatenamews = "AndroidTemplate";
-            arguments << "-platform" << "android";
-            arguments << "-package" << dialog.packageName();
-            if(dialog.androidTemplate() == "Android Studio"){
-                arguments << "-template" << "androidstudio";
-                templatedir = "AndroidStudio";
-            }
-            else{
-                arguments << "-template" << "eclipse";
-                templatedir = "Eclipse";
-            }
-        } else if (exportType=="WinRT") {
+         } else if (exportType=="WinRT") {
             templatedir = "VisualStudio";
             templatename = "WinRT Template";
             templatenamews = "WinRTTemplate";
@@ -2396,24 +3260,33 @@ void MainWindow::exportProject()
             templatename = "WindowsDesktopTemplate";
             templatenamews = "WindowsDesktopTemplate";
             arguments << "-platform" << "win32";
-        } else if (exportType=="Windows") {
+        } else if (exportType=="Desktop") {
             templatedir = "Qt";
-            templatename = "WindowsDesktopTemplate";
-            templatenamews = "WindowsDesktopTemplate";
-            arguments << "-platform" << "windows";
-            arguments << "-organization" << dialog.win_org();
-            arguments << "-domain" << dialog.win_domain();
-        } else if (exportType=="MacOSX") {
-            templatedir = "Qt";
-            templatename = "MacOSXDesktopTemplate";
-            templatenamews = "MacOSXDesktopTemplate";
-            arguments << "-platform" << "macosx";
-            arguments << "-organization" << dialog.osx_org();
-            arguments << "-domain" << dialog.osx_domain();
-            arguments << "-bundle" << dialog.osx_bundle();
-            arguments << "-category" << dialog.osx_category();
+            QString expPlatform=dialog.qtexp_platform();
+            arguments << "-organization" << dialog.qtexp_org();
+            arguments << "-domain" << dialog.qtexp_domain();
+            if (expPlatform=="Windows")
+            {
+                templatename = "WindowsDesktopTemplate";
+                templatenamews = "WindowsDesktopTemplate";
+                arguments << "-platform" << "qtwindows";
+            } else if (expPlatform=="Mac") {
+                templatename = "MacOSXDesktopTemplate";
+                templatenamews = "MacOSXDesktopTemplate";
+                arguments << "-platform" << "qtmacosx";
+                arguments << "-bundle" << dialog.osx_bundle();
+                arguments << "-signingId" << dialog.osx_signingId();
+                arguments << "-installerId" << dialog.osx_installerId();
+                arguments << "-category" << dialog.osx_category();
+            } else if (expPlatform=="Linux") {
+                templatename = "LinuxDesktopTemplate";
+                templatenamews = "LinuxDesktopTemplate";
+                arguments << "-platform" << "qtlinux";
+            }
         } else if (exportType=="GApp") {
             arguments << "-platform" << "gapp";
+        } else if (exportType=="Linux") {
+            arguments << "-platform" << "linux";
         } else if (exportType=="Html5") {
             templatedir = "Html5";
             templatename = "Html5";
@@ -2428,16 +3301,18 @@ void MainWindow::exportProject()
         }
 
 
-
         QDir dir2 = QDir::currentPath();
-        dir2.cd("Templates");
+        if(!dir2.cd(TEMPLATES_PATH)){
+            QMessageBox::information(this, tr("Gideros"), tr("No Templates folder."));
+            return;
+        }
         if(!dir2.cd(templatedir) || !dir2.cd(templatename)){
             QMessageBox::information(this, tr("Gideros"), tr("No template found."));
             return;
         }
 
 		QSettings settings;
-        QString lastExportDirectory = settings.value(templatenamews+"lastExportDirectory", QString()).toString();
+        QString lastExportDirectory = settings.value(exportType+"lastExportDirectory", QString()).toString();
 
 		QString output = QFileDialog::getExistingDirectory(this, tr("Open Directory"),
 			lastExportDirectory,
@@ -2446,7 +3321,7 @@ void MainWindow::exportProject()
 		if (output.isEmpty() == true)
 			return;
 
-        settings.setValue(templatenamews+"lastExportDirectory", output);
+        settings.setValue(exportType+"lastExportDirectory", output);
 
         if (dialog.encryptCode() && dialog.encryptAssets())
         {
@@ -2480,7 +3355,8 @@ void MainWindow::exportProject()
         exportProcess->setProgram(program);
         exportProcess->setArguments(arguments);
 
-        ExportProgress progress(exportProcess,this);
+        QString outPath = QDir::cleanPath(out.absolutePath());
+        ExportProgress progress(exportProcess, outPath, this);
     	progress.exec();
     	delete exportProcess;
 
@@ -2490,70 +3366,7 @@ void MainWindow::exportProject()
 
 std::vector<std::pair<QString, QString> > MainWindow::libraryFileList(bool downsizing)
 {
-	std::vector<std::pair<QString, QString> > result;
-
-	QDomDocument doc = libraryWidget_->toXml();
-
-	std::stack<QDomNode> stack;
-	stack.push(doc.documentElement());
-
-	std::vector<QString> dir;
-
-	while (stack.empty() == false)
-	{
-		QDomNode n = stack.top();
-		QDomElement e = n.toElement();
-		stack.pop();
-
-		if (n.isNull() == true)
-		{
-			dir.pop_back();
-			continue;
-		}
-
-		QString type = e.tagName();
-
-		if (type == "file")
-		{
-			QString fileName = e.attribute("source");
-			QString name = QFileInfo(fileName).fileName();
-
-			QString n;
-			for (std::size_t i = 0; i < dir.size(); ++i)
-				n += dir[i] + "/";
-			n += name;
-
-			if (downsizing)
-			{
-				if (e.attribute("downsizing", "0").toInt())
-					result.push_back(std::make_pair(n, fileName));
-			}
-			else
-			{
-				result.push_back(std::make_pair(n, fileName));
-			}
-
-			continue;
-		}
-
-		if (type == "folder")
-		{
-			QString name = e.attribute("name");
-			dir.push_back(name);
-
-			QString n;
-			for (std::size_t i = 0; i < dir.size(); ++i)
-				n += dir[i] + "/";
-
-			stack.push(QDomNode());
-		}
-
-		QDomNodeList childNodes = n.childNodes();
-		for (int i = 0; i < childNodes.size(); ++i)
-			stack.push(childNodes.item(i));
-	}
-
-	return result;
+    return libraryWidget_->fileList(downsizing,clientIsWeb_,false);
 }
 
 void MainWindow::replace_findNext()
@@ -2629,13 +3442,12 @@ void MainWindow::findInFiles()
 		std::vector<std::pair<QString, QString> > fileListAll = libraryFileList();
 		std::vector<std::pair<QString, QString> > fileList;
 
-		QRegExp rx(findInFilesDialog_->filter());
-		rx.setPatternSyntax(QRegExp::Wildcard);
+        QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(findInFilesDialog_->filter(),QRegularExpression::UnanchoredWildcardConversion));
 		for (std::size_t i = 0; i < fileListAll.size(); ++i)
 		{
 			QString filename = fileListAll[i].second;
 			
-			if (rx.exactMatch(filename))
+            if (rx.match(filename).hasMatch())
 				fileList.push_back(fileListAll[i]);
 		}
 
@@ -2653,10 +3465,29 @@ void MainWindow::findInFiles()
 			if (file.open(QIODevice::ReadOnly | QIODevice::Text))
 			{
 				QMap<int, QList<QPair<int, int> > > found;
+                QTextStream in(&file);
+                in.setEncoding(QStringConverter::Utf8);
+#ifdef SCINTILLAEDIT_H
+                ScintillaEdit sci;
+                sci.setText(in.readAll().toUtf8());
 
+                int start=0;
+                int end=sci.textLength();
+                sci.setSearchFlags((matchCase?SCFIND_MATCHCASE:0)|(wholeWord?SCFIND_WHOLEWORD:0)|(regexp?SCFIND_REGEXP:0));
+                while (true)
+                {
+                    sci.setTargetRange(start,end);
+                    if (sci.searchInTarget(findWhat.size(),findWhat.toUtf8())<0) break;
+                    start=sci.targetEnd()+1;
+                    int line=sci.lineFromPosition(sci.targetStart());
+                    int lineStart=sci.positionFromLine(line);
+
+                    found[line].push_back(qMakePair(sci.targetStart()-lineStart, sci.targetEnd()-lineStart));
+
+                    nfound++;
+                }
+#else
 				QsciScintilla sci;
-				QTextStream in(&file);
-                in.setCodec("UTF-8");
                 sci.setUtf8(true);
 				sci.setText(in.readAll());
 
@@ -2674,21 +3505,27 @@ void MainWindow::findInFiles()
 					nfound++;
 				}
 
-				if (!found.isEmpty())
-				{
-					outputWidget_->append("\n");
-					outputWidget_->append(absfilename + ":\n");
+#endif
+                if (!found.isEmpty())
+                {
+                    outputWidget_->append("\n");
+                    outputWidget_->append(absfilename + ":\n");
 
-					QMap<int, QList<QPair<int, int> > >::iterator iter, e = found.end();
-					for (iter = found.begin(); iter != e; ++iter)
-					{
-						int line = iter.key();
-						
-						outputWidget_->append(QString::number(line + 1).rightJustified(5) + ": ");
-						outputWidget_->append(sci.text(line), iter.value());
-					}
-				}
-			}
+                    QMap<int, QList<QPair<int, int> > >::iterator iter, e = found.end();
+                    for (iter = found.begin(); iter != e; ++iter)
+                    {
+                        int line = iter.key();
+
+                        outputWidget_->append(QString::number(line + 1).rightJustified(5) + ": ");
+#ifdef SCINTILLAEDIT_H
+                        outputWidget_->append(sci.textRange(sci.positionFromLine(line),sci.lineEndPosition(line)), iter.value());
+                        outputWidget_->append("\n");
+#else
+                        outputWidget_->append(sci.text(line), iter.value());
+#endif
+                    }
+                }
+            }
 		}
 
 		outputWidget_->append("\n" + tr("%1 matches found.").arg(nfound) + "\n");
@@ -2765,6 +3602,14 @@ void MainWindow::openAboutDialog()
 	dialog.exec();
 }
 
+void MainWindow::openPreferencesDialog()
+{
+    PreferencesDialog dialog(this);
+    //TextEdit* text_edit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+    dialog.setMdiArea(mdiArea_);
+    dialog.exec();
+}
+
 void MainWindow::onInsertIntoDocument(const QString& text)
 {
 	qDebug() << text;
@@ -2772,8 +3617,14 @@ void MainWindow::onInsertIntoDocument(const QString& text)
 
 	if (textEdit != 0)
 	{
-		textEdit->sciScintilla()->replaceSelectedText(text);
-		textEdit->sciScintilla()->setFocus();
+#ifdef SCINTILLAEDIT_H
+        textEdit->sciScintilla()->replaceSel(text.toUtf8());
+        textEdit->sciScintilla()->setFocus(true);
+#else
+        textEdit->sciScintilla()->replaceSelectedText(text);
+        textEdit->sciScintilla()->setFocus();
+#endif
+
 		textEdit->setFocus();
 	}
 }
@@ -2841,9 +3692,9 @@ void MainWindow::downsize(const QString& filename)
 
 	for (size_t i = 0; i < imageScales.size(); ++i)
 	{
-		if (i != match)
+        if ((int)i != match)
 		{
-			if (imageScales[i].second == 0)
+            if (imageScales[i].second == 0)
 				continue;
 
 			double ratio = imageScales[i].second / scale;
@@ -2870,33 +3721,14 @@ void MainWindow::downsize(const QString& filename)
 	}
 }
 
-void MainWindow::developerCenter()
-{
-    QDesktopServices::openUrl(QUrl("http://giderosmobile.com/guide"));
-}
-
 void MainWindow::helpAndSupport()
 {
     QDesktopServices::openUrl(QUrl("http://giderosmobile.com/forum"));
 }
 
-void MainWindow::apiDocumentation()
-{
-
-#if defined(Q_OS_MAC)
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("../../Documentation/reference.html")));
-#else
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("Documentation/reference.html")));
-#endif
-}
-
 void MainWindow::giderosDocumentation()
 {
-#if defined(Q_OS_MAC)
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("../../Documentation/index.html")));
-#else
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::current().filePath("Documentation/index.html")));
-#endif
+    QDesktopServices::openUrl(QUrl("https://wiki.giderosmobile.com/"));
 }
 
 
@@ -2938,8 +3770,14 @@ void MainWindow::storeOpenFiles()
 		{
 			fileNames << textEdit->fileName();
 
-			int line, index;
-			textEdit->sciScintilla()->getCursorPosition(&line, &index);
+            int line, index;
+#ifdef SCINTILLAEDIT_H
+            sptr_t pos=textEdit->sciScintilla()->currentPos();
+            index=textEdit->sciScintilla()->column(pos);
+            line=textEdit->sciScintilla()->lineFromPosition(pos);
+#else
+            textEdit->sciScintilla()->getCursorPosition(&line, &index);
+#endif
 			cursorPositions << QPoint(line, index);
 
 			if (textEdit == mdiArea_->activeSubWindow())
@@ -2991,14 +3829,19 @@ void MainWindow::restoreOpenFiles()
 			QList<QVariant> cursorPositions = properties["cursorPositions"].toList();
 			QString activeSubWindow = properties["activeSubWindow"].toString();
 
-			TextEdit* active = NULL;
+            TextEdit* active = nullptr;
 			for (int i = 0; i < fileNames.size(); ++i)
 			{
 				TextEdit* textEdit = openFile(fileNames[i], true);
 				if (textEdit)
 				{
 					QPoint p = cursorPositions[i].toPoint();
-					textEdit->sciScintilla()->setCursorPosition(p.x(), p.y());
+#ifdef SCINTILLAEDIT_H
+                    textEdit->sciScintilla()->setCurrentPos(textEdit->sciScintilla()->positionFromPoint(p.x(),p.y()));
+                    textEdit->sciScintilla()->setZoom(globalZoomLevel_);
+#else
+                    textEdit->sciScintilla()->setCursorPosition(p.x(), p.y());
+#endif
 
 					if (fileNames[i] == activeSubWindow)
 						active = textEdit;
@@ -3133,7 +3976,23 @@ void MainWindow::on_actionFold_Unfold_All_triggered()
 
     if (textEdit)
     {
+#ifdef SCINTILLAEDIT_H
+        int lineCount = textEdit->sciScintilla()->lineCount();
+        bool expanding = true;
+
+        for (int line = 0; line < lineCount; line++)
+        {
+           if (textEdit->sciScintilla()->foldLevel(line) & SC_FOLDLEVELHEADERFLAG)
+           {
+               expanding = !textEdit->sciScintilla()->foldExpanded(line);
+               break;
+           }
+        }
+        textEdit->sciScintilla()->foldAll(expanding?SC_FOLDACTION_EXPAND:SC_FOLDACTION_CONTRACT);
+#else
+
         textEdit->sciScintilla()->foldAll(true);
+#endif
     }
 }
 
@@ -3143,8 +4002,39 @@ void MainWindow::on_actionFold_Unfold_Top_triggered()
 
     if (textEdit)
     {
+#ifdef SCINTILLAEDIT_H
+        int lineCount = textEdit->sciScintilla()->lineCount();
+        bool expanding = true;
+
+        for (int line = 0; line < lineCount; line++)
+        {
+           if (textEdit->sciScintilla()->foldLevel(line) & SC_FOLDLEVELHEADERFLAG)
+           {
+               expanding = !textEdit->sciScintilla()->foldExpanded(line);
+               break;
+           }
+        }
+        for (int line = 0; line < lineCount; line++)
+        {
+            int level = textEdit->sciScintilla()->foldLevel(line);
+            if (!(level & SC_FOLDLEVELHEADERFLAG)) //Not foldable
+                continue;
+
+            if (SC_FOLDLEVELBASE == (level & SC_FOLDLEVELNUMBERMASK))
+                textEdit->sciScintilla()->foldLine(line, expanding?SC_FOLDACTION_EXPAND:SC_FOLDACTION_CONTRACT);
+        }
+#else
         textEdit->sciScintilla()->foldAll(false);
+#endif
     }
+}
+
+void MainWindow::on_actionBlock_un_comment_triggered()
+{
+    TextEdit* textEdit = qobject_cast<TextEdit*>(mdiArea_->activeSubWindow());
+
+    if (textEdit)
+        textEdit->BlockComment();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent * event)

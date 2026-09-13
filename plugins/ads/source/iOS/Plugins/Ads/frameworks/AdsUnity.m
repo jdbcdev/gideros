@@ -20,8 +20,7 @@
 
 -(void)destroy{
     [self.mngr destroy];
-    [self.mngr release];
-    self.mngr = nil;
+     self.mngr = nil;
 }
 
 -(void)setKey:(NSMutableArray*)parameters{
@@ -95,6 +94,11 @@
 }
 
 -(void)enableTesting{
+}
+
+-(BOOL)checkConsent:(BOOL) reset forUnderAge:(BOOL) underAge
+{
+	return FALSE;
 }
 
 -(UIView*)getView{

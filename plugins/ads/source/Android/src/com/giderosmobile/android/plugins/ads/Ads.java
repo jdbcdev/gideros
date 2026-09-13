@@ -194,7 +194,18 @@ public class Ads {
 		}
 		catch(Exception ex)	{}
 	}
-	
+
+	public static boolean hasProvider(String adprovider){
+		final String adp = modifyName(adprovider);
+		String className = "com.giderosmobile.android.plugins.ads.frameworks.Ads"+adp;
+		Class classz = null;
+		try {
+			classz = Class.forName(className);
+		} catch (ClassNotFoundException e) {
+		}
+		return classz!=null;
+	}
+
 	public static void initialize(String adprovider){
 		final String adp = modifyName(adprovider);
 		if(ads.get(adp) == null)
@@ -288,32 +299,32 @@ public class Ads {
 	}
 	
 	//load an Ad
-		public static void loadAd(final String adprovider, final Object parameters){
-			if(!hasConnection())
-	        {
-	            SparseArray<String> param = (SparseArray<String>)parameters;
-	            adFailed(adprovider, "No Internet Connection", param.get(0));
-	            return;
-	        }
-			final String adp = modifyName(adprovider);
-			try
-			{	
-				// Non UI thread
-				Runnable myRunnable = new Runnable(){
-					
-					@Override
-					public void run() {
-						if(ads.containsKey(adp))
-						{
-							ads.get(adp).loadAd(parameters);
-						}
-					}
-					
-				};
-				sActivity.get().runOnUiThread(myRunnable) ;
-			}
-			catch(Exception ex)	{}
-		}
+    public static void loadAd(final String adprovider, final Object parameters){
+        if(!hasConnection())
+        {
+            SparseArray<String> param = (SparseArray<String>)parameters;
+            adFailed(adprovider, "No Internet Connection", param.get(0));
+            return;
+        }
+        final String adp = modifyName(adprovider);
+        try
+        {
+            // Non UI thread
+            Runnable myRunnable = new Runnable(){
+
+                @Override
+                public void run() {
+                    if(ads.containsKey(adp))
+                    {
+                        ads.get(adp).loadAd(parameters);
+                    }
+                }
+
+            };
+            sActivity.get().runOnUiThread(myRunnable) ;
+        }
+        catch(Exception ex)	{}
+    }
 		
 	public static void showAd(final String adprovider, final Object parameters){
 		if(!hasConnection())
@@ -503,6 +514,20 @@ public class Ads {
 		return height;
 	}
 
+	public static boolean checkConsent(String adprovider,boolean reset, boolean underAge){
+		String adp = modifyName(adprovider);
+		if(ads.containsKey(adp))
+		{
+			return ads.get(adp).checkConsent(reset,underAge);
+		}
+		return false;
+	}
+
+	public static void adReady(Object caller, int state){
+		if (sData != 0)
+			onAdReady(getCallerName(caller), state, sData);
+	}
+
 	public static void adReceived(Object caller, String adType){
 		if (sData != 0)
 			onAdReceived(getCallerName(caller), adType, sData);
@@ -532,20 +557,32 @@ public class Ads {
 		if (sData != 0)
 			onAdDisplayed(getCallerName(caller), adType, sData);
 	}
-	
+
 	public static void adError(Object caller, String error){
 		if (sData != 0)
 			onAdError(getCallerName(caller), error, sData);
 	}
-	
-	
+	public static void adRewarded(Object caller, String adType, int amount){
+		if (sData != 0)
+			onAdRewarded(getCallerName(caller), adType, amount, sData);
+	}
+	public static void adConsent(Object caller, String error, int errorcode){
+		if (sData != 0)
+			onAdConsent(getCallerName(caller), error, errorcode, sData);
+	}
+
+
+
+	private static native void onAdReady(String ad, int state, long data);
 	private static native void onAdReceived(String ad, String adType, long data);
 	private static native void onAdFailed(String ad, String adType, String error, long data);
 	private static native void onAdActionBegin(String ad, String adType, long data);
 	private static native void onAdActionEnd(String ad, String adType, long data);
 	private static native void onAdDismissed(String ad, String adType, long data);
 	private static native void onAdDisplayed(String ad, String adType, long data);
+	private static native void onAdRewarded(String ad, String adType, int amount, long data);
 	private static native void onAdError(String ad, String error, long data);
+	private static native void onAdConsent(String ad, String error, int errorcode, long data);
 	
 	private static String modifyName(String adprovider){
 		return adprovider.substring(0,1).toUpperCase() + adprovider.substring(1).toLowerCase();
@@ -559,7 +596,7 @@ public class Ads {
          return name.toLowerCase();
 	}
 	
-	private static boolean hasConnection() {
+	public static boolean hasConnection() {
         ConnectivityManager conMgr = (ConnectivityManager)sActivity.get().getSystemService(Context.CONNECTIVITY_SERVICE);
         // ARE WE CONNECTED TO THE NET
         if (conMgr != null && conMgr.getActiveNetworkInfo() != null

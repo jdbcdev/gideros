@@ -61,14 +61,14 @@
 
 #define __isthreaded g__isthreaded
 
-#define __CONCAT(x,y) x ## y
+#define __CONCAT_S(x,y) x ## y
 
 #ifndef ALIGNBYTES
-#define ALIGNBYTES  3
+#define ALIGNBYTES  (sizeof(void *)-1)
 #endif
 
 #ifndef ALIGN
-#define ALIGN(p)    (((unsigned int)(p) + ALIGNBYTES) &~ ALIGNBYTES)
+#define ALIGN(p)    (((intptr_t)(p) + ALIGNBYTES) &~ ALIGNBYTES)
 #endif
 
 #define	__SLBF	0x0001		/* line buffered */

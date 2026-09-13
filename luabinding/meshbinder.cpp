@@ -3,6 +3,10 @@
 #include "luaapplication.h"
 #include <luautil.h>
 
+std::unordered_map<uintptr_t,Matrix4> MeshBinder::boneCache;
+size_t MeshBinder::token_bone;
+size_t MeshBinder::token_poseIMat;
+
 MeshBinder::MeshBinder(lua_State *L)
 {
     Binder binder(L);
@@ -23,6 +27,7 @@ MeshBinder::MeshBinder(lua_State *L)
         {"setColorArray", setColorArray},
         {"setTextureCoordinateArray", setTextureCoordinateArray},
         {"setGenericArray", setGenericArray},
+        {"setMatrixArray", setMatrixArray},
 
         {"resizeVertexArray", resizeVertexArray},
         {"resizeIndexArray", resizeIndexArray},
@@ -47,6 +52,11 @@ MeshBinder::MeshBinder(lua_State *L)
         {"setTexture", setTexture},
         {"clearTexture", clearTexture},
         {"setPrimitiveType", setPrimitiveType},
+	    {"setInstanceCount",setInstanceCount},
+	    {"setCullMode",setCullMode},
+
+        //Animation support
+        {"updateBones",updateBones},
 
         {NULL, NULL},
     };
@@ -63,12 +73,148 @@ MeshBinder::MeshBinder(lua_State *L)
     lua_setfield(L, -2, "PRIMITIVE_LINELOOP");
     lua_pushinteger(L, ShaderProgram::Triangles);
     lua_setfield(L, -2, "PRIMITIVE_TRIANGLES");
-    lua_pushinteger(L, ShaderProgram::TriangleFan);
-    lua_setfield(L, -2, "PRIMITIVE_TRIANGLEFAN");
     lua_pushinteger(L, ShaderProgram::TriangleStrip);
     lua_setfield(L, -2, "PRIMITIVE_TRIANGLESTRIP");
 
     lua_pop(L, 1);
+
+    token_bone=lua_newtoken(L,"bone");
+    token_poseIMat=lua_newtoken(L,"poseIMat");
+}
+
+static int decodeType(lua_State *L,int idx) {
+	const char *tstr=luaL_checkstring(L,idx);
+	int t=0;
+	while (*tstr) {
+		switch (*tstr) {
+		case '>': t|=0x80; break; //BE
+		case '<': break; //LE, default
+		case 'f':
+		case 'F':
+			t|=0x14; return t; //Float
+		case 'd':
+		case 'D':
+			t|=0x18; return t; //Double
+		case 'b':
+			t|=0x01; return t; //Byte
+		case 'B':
+			t|=0x21; return t; //UByte
+		case 's':
+			t|=0x02; return t; //Short
+		case 'S':
+			t|=0x22; return t; //UShort
+		case 'i':
+			t|=0x04; return t; //Int/Long
+		case 'I':
+			t|=0x24; return t; //UInt/ULong
+		}
+		tstr++;
+	}
+	return 0;
+}
+
+static void toFloatComponents(lua_State *L,int idx,int mult,std::vector<float> &v) {
+	int i=1;
+	int isBE=(!*((char *)&i));
+	size_t sl;
+	const char *s=luaL_checklstring(L,idx,&sl);
+	int type=decodeType(L,idx+1);
+	int big=type&0x80;
+	int bswap=(isBE&&(!big))||(big&&(!isBE));
+	int vlen=(type&0x0F);
+	int vt=type&0x3F;
+	if (!type) {
+		lua_pushstring(L,"Bad component type");
+		lua_error(L);
+	}
+	sl=sl/mult;
+	sl=sl/(type&0x0F);
+	sl*=mult;
+	v.resize(sl);
+	int vi=0;
+	while (sl) {
+		 char vbytes[8];
+		 if (bswap) {
+			 for (i=0;i<vlen;i++)
+				 vbytes[i]=s[vlen-1-i];
+		 }
+		 else
+			 memcpy(vbytes,s,vlen);
+		 s+=vlen;
+		 sl--;
+
+	#define FTYPE(c,t) \
+			 case c: \
+			 { \
+				 t m; \
+				 memcpy(&m,vbytes,vlen); \
+				 v[vi++]=m; \
+				 break; \
+			 }
+		 switch (vt) {
+			 FTYPE(0x01,int8_t);
+			 FTYPE(0x21,uint8_t);
+			 FTYPE(0x02,int16_t);
+			 FTYPE(0x22,uint16_t);
+			 FTYPE(0x04,int32_t);
+			 FTYPE(0x24,uint32_t);
+			 FTYPE(0x14,float);
+			 FTYPE(0x18,double);
+		 }
+	#undef FTYPE
+	}
+}
+
+static void toIntComponents(lua_State *L,int idx,int mult,std::vector<unsigned int> &v) {
+	int i=1;
+	int isBE=(!*((char *)&i));
+	size_t sl;
+	const char *s=luaL_checklstring(L,idx,&sl);
+	int type=decodeType(L,idx+1);
+	int big=type&0x80;
+	int bswap=(isBE&&(!big))||(big&&(!isBE));
+	int vlen=(type&0x0F);
+	int vt=type&0x3F;
+	if (!type) {
+		lua_pushstring(L,"Bad component type");
+		lua_error(L);
+	}
+	sl=sl/mult;
+	sl=sl/(type&0x0F);
+	sl*=mult;
+	v.resize(sl);
+	int vi=0;
+	while (sl) {
+		 char vbytes[8];
+		 if (bswap) {
+			 for (i=0;i<vlen;i++)
+				 vbytes[i]=s[vlen-1-i];
+		 }
+		 else
+			 memcpy(vbytes,s,vlen);
+		 s+=vlen;
+		 sl--;
+
+	#define FTYPE(c,t) \
+			 case c: \
+			 { \
+				 t m; \
+				 memcpy(&m,vbytes,vlen); \
+				 v[vi++]=m; \
+				 break; \
+			 }
+		 switch (vt) {
+			 FTYPE(0x01,int8_t);
+			 FTYPE(0x21,uint8_t);
+			 FTYPE(0x02,int16_t);
+			 FTYPE(0x22,uint16_t);
+			 FTYPE(0x04,int32_t);
+			 FTYPE(0x24,uint32_t);
+			 FTYPE(0x14,float);
+			 FTYPE(0x18,double);
+		 }
+	#undef FTYPE
+	}
 }
 
 int MeshBinder::create(lua_State *L)
@@ -84,13 +230,24 @@ int MeshBinder::create(lua_State *L)
     return 1;
 }
 
-int MeshBinder::destruct(lua_State *L)
+int MeshBinder::destruct(void *p)
 {
-    void* ptr = *(void**)lua_touserdata(L, 1);
+    void* ptr = GIDEROS_DTOR_UDATA(p);
     GMesh* mesh = static_cast<GMesh*>(ptr);
     mesh->unref();
 
     return 0;
+}
+
+static int getIndexValue(lua_State *L, int idx)
+{
+    int i = luaL_checkinteger(L, idx);
+    if (i<1)
+    {
+        lua_pushfstring(L,"Invalid index %d",i);
+        lua_error(L);
+    }
+    return i-1;
 }
 
 int MeshBinder::setVertex(lua_State *L)
@@ -98,7 +255,7 @@ int MeshBinder::setVertex(lua_State *L)
     Binder binder(L);
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
 
-    int i = luaL_checkinteger(L, 2) - 1;
+    int i = getIndexValue(L, 2);
     float x = luaL_checknumber(L, 3);
     float y = luaL_checknumber(L, 4);
     float z = luaL_optnumber(L, 5, 0.0);
@@ -113,8 +270,8 @@ int MeshBinder::setIndex(lua_State *L)
     Binder binder(L);
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
 
-    int i = luaL_checkinteger(L, 2) - 1;
-    int index = luaL_checkinteger(L, 3) - 1;
+    int i = getIndexValue(L, 2);
+    int index = getIndexValue(L, 3);
 
     mesh->setIndex(i, index);
 
@@ -126,7 +283,7 @@ int MeshBinder::setColor(lua_State *L)
     Binder binder(L);
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
 
-    int i = luaL_checkinteger(L, 2) - 1;
+    int i = getIndexValue(L, 2);
     unsigned int color = luaL_checkinteger(L, 3);
     float alpha = luaL_optnumber(L, 4, 1.0);
 
@@ -140,7 +297,7 @@ int MeshBinder::setTextureCoordinate(lua_State *L)
     Binder binder(L);
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
 
-    int i = luaL_checkinteger(L, 2) - 1;
+    int i = getIndexValue(L, 2);
     float u = luaL_checknumber(L, 3);
     float v = luaL_checknumber(L, 4);
 
@@ -163,7 +320,7 @@ int MeshBinder::setVertices(lua_State *L)
         for (int k = 0; k < n/order; ++k)
         {
             lua_rawgeti(L, 2, k * order + 1);
-            int i = luaL_checkinteger(L, -1) - 1;
+            int i = getIndexValue(L, -1);
             lua_pop(L, 1);
 
             lua_rawgeti(L, 2, k * order + 2);
@@ -189,7 +346,7 @@ int MeshBinder::setVertices(lua_State *L)
         int n = lua_gettop(L) - 1;
         for (int k = 0; k < n/order; ++k)
         {
-            int i = luaL_checkinteger(L, k * order + 2) - 1;
+            int i = getIndexValue(L, k * order + 2);
             float x = luaL_checknumber(L, k * order + 3);
             float y = luaL_checknumber(L, k * order + 4);
             float z=0;
@@ -213,11 +370,11 @@ int MeshBinder::setIndices(lua_State *L)
         for (int k = 0; k < n/2; ++k)
         {
             lua_rawgeti(L, 2, k * 2 + 1);
-            int i = luaL_checkinteger(L, -1) - 1;
+            int i = getIndexValue(L, -1);
             lua_pop(L, 1);
 
             lua_rawgeti(L, 2, k * 2 + 2);
-            int index = luaL_checknumber(L, -1) - 1;
+            int index = getIndexValue(L, -1);
             lua_pop(L, 1);
 
             mesh->setIndex(i, index);
@@ -228,8 +385,8 @@ int MeshBinder::setIndices(lua_State *L)
         int n = lua_gettop(L) - 1;
         for (int k = 0; k < n/2; ++k)
         {
-            int i = luaL_checkinteger(L, k * 2 + 2) - 1;
-            int index = luaL_checknumber(L, k * 2 + 3) - 1;
+            int i = getIndexValue(L, k * 2 + 2);
+            int index = getIndexValue(L, k * 2 + 3);
 
             mesh->setIndex(i, index);
         }
@@ -249,7 +406,7 @@ int MeshBinder::setColors(lua_State *L)
         for (int k = 0; k < n/3; ++k)
         {
             lua_rawgeti(L, 2, k * 3 + 1);
-            int i = luaL_checkinteger(L, -1) - 1;
+            int i = getIndexValue(L, -1);
             lua_pop(L, 1);
 
             lua_rawgeti(L, 2, k * 3 + 2);
@@ -268,7 +425,7 @@ int MeshBinder::setColors(lua_State *L)
         int n = lua_gettop(L) - 1;
         for (int k = 0; k < n/3; ++k)
         {
-            int i = luaL_checkinteger(L, k * 3 + 2) - 1;
+            int i = getIndexValue(L, k * 3 + 2);
             unsigned int color = luaL_checkinteger(L, k * 3 + 3);
             float alpha = luaL_checknumber(L, k * 3 + 4);
 
@@ -290,7 +447,7 @@ int MeshBinder::setTextureCoordinates(lua_State *L)
         for (int k = 0; k < n/3; ++k)
         {
             lua_rawgeti(L, 2, k * 3 + 1);
-            int i = luaL_checkinteger(L, -1) - 1;
+            int i = getIndexValue(L, -1);
             lua_pop(L, 1);
 
             lua_rawgeti(L, 2, k * 3 + 2);
@@ -309,7 +466,7 @@ int MeshBinder::setTextureCoordinates(lua_State *L)
         int n = lua_gettop(L) - 1;
         for (int k = 0; k < n/3; ++k)
         {
-            int i = luaL_checkinteger(L, k * 3 + 2) - 1;
+            int i = getIndexValue(L, k * 3 + 2);
             float u = luaL_checknumber(L, k * 3 + 3);
             float v = luaL_checknumber(L, k * 3 + 4);
 
@@ -328,69 +485,149 @@ int MeshBinder::setGenericArray(lua_State *L)
     ShaderProgram::DataType type=(ShaderProgram::DataType) luaL_checkinteger(L,3);
     int mult=luaL_checkinteger(L,4);
     int count=luaL_checkinteger(L,5);
-    luaL_checktype(L, 6, LUA_TTABLE);
-
-    int n = luaL_getn(L, 6);  /* get size of table */
-    if (n!=(mult*count))
+    size_t blen;
+    void *bptr=lua_tobuffer(L,6,&blen);
+    int offset=luaL_optinteger(L,7,0);
+    int stride=luaL_optinteger(L,8,0);
+    int master=luaL_optinteger(L,9,-1);
+    if (bptr!=NULL)
     {
-    	lua_pushstring(L,"Actual array length doesn't match size multiple and count values");
-    	lua_error(L);
+        int elesz=1;
+        switch (type)
+        {
+        case ShaderProgram::DBYTE:
+        case ShaderProgram::DUBYTE:
+            break;
+        case ShaderProgram::DSHORT:
+        case ShaderProgram::DUSHORT:
+            elesz=2;
+            break;
+        case ShaderProgram::DINT:
+        case ShaderProgram::DFLOAT:
+            elesz=4;
+            break;
+        }
+        size_t reqsz=mult*count*elesz;
+        if (blen<reqsz)
+        {
+            lua_pushfstring(L,"Buffer size (%zu) is shorter than expected (%zu)",blen,reqsz);
+        	lua_error(L);
+        }
+        mesh->setGenericArray(index,bptr,type,mult,count,offset,stride,master);
+    }
+    else {
+		luaL_checktype(L, 6, LUA_TTABLE);
+
+		int n = lua_objlen(L, 6);  /* get size of table */
+		if (n!=(mult*count))
+		{
+			lua_pushstring(L,"Actual array length doesn't match size multiple and count values");
+			lua_error(L);
+		}
+
+		void *ptr = 0;
+		switch (type)
+		{
+		case ShaderProgram::DBYTE:
+		case ShaderProgram::DUBYTE:
+		{
+			char *p=(char *) malloc(mult*count);
+			ptr=p;
+			for (int i=1; i<=n; i++) {
+				lua_rawgeti(L, 6, i);  /* push t[i] */
+				*(p++)=luaL_checkinteger(L,-1);
+				lua_pop(L,1);
+			  }
+			break;
+		}
+		case ShaderProgram::DSHORT:
+		case ShaderProgram::DUSHORT:
+		{
+			short *p=(short *) malloc(mult*count*2);
+			ptr=p;
+			for (int i=1; i<=n; i++) {
+				lua_rawgeti(L, 6, i);  /* push t[i] */
+				*(p++)=luaL_checkinteger(L,-1);
+				lua_pop(L,1);
+			  }
+			break;
+		}
+		case ShaderProgram::DINT:
+		{
+			int *p=(int *) malloc(mult*count*4);
+			ptr=p;
+			for (int i=1; i<=n; i++) {
+				lua_rawgeti(L, 6, i);  /* push t[i] */
+				*(p++)=luaL_checkinteger(L,-1);
+				lua_pop(L,1);
+			  }
+			break;
+		}
+		case ShaderProgram::DFLOAT:
+		{
+			float *p=(float *) malloc(mult*count*4);
+			ptr=p;
+			for (int i=1; i<=n; i++) {
+				lua_rawgeti(L, 6, i);  /* push t[i] */
+				*(p++)=luaL_checknumber(L,-1);
+				lua_pop(L,1);
+			  }
+			break;
+		}
+		}
+
+        mesh->setGenericArray(index,ptr,type,mult,count,offset,stride,master);
+		free(ptr);
+    }
+	return 0;
+}
+
+const float mIdentity[16]={1,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+int MeshBinder::setMatrixArray(lua_State *L)
+{
+    Binder binder(L);
+    GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
+    int index=luaL_checkinteger(L,2);
+    int count=luaL_checkinteger(L,3);
+    luaL_checktype(L, 4, LUA_TTABLE);
+
+    int n = lua_objlen(L, 4);  /* get size of table */
+    if (n!=count)
+    {
+        lua_pushstring(L,"Actual array length doesn't match count value");
+        lua_error(L);
     }
 
-    void *ptr = 0;
-	switch (type)
-	{
-	case ShaderProgram::DBYTE:
-	case ShaderProgram::DUBYTE:
-	{
-	    char *p=(char *) malloc(mult*count);
-	    ptr=p;
-	    for (int i=1; i<=n; i++) {
-	        lua_rawgeti(L, 6, i);  /* push t[i] */
-	        *(p++)=luaL_checkinteger(L,-1);
-	        lua_pop(L,1);
-	      }
-		break;
-	}
-	case ShaderProgram::DSHORT:
-	case ShaderProgram::DUSHORT:
-	{
-	    short *p=(short *) malloc(mult*count*2);
-	    ptr=p;
-	    for (int i=1; i<=n; i++) {
-	        lua_rawgeti(L, 6, i);  /* push t[i] */
-	        *(p++)=luaL_checkinteger(L,-1);
-	        lua_pop(L,1);
-	      }
-		break;
-	}
-	case ShaderProgram::DINT:
-	{
-		int *p=(int *) malloc(mult*count*4);
-	    ptr=p;
-	    for (int i=1; i<=n; i++) {
-	        lua_rawgeti(L, 6, i);  /* push t[i] */
-	        *(p++)=luaL_checkinteger(L,-1);
-	        lua_pop(L,1);
-	      }
-		break;
-	}
-	case ShaderProgram::DFLOAT:
-	{
-	    float *p=(float *) malloc(mult*count*4);
-	    ptr=p;
-	    for (int i=1; i<=n; i++) {
-	        lua_rawgeti(L, 6, i);  /* push t[i] */
-	        *(p++)=luaL_checknumber(L,-1);
-	        lua_pop(L,1);
-	      }
-		break;
-	}
-	}
+    float *p=(float *)malloc(count*sizeof(float)*16);
+    int i0=0;
+    int i1=count*4;
+    int i2=count*8;
+    int i3=count*12;
 
-    mesh->setGenericArray(index,ptr,type,mult,count);
-	free(ptr);
-	return 0;
+    for (int i=1; i<=n; i++) {
+        const float *d=mIdentity;
+        if (lua_rawgeti(L, 4, i)!=0)  /* push t[i] */
+        {
+            Matrix *mm=static_cast<Matrix*>(binder.getInstance("Matrix", -1));
+            d=mm->data();
+        }
+        int ii=(i-1)*4;
+        for (int k=0;k<4;k++)
+        {
+            p[i0+ii+k]=d[k];
+            p[i1+ii+k]=d[k+4];
+            p[i2+ii+k]=d[k+8];
+            p[i3+ii+k]=d[k+12];
+        }
+        lua_pop(L,1);
+    }
+
+    mesh->setGenericArray(index+0,p+i0,ShaderProgram::DFLOAT,4,count,0,0,-1);
+    mesh->setGenericArray(index+1,p+i1,ShaderProgram::DFLOAT,4,count,0,0,-1);
+    mesh->setGenericArray(index+2,p+i2,ShaderProgram::DFLOAT,4,count,0,0,-1);
+    mesh->setGenericArray(index+3,p+i3,ShaderProgram::DFLOAT,4,count,0,0,-1);
+    free(p);
+    return 0;
 }
 
 int MeshBinder::setVertexArray(lua_State *L)
@@ -401,8 +638,9 @@ int MeshBinder::setVertexArray(lua_State *L)
     std::vector<float> vertices;
     
     int order=mesh->is3d()?3:2;
-
-    if (lua_type(L, 2) == LUA_TTABLE)
+    if (lua_type(L, 2) == LUA_TSTRING)
+    	toFloatComponents(L,2,order,vertices);
+	else if (lua_type(L, 2) == LUA_TTABLE)
     {
         int n = lua_objlen(L, 2);
         n = (n / order) * order;
@@ -436,9 +674,31 @@ int MeshBinder::setIndexArray(lua_State *L)
     Binder binder(L);
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
 
-    std::vector<unsigned short> indices;
+    std::vector<unsigned int> indices;
 
-    if (lua_type(L, 2) == LUA_TTABLE)
+    size_t blen;
+    void *bptr=lua_tobuffer(L,2,&blen);
+    if (bptr!=NULL)
+    {
+        if (blen%3)
+        {
+            lua_pushfstring(L,"Invalid index buffer size: %zu",blen);
+            lua_error(L);
+        }
+        size_t icount=luaL_optunsigned(L,3,blen/4);
+        if ((icount*4)>blen) {
+            lua_pushfstring(L,"Buffer size (%zu) is shorter than expected (%zu)",blen,icount*4);
+            lua_error(L);
+        }
+        if (icount > 0)
+            mesh->setIndexArray((const unsigned int *)bptr,icount);
+        else
+            mesh->clearIndexArray();
+        return 0;
+    }
+    else if (lua_type(L, 2) == LUA_TSTRING)
+    	toIntComponents(L,2,1,indices);
+    else if (lua_type(L, 2) == LUA_TTABLE)
     {
         int n = lua_objlen(L, 2);
         indices.resize(n);
@@ -518,7 +778,9 @@ int MeshBinder::setTextureCoordinateArray(lua_State *L)
 
     std::vector<float> textureCoordinates;
 
-    if (lua_type(L, 2) == LUA_TTABLE)
+    if (lua_type(L, 2) == LUA_TSTRING)
+    	toFloatComponents(L,2,2,textureCoordinates);
+    else if (lua_type(L, 2) == LUA_TTABLE)
     {
         int n = lua_objlen(L, 2);
         n = (n / 2) * 2;
@@ -675,8 +937,8 @@ int MeshBinder::getVertex(lua_State *L)
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
     int i = luaL_checkinteger(L, 2) - 1;
 
-    if (i < 0 || i >= mesh->getVertexArraySize())
-        return luaL_error(L, "The supplied index is out of bounds.");
+    if (i < 0 || (unsigned int)i >= mesh->getVertexArraySize())
+        luaL_error(L, "The supplied index is out of bounds.");
 
     int order=mesh->is3d()?3:2;
     float x, y, z;
@@ -695,10 +957,10 @@ int MeshBinder::getIndex(lua_State *L)
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
     int i = luaL_checkinteger(L, 2) - 1;
 
-    if (i < 0 || i >= mesh->getIndexArraySize())
-        return luaL_error(L, "The supplied index is out of bounds.");
+    if (i < 0 || (unsigned int)i >= mesh->getIndexArraySize())
+        luaL_error(L, "The supplied index is out of bounds.");
 
-    unsigned short index;
+    unsigned int index;
     mesh->getIndex(i, &index);
     lua_pushinteger(L, (int)index + 1);
 
@@ -711,8 +973,8 @@ int MeshBinder::getColor(lua_State *L)
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
     int i = luaL_checkinteger(L, 2) - 1;
 
-    if (i < 0 || i >= mesh->getColorArraySize())
-        return luaL_error(L, "The supplied index is out of bounds.");
+    if (i < 0 || (unsigned int)i >= mesh->getColorArraySize())
+        luaL_error(L, "The supplied index is out of bounds.");
 
     unsigned int color;
     float alpha;
@@ -729,8 +991,8 @@ int MeshBinder::getTextureCoordinate(lua_State *L)
     GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
     int i = luaL_checkinteger(L, 2) - 1;
 
-    if (i < 0 || i >= mesh->getTextureCoordinateArraySize())
-        return luaL_error(L, "The supplied index is out of bounds.");
+    if (i < 0 || (unsigned int)i >= mesh->getTextureCoordinateArraySize())
+        luaL_error(L, "The supplied index is out of bounds.");
 
     float u, v;
     mesh->getTextureCoordinate(i, &u, &v);
@@ -747,6 +1009,26 @@ int MeshBinder::setPrimitiveType(lua_State *L)
     ShaderProgram::ShapeType prim=(ShaderProgram::ShapeType) luaL_checkinteger(L,2);
 
     mesh->setPrimitiveType(prim);
+
+    return 0;
+}
+
+int MeshBinder::setInstanceCount(lua_State *L)
+{
+    Binder binder(L);
+    GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
+    size_t ic=(size_t) luaL_checkinteger(L,2);
+
+    mesh->setInstanceCount(ic);
+
+    return 0;
+}
+
+int MeshBinder::setCullMode(lua_State *L)
+{
+    Binder binder(L);
+    GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
+    mesh->setCullMode((ShaderEngine::CullMode)(luaL_checkinteger(L,2)&3));
 
     return 0;
 }
@@ -770,6 +1052,57 @@ int MeshBinder::clearTexture(lua_State *L)
     int slot=luaL_optinteger(L,2,0);
 
     mesh->clearTexture(slot);
+
+    return 0;
+}
+
+int MeshBinder::updateBones(lua_State *L)
+{
+    Binder binder(L);
+    if (lua_gettop(L)==0) {
+        //clear caches
+        boneCache.clear();
+        return 0;
+    }
+    GMesh *mesh = static_cast<GMesh*>(binder.getInstance("Mesh", 1));
+    Sprite* top = static_cast<Sprite*>(binder.getInstanceOfType("Sprite", GREFERENCED_TYPEMAP_SPRITE, 2));
+    luaL_checktype(L,3,LUA_TTABLE); //bone table
+    const char *boneCst=luaL_checklstring(L,4,NULL);
+
+    int nbones=lua_objlen(L,3);
+    Sprite::ShaderParam sp;
+    sp.name=boneCst;
+    sp.mult=nbones;
+    sp.type=ShaderProgram::CMATRIX;
+    sp.data.resize(nbones*16);
+    float *mptr=sp.data.data();
+    for (int n=0;n<nbones;n++) {
+        uintptr_t kkey=reinterpret_cast<uintptr_t>(mesh)+n;
+        auto cached=boneCache.find(kkey);
+        if (cached==boneCache.end())
+        {
+            lua_rawgeti(L,3,n+1);
+            lua_rawgettoken(L,-1,token_bone);
+            Sprite* b = static_cast<Sprite*>(binder.getInstanceOfType("Sprite", GREFERENCED_TYPEMAP_SPRITE, -1));
+            Matrix m;
+            int npop=2;
+            if (top->spriteToLocalMatrix(b,m)) {
+                if (lua_rawgettoken(L,-1,token_poseIMat)==LUA_TTABLE) {
+                    Transform* postMatrix = static_cast<Transform*>(binder.getInstance("Matrix", -1));
+                    m=m*postMatrix->matrix();
+                }
+                npop++;
+            }
+            lua_pop(L,npop);
+            memcpy(mptr,m.data(),sizeof(float)*16);
+            boneCache[kkey]=m;
+        }
+        else
+            memcpy(mptr,cached->second.data(),sizeof(float)*16);
+        mptr+=16;
+    }
+
+    mesh->setShaderConstant(sp);
 
     return 0;
 }

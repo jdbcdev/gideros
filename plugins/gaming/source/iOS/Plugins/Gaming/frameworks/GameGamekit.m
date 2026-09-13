@@ -29,10 +29,14 @@
 -(void)destroy{
     [self.achs removeAllObjects];
 }
+
 -(void)login:(NSMutableArray*)parameters{
-    [[GKLocalPlayer localPlayer] authenticateWithCompletionHandler:^(NSError* error)
+    GKLocalPlayer *p=[GKLocalPlayer localPlayer];
+    p.authenticateHandler=^(UIViewController* viewController, NSError* error)
     {
-        if(!error)
+        if (viewController!=nil)
+            [self presentViewController:viewController];
+        else if(p.isAuthenticated)
         {
             [GameClass loginComplete:[self class]];
             [GKAchievement loadAchievementsWithCompletionHandler:^(NSArray* achievements, NSError* error)
@@ -50,22 +54,24 @@
         else{
             [GameClass loginError:[self class] with:[error localizedDescription]];
         }
-    }];
+    };
 }
 -(void)logout{
     
 }
 -(void)showLeaderboard:(NSString*)Id{
-    GKLeaderboardViewController* leaderboardVC = [[[GKLeaderboardViewController alloc] init] autorelease];
-    if (leaderboardVC != nil)
+    GKGameCenterViewController* gameCenterController= [[GKGameCenterViewController alloc] init];
+    if (gameCenterController != nil)
     {
-        leaderboardVC.timeScope = GKLeaderboardTimeScopeAllTime;
-        leaderboardVC.leaderboardDelegate = self;
-        [self presentViewController:leaderboardVC];
+        gameCenterController.gameCenterDelegate = self;
+        gameCenterController.viewState = GKGameCenterViewControllerStateLeaderboards;
+        gameCenterController.leaderboardTimeScope = GKLeaderboardTimeScopeToday;
+        gameCenterController.leaderboardCategory = Id;
+        [self presentViewController: gameCenterController];
     }
 }
 -(void)reportScore:(NSString*)Id andScore:(long)score with:(int)immediate{
-    GKScore* scoreOb = [[[GKScore alloc] initWithCategory:Id] autorelease];
+    GKScore* scoreOb = [[GKScore alloc] initWithCategory:Id];
     scoreOb.value = score;
     [scoreOb reportScoreWithCompletionHandler:^(NSError* error)
      {
@@ -78,13 +84,20 @@
      }];
 }
 -(void)showAchievements{
-    GKAchievementViewController* achievementsVC = [[[GKAchievementViewController alloc] init] autorelease];
-    if (achievementsVC != nil)
+    GKGameCenterViewController* gameCenterController= [[GKGameCenterViewController alloc] init];
+    if (gameCenterController != nil)
     {
-        achievementsVC.achievementDelegate = self;
-        [self presentViewController:achievementsVC];
+        gameCenterController.gameCenterDelegate = self;
+        gameCenterController.viewState = GKGameCenterViewControllerStateAchievements;
+        [self presentViewController: gameCenterController];
     }
 }
+
+-(void)getPlayerInfo{
+   GKLocalPlayer *p=[GKLocalPlayer localPlayer];
+   [GameClass playerInfoComplete:[self class] with:[p playerID] with:[p alias] with:@""];
+}
+
 -(void)reportAchievement:(NSString*)Id andSteps:(int)steps with:(int)immediate{
     
     [GKAchievement loadAchievementsWithCompletionHandler:^(NSArray *achievements, NSError *error) {
@@ -98,7 +111,7 @@
                 }
             }
         
-            GKAchievement* achievement = [[[GKAchievement alloc] initWithIdentifier:Id] autorelease];
+            GKAchievement* achievement = [[GKAchievement alloc] initWithIdentifier:Id];
             if (steps<0)
 	            achievement.percentComplete += (-steps);
             else if (steps>0)
@@ -140,7 +153,7 @@
                 }
             }
         
-            GKAchievement* achievement = [[[GKAchievement alloc] initWithIdentifier:Id] autorelease];
+            GKAchievement* achievement = [[GKAchievement alloc] initWithIdentifier:Id];
             achievement.percentComplete = 0;
             if([achievement respondsToSelector:@selector(setShowsCompletionBanner:)])
                 achievement.showsCompletionBanner = true;
@@ -213,7 +226,7 @@
     }];
 }
 -(void)loadScores:(NSString*)Id andSpan:(int) span forCollection:(int) collection withResults:(int)maxResults{
-    GKLeaderboard *lb = [[[GKLeaderboard alloc] init] autorelease];
+    GKLeaderboard *lb = [[GKLeaderboard alloc] init];
     lb.category = Id;
     lb.timeScope = span;
     lb.playerScope = collection;
@@ -241,9 +254,18 @@
                           GKScore *score = [scores objectAtIndex:i];
                           NSMutableDictionary *achievement = [NSMutableDictionary dictionary];
                           
-                          [achievement setObject:[NSString stringWithFormat:@"%d", score.rank] forKey:@"rank"];
+                          [achievement setObject:[NSString stringWithFormat:@"%d", (int)(score.rank)] forKey:@"rank"];
                           [achievement setObject:[NSString stringWithFormat:@"%lld", score.value] forKey:@"score"];
-                          [achievement setObject:@"name" forKey:@"name"];
+                          if (score.player!=nil)
+                          {
+                              [achievement setObject:[score.player alias] forKey:@"name"];
+                              [achievement setObject:@"" forKey:@"pic"];
+                          }
+                          else
+                          {
+                              [achievement setObject:@"" forKey:@"name"];
+                              [achievement setObject:@"" forKey:@"pic"];
+                          }
                           [achievement setObject:score.playerID forKey:@"playerId"];
                           [achievement setObject:[NSString stringWithFormat:@"%f", [score.date timeIntervalSince1970]] forKey:@"timestamp"];
                           [arr insertObject:achievement atIndex:i];
@@ -320,21 +342,16 @@
 -(void) presentViewController:(UIViewController*)vc
 {
 	UIViewController* rootVC = g_getRootViewController();
-	[rootVC presentModalViewController:vc animated:YES];
+    [rootVC presentViewController:vc animated:YES completion:nil];
 }
 
 -(void) dismissModalViewController
 {
 	UIViewController* rootVC = g_getRootViewController();
-	[rootVC dismissModalViewControllerAnimated:YES];
+    [rootVC dismissViewControllerAnimated:YES completion:nil];
 }
 
-- (void)leaderboardViewControllerDidFinish:(GKLeaderboardViewController *)viewController
-{
-	[self dismissModalViewController];
-}
-
--(void) achievementViewControllerDidFinish:(GKAchievementViewController*)viewController
+- (void)gameCenterViewControllerDidFinish:(GKGameCenterViewController *)viewController
 {
 	[self dismissModalViewController];
 }

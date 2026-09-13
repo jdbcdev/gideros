@@ -1,0 +1,5 @@
+<plugin
+ name="VirtualPad"
+ description="TNT Virtual Pad">
+ <target name="APK,iOS,Html5,WinRT,Windows,MacOSX,Win32" />
+</plugin>

@@ -11,8 +11,9 @@ ViewportBinder::ViewportBinder(lua_State* L)
 	Binder binder(L);
 
 	static const luaL_Reg functionList[] = {
-			{"setContent", setContent},
-			{"setTransform", setTransform},
+            {"setContent", setContent},
+            {"setTarget", setTarget},
+            {"setTransform", setTransform},
 			{"setProjection", setProjection},
 			{"getContent", getContent},
 			{"getTransform", getTransform},
@@ -39,9 +40,9 @@ int ViewportBinder::create(lua_State* L)
 	return 1;
 }
 
-int ViewportBinder::destruct(lua_State* L)
+int ViewportBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	Viewport* shape = static_cast<Viewport*>(ptr);
 	shape->unref();
 
@@ -86,19 +87,55 @@ int ViewportBinder::setProjection(lua_State* L)
 
 int ViewportBinder::setContent(lua_State* L)
 {
-	StackChecker checker(L, "ViewportBinder::setContent", 0);
+    StackChecker checker(L, "ViewportBinder::setContent", 0);
 
-	Binder binder(L);
-	Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport"));
-	Sprite* s = static_cast<Sprite*>(binder.getInstance("Sprite", 2));
-	shape->setContent(s);
+    Binder binder(L);
+    Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport"));
+    Sprite* s = static_cast<Sprite*>(binder.getInstance("Sprite", 2));
+    Sprite* os = shape->getContent();
+    shape->setContent(s);
 
-	return 0;
+    if (s!=os) {
+        lua_getfield(L, 1, "__children");
+        if (lua_isnil(L, -1))
+        {
+            lua_pop(L, 1);
+            lua_newtable(L);
+            lua_pushvalue(L,-1);
+            lua_setfield(L, 1, "__children");
+        }
+
+        if (os) {
+            lua_pushlightuserdata(L, os);
+            lua_pushnil(L);
+            lua_rawset(L, -3);							// sprite.__children[child] = nil
+        }
+
+        if (s) {
+            lua_pushlightuserdata(L, s);
+            lua_pushvalue(L, 2);
+            lua_rawset(L, -3);							// sprite.__children[child] = child
+        }
+        lua_pop(L, 1);								// pop sprite.__children
+    }
+    return 0;
+}
+
+int ViewportBinder::setTarget(lua_State* L)
+{
+    StackChecker checker(L, "ViewportBinder::setTarget", 0);
+
+    Binder binder(L);
+    Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport"));
+    GRenderTarget* s = static_cast<GRenderTarget*>(binder.getInstance("RenderTarget", 2));
+    float ccol[4];
+    shape->setTarget(s,lua_toboolean(L,3),lua_tocolorf(L,4,ccol,1)?ccol:NULL);
+    return 0;
 }
 
 int ViewportBinder::getTransform(lua_State* L)
 {
-	StackChecker checker(L, "ViewportBinder::getTransform", 0);
+	StackChecker checker(L, "ViewportBinder::getTransform", 1);
 
 	Binder binder(L);
 	Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport", 1));
@@ -113,7 +150,7 @@ int ViewportBinder::getTransform(lua_State* L)
 
 int ViewportBinder::getProjection(lua_State* L)
 {
-	StackChecker checker(L, "ViewportBinder::getProjection", 0);
+	StackChecker checker(L, "ViewportBinder::getProjection", 1);
 
 	Binder binder(L);
 	Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport", 1));
@@ -128,13 +165,17 @@ int ViewportBinder::getProjection(lua_State* L)
 
 int ViewportBinder::getContent(lua_State* L)
 {
-	StackChecker checker(L, "ViewportBinder::getContent", 0);
+	StackChecker checker(L, "ViewportBinder::getContent", 1);
 
 	Binder binder(L);
 	Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport"));
 	Sprite* s = shape->getContent();
-	if (s)
-	    binder.pushInstance("Sprite", s);
+    if (s) {
+        lua_getfield(L, 1, "__children");
+        lua_pushlightuserdata(L, s);
+        lua_rawget(L,-2);
+        lua_remove(L,-2);
+    }
 	else
 		lua_pushnil(L);
 	return 1;
@@ -145,11 +186,11 @@ int ViewportBinder::lookAt(lua_State* L)
 	StackChecker checker(L, "ViewportBinder::setTransform", 0);
 
 	Binder binder(L);
-	Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport", 1));
+    Viewport* shape = static_cast<Viewport*>(binder.getInstance("Viewport", 1));
 
 	shape->lookAt(luaL_optnumber(L,2,0),luaL_optnumber(L,3,0),luaL_optnumber(L,4,0),
 			luaL_optnumber(L,5,0),luaL_optnumber(L,6,0),luaL_optnumber(L,7,0),
-			luaL_optnumber(L,8,0),luaL_optnumber(L,9,0),luaL_optnumber(L,10,0));
+            luaL_optnumber(L,8,0),luaL_optnumber(L,9,0),luaL_optnumber(L,10,0));
 
 	return 0;
 }

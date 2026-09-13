@@ -24,14 +24,15 @@
 #include <glog.h>
 #include "constants.cpp"
 //#include <curl/curl.h>
-
+#include <QSurfaceFormat>
+#include "tabletapplication.h"
 
 
 static void loadPlugins(){
-	QDir dir = QDir::currentPath();
+	QDir dir = QDir(QCoreApplication::applicationDirPath());
 
     #if defined(Q_OS_MAC)
-        dir.cd("../../Plugins");
+        dir.cd("../../../Plugins"); //Go Up from xxx.app/Contents/MacOS folder
         QStringList files = dir.entryList(QStringList() << "*.dylib");
     #elif defined(Q_OS_LINUX)
         dir.cd("Plugins");
@@ -50,19 +51,38 @@ static void loadPlugins(){
 	}
 }
 
-
-
+std::vector<std::string> PATH_CommandLine;
 int main(int argc, char *argv[]){
-//	curl_global_init(CURL_GLOBAL_WIN32);
+    for (int i=0;i<argc;i++)
+        PATH_CommandLine.push_back(std::string(argv[i]));
+    //	curl_global_init(CURL_GLOBAL_WIN32);
 
     QCoreApplication::setOrganizationName(Constants::ORGANIZATION_NAME);
     QCoreApplication::setOrganizationDomain(Constants::ORGANIZATION_DOMAIN);
     QCoreApplication::setApplicationName(Constants::PLAYER_APPLICATION_NAME);
     QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+
+
+    QSettings settings;
+    int fps=settings.value("fps",60).toInt();
+    int vsync=settings.value("vsync",0).toInt();
+    GLCanvas::EnableVSYNC=vsync;
+    QSurfaceFormat formatGL;
+    formatGL.setSwapInterval(vsync?(60/fps):0);
+	formatGL.setStencilBufferSize(8);
+	formatGL.setDepthBufferSize(16);
+    formatGL.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+    //formatGL.setProfile(QSurfaceFormat::CoreProfile);
+    int msaa=settings.value("msaa",0).toInt();
+    if (msaa)
+        formatGL.setSamples(msaa);
+    //formatGL.setColorSpace(QSurfaceFormat::sRGBColorSpace);
+    QSurfaceFormat::setDefaultFormat(formatGL);
 
 	QSettings::setDefaultFormat(QSettings::IniFormat);
 
-	QApplication a(argc, argv);
+    TabletApplication a(argc, argv);
 
 	QDir dir = QCoreApplication::applicationDirPath();
 

@@ -22,6 +22,8 @@
 #include <QStringList>
 #include <QFileInfo>
 #include "projectproperties.h"
+#include "QtWebSockets/qwebsocketserver.h"
+#include "QtWebSockets/qwebsocket.h"
 
 GiderosNetworkClient2::GiderosNetworkClient2(const QString& hostName, quint16 port, QObject* parent) :
 	QObject(parent),
@@ -39,6 +41,12 @@ GiderosNetworkClient2::GiderosNetworkClient2(const QString& hostName, quint16 po
 	connect(client_, SIGNAL(bytesWritten(qint64)), this, SLOT(bytesWritten(qint64)));
 	connect(client_, SIGNAL(readyRead()), this, SLOT(readyRead()));
 
+	websocket_ = new QWebSocketServer("Gideros Server", QWebSocketServer::NonSecureMode);
+    if (websocket_->listen(QHostAddress::Any, 15001)) {
+        qDebug() << "Listening Web";
+        connect(websocket_, SIGNAL(newConnection()), this, SLOT(onWebConnection()));
+	}
+
 	status_ = eDisconnected;
 
 	nextid_ = 1;
@@ -51,6 +59,65 @@ GiderosNetworkClient2::~GiderosNetworkClient2()
 	delete client_;
 }
 
+void GiderosNetworkClient2::onWebConnection()
+{
+    QWebSocket *pSocket = websocket_->nextPendingConnection();
+
+    connect(pSocket, SIGNAL(binaryMessageReceived(QByteArray)), this, SLOT(onWebMessage(QByteArray)));
+    connect(pSocket, SIGNAL(disconnected()), this, SLOT(onWebClosed()));
+
+    webclients << pSocket;
+    qDebug() << "socketConnected:" << pSocket;
+}
+
+void GiderosNetworkClient2::onWebMessage(QByteArray message)
+{
+    QWebSocket *pClient = qobject_cast<QWebSocket *>(sender());
+    qDebug() << "Binary Message received:" << message;
+   //pClient->sendBinaryMessage(message);
+
+	const unsigned int* header = (const unsigned int*)message.constData();
+
+	unsigned int id = header[0];
+	unsigned int type = header[1];
+
+	QByteArray part0(message.constData() + sizeof(unsigned int)*2, message.size() - sizeof(unsigned int)*2);
+	const char* data = part0.constData();
+
+	if (type == 0)
+	{
+		emit dataReceived(part0);
+		sendAck(id);
+	}
+	else if (type == 1)
+	{
+		emit ackReceived(*(unsigned int*)data);
+	}
+	else if (type == 2)
+	{
+		//data[0] reserved for future use
+		unsigned short flags=(data[1]<<8)|(data[2]);
+		QString name=QString((char *)(data+3));
+		emit advertisement("[ws]",webclients.indexOf(pClient),flags,name);
+	}
+	else
+    {
+        //printf("unknown packet id");
+    }
+
+}
+
+void GiderosNetworkClient2::onWebClosed()
+{
+    QWebSocket *pClient = qobject_cast<QWebSocket *>(sender());
+    qDebug() << "socketDisconnected:" << pClient;
+    if (pClient) {
+    	if ((hostName_=="[ws]")&&(port_==webclients.indexOf(pClient))&&(status_ = eConnected))
+    		onDisconnected();
+        webclients.removeAll(pClient);
+        pClient->deleteLater();
+    }
+}
 void GiderosNetworkClient2::onConnected()
 {
     //qDebug() << "connected";
@@ -68,6 +135,7 @@ void GiderosNetworkClient2::onDisconnected()
 
 void GiderosNetworkClient2::error(QAbstractSocket::SocketError socketError)
 {
+    Q_UNUSED(socketError);
     //qDebug() << "error" << socketError;
 	if (status_ == eTrying)
 	{
@@ -77,7 +145,7 @@ void GiderosNetworkClient2::error(QAbstractSocket::SocketError socketError)
 
 void GiderosNetworkClient2::bytesWritten(qint64 bytes)
 {
-
+    Q_UNUSED(bytes);
 }
 
 void GiderosNetworkClient2::readyRead()
@@ -95,7 +163,7 @@ void GiderosNetworkClient2::readyRead()
 		const unsigned int* header = (const unsigned int*)readArray_.constData();
 
 		unsigned int size = header[0];
-		unsigned int id = header[1];
+        //unsigned int id = header[1];
 		unsigned int type = header[2];
 
 		if (readArray_.size() < size)
@@ -110,7 +178,7 @@ void GiderosNetworkClient2::readyRead()
 		if (type == 0)
 		{
 			emit dataReceived(part0);
-			sendAck(id);
+            //sendAck(id);
 		}
 		else if (type == 1)
 		{
@@ -152,8 +220,15 @@ void GiderosNetworkClient2::timerEvent(QTimerEvent *)
 	}
 	if (status_ == eDisconnected)
 	{
-		status_ = eTrying;
-		client_->connectToHost(hostName_, port_);
+		if (hostName_=="[ws]") {
+			sendData(NULL,0,2); //Connection signal
+			onConnected();
+		}
+		else
+		{
+			status_ = eTrying;
+			client_->connectToHost(hostName_, port_);
+		}
 	}
 }
 
@@ -176,6 +251,11 @@ void GiderosNetworkClient2::connectToHost(const QString& hostName, quint16 port)
 	}
 }
 
+unsigned int GiderosNetworkClient2::sendCommand(const void* data, unsigned int size)
+{
+	return sendData(data,size,0);
+}
+
 
 unsigned int GiderosNetworkClient2::sendData(const void* data, unsigned int size, unsigned int type)
 {
@@ -189,8 +269,17 @@ unsigned int GiderosNetworkClient2::sendData(const void* data, unsigned int size
 	header[1] = nextid_++;
 	header[2] = type;		// 0=>we are sending data, 1=>ack
 
-	client_->write((const char*)header, headerSize);
-	client_->write((const char*)data, size);
+	if (hostName_=="[ws]")
+	{
+		QByteArray msg((const char*)(header+1), headerSize-sizeof(unsigned int));
+		msg.append((const char*)data, size);
+		webclients[port_]->sendBinaryMessage(msg);
+	}
+	else
+	{
+		client_->write((const char*)header, headerSize);
+		client_->write((const char*)data, size);
+	}
 
 	return header[1];
 }
@@ -329,7 +418,7 @@ qint64 GiderosNetworkClient2::bytesToWrite() const
 	return 0;
 }
 
-unsigned int GiderosNetworkClient2::sendProjectProperties(const ProjectProperties& properties)
+unsigned int GiderosNetworkClient2::sendProjectProperties(const ProjectProperties& properties, QString projectName)
 {
 	if (status_ != eConnected)
 		return 0;
@@ -360,6 +449,16 @@ unsigned int GiderosNetworkClient2::sendProjectProperties(const ProjectPropertie
     
     buffer << properties.windowWidth;
     buffer << properties.windowHeight;
+
+    QString appName=properties.app_name;
+    if (appName.isEmpty())
+        appName=projectName;
+
+    buffer << appName.toStdString();
+    buffer << properties.version.toStdString();
+    buffer << properties.version_code;
+    buffer << properties.build_number;
+    buffer << (unsigned int) QDateTime::currentSecsSinceEpoch();
 
 	return sendData(buffer.data(), buffer.size(), 0);
 }

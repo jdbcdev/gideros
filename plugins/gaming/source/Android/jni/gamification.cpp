@@ -114,7 +114,16 @@ public:
 		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "logout", "(Ljava/lang/String;)V"), jAd);
 		env->DeleteLocalRef(jAd);
 	}
-	
+
+	bool loggedin(const char *ad)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jAd = env->NewStringUTF(ad);
+		bool b=env->CallStaticBooleanMethod(cls_, env->GetStaticMethodID(cls_, "loggedin", "(Ljava/lang/String;)Z"), jAd);
+		env->DeleteLocalRef(jAd);
+		return b;
+	}
+
 	void reportScore(const char *game, const char *id, long score, int immediate)
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -133,6 +142,14 @@ public:
 		env->DeleteLocalRef(jGame);
 	}
 	
+	void getPlayerInfo(const char *game)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "getPlayerInfo", "(Ljava/lang/String;)V"), jGame);
+		env->DeleteLocalRef(jGame);
+	}
+
 	void showLeaderboard(const char *game, const char *id)
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -181,7 +198,17 @@ public:
 		env->DeleteLocalRef(jId);
 		env->DeleteLocalRef(jGame);
 	}
-	
+
+	void loadPlayerScores(const char *game, const char *id, int span, int collection, int maxResults)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		jstring jId = env->NewStringUTF(id);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "loadPlayerScores", "(Ljava/lang/String;Ljava/lang/String;III)V"), jGame, jId, (jint)span, (jint)collection, (jint)maxResults);
+		env->DeleteLocalRef(jId);
+		env->DeleteLocalRef(jGame);
+	}
+
 	void loadState(const char *game, int key)
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -222,6 +249,127 @@ public:
 		env->DeleteLocalRef(jGame);
 	}
 	
+	void autoMatch(const char *game, int minPlayers, int maxPlayers)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "autoMatch", "(Ljava/lang/String;II)V"), jGame, (jint)minPlayers, (jint)maxPlayers);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	void invitePlayers(const char *game, int minPlayers, int maxPlayers)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "invitePlayers", "(Ljava/lang/String;II)V"), jGame);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	void joinRoom(const char *game, const char* id)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		jstring jId = env->NewStringUTF(id);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "joinRoom", "(Ljava/lang/String;Ljava/lang/String;)V"), jGame, jId);
+		env->DeleteLocalRef(jId);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	void showInvitations(const char *game)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "showInvitations", "(Ljava/lang/String;)V"), jGame);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	void showWaitingRoom(const char *game, int minPlayers)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "showWaitingRoom", "(Ljava/lang/String;I)V"), jGame, (jint)minPlayers);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	const char* getCurrentPlayer(const char *game)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		
+		jstring jGame = env->NewStringUTF(game);
+		jstring js = (jstring)env->CallStaticObjectMethod(cls_, env->GetStaticMethodID(cls_, "getCurrentPlayer", "(Ljava/lang/String;)Ljava/lang/String;"), jGame);
+		const char *val = env->GetStringUTFChars(js, NULL);
+		env->DeleteLocalRef(jGame);
+		return val;
+	}
+	
+	const char* getCurrentPlayerId(const char *game)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		
+		jstring jGame = env->NewStringUTF(game);
+		jstring js = (jstring)env->CallStaticObjectMethod(cls_, env->GetStaticMethodID(cls_, "getCurrentPlayerId", "(Ljava/lang/String;)Ljava/lang/String;"), jGame);
+		const char *val = env->GetStringUTFChars(js, NULL);
+		env->DeleteLocalRef(jGame);
+		return val;
+	}
+	
+	const char* getCurrentPicture(const char *game, int highRes)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		
+		jstring jGame = env->NewStringUTF(game);
+		jstring js = (jstring)env->CallStaticObjectMethod(cls_, env->GetStaticMethodID(cls_, "getCurrentPlayerPicture", "(Ljava/lang/String;I)Ljava/lang/String;"), jGame, (jint)highRes);
+		const char *val = env->GetStringUTFChars(js, NULL);
+		env->DeleteLocalRef(jGame);
+		return val;
+	}
+	
+	void getCurrentScore(const char *game, const char *id, int span, int collection)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		jstring jId = env->NewStringUTF(id);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "getCurrentPlayerScore", "(Ljava/lang/String;Ljava/lang/String;II)V"), jGame, jId, (jint)span, (jint)collection);
+		env->DeleteLocalRef(jId);
+		env->DeleteLocalRef(jGame);
+	}
+	
+	game_PlayerEntry* getAllPlayers(const char *game)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		
+		jstring jGame = env->NewStringUTF(game);
+		jobject jmapobj = env->CallStaticObjectMethod(cls_, env->GetStaticMethodID(cls_, "getAllPlayers", "(Ljava/lang/String;)Ljava/lang/Object;"), jGame);
+		game_PlayerEntry *p = this->map2player(jmapobj);
+		env->DeleteLocalRef(jmapobj);
+		env->DeleteLocalRef(jGame);
+		return p;
+	}
+	
+	void sendTo(const char *game, const char* id, const void* data, size_t size, int isReliable)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		jstring jId = env->NewStringUTF(id);
+		jbyteArray jdata = env->NewByteArray(size);
+		env->SetByteArrayRegion(jdata, 0, size, (const jbyte*)data);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "sendTo", "(Ljava/lang/String;[BI)V"), jGame, jId, jdata, (jint)isReliable);
+		env->DeleteLocalRef(jId);
+		env->DeleteLocalRef(jdata);
+		env->DeleteLocalRef(jGame);
+	}
+
+	void sendToAll(const char *game, const void* data, size_t size, int isReliable)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		jstring jGame = env->NewStringUTF(game);
+		jbyteArray jdata = env->NewByteArray(size);
+		env->SetByteArrayRegion(jdata, 0, size, (const jbyte*)data);
+		env->CallStaticVoidMethod(cls_, env->GetStaticMethodID(cls_, "sendToAll", "(Ljava/lang/String;[BI)V"), jGame, jdata, (jint)isReliable);
+		env->DeleteLocalRef(jdata);
+		env->DeleteLocalRef(jGame);
+	}
+	
 	std::string mapGetStr(const char *str, jobject jsubobj)
 	{
 		JNIEnv *env = g_getJNIEnv();
@@ -250,6 +398,33 @@ public:
 		env->DeleteLocalRef(jStr);
 		
 		return ret;
+	}
+	
+	struct game_PlayerEntry* map2player(jobject jmapobj)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		int size = (int)env->CallIntMethod(jmapobj, env->GetMethodID(clsSparse, "size", "()I"));
+		if(size == 0)
+		{
+			return NULL;
+		}
+		
+		player.clear();
+		
+		for (int i = 0; i < size; i++) {
+			jobject jsubobj = env->CallObjectMethod(jmapobj, env->GetMethodID(clsSparse, "valueAt", "(I)Ljava/lang/Object;"), (jint)i);
+			
+			game_PlayerEntry gplayer = {this->mapGetStr("id", jsubobj), this->mapGetStr("name", jsubobj)};
+			
+			player.push_back(gplayer);
+			
+			env->DeleteLocalRef(jsubobj);
+		}
+		
+		game_PlayerEntry param = {NULL, NULL};
+		player.push_back(param);
+		
+		return &player[0];
 	}
 	
 	void map2achievement(jobject jmapobj)
@@ -309,9 +484,9 @@ public:
 
 		const char *caller = env->GetStringUTFChars(jCaller, NULL);
 		
-		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct1(
-			sizeof(game_SimpleEvent),
-			offsetof(game_SimpleEvent, id), caller);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
 	
 		env->ReleaseStringUTFChars(jCaller, caller);
 		
@@ -519,15 +694,15 @@ public:
 		// and copy the data into it
 		char *ptr = (char*)event + sizeof(game_Achievements);
 		
-		event->caller = ptr;
-		strcpy(ptr, caller.c_str());
-		ptr += caller.size() + 1;
-		
 		event->count = count;
 		event->achievements = (game_Achievement*)ptr;
 		
 		ptr += achievements.size() * sizeof(game_Achievement);
-		 
+
+		event->caller = ptr;
+		strcpy(ptr, caller.c_str());
+		ptr += caller.size() + 1;
+
 		for (std::size_t i = 0; i < count; ++i)
 		{	
 			event->achievements[i].id = ptr;
@@ -599,6 +774,11 @@ public:
 		// and copy the data into it
 		char *ptr = (char*)event + sizeof(game_Leaderboard);
 		
+		event->count = count;
+		event->scores = (game_Score*)ptr;
+
+		ptr += scores.size() * sizeof(game_Score);
+
 		event->caller = ptr;
 		strcpy(ptr, caller.c_str());
 		ptr += caller.size() + 1;
@@ -610,12 +790,7 @@ public:
 		event->name = ptr;
 		strcpy(ptr, name.c_str());
 		ptr += name.size() + 1;
-		
-		event->count = count;
-		event->scores = (game_Score*)ptr;
-		
-		ptr += scores.size() * sizeof(game_Score);
-		
+
 		for (std::size_t i = 0; i < count; ++i)
 		{	
 			event->scores[i].rank = ptr;
@@ -756,6 +931,275 @@ public:
 		gevent_EnqueueEvent(gid_, callback_s, GAME_STATE_DELETED_EVENT, event, 1, this);
 	}
 	
+	void onPlayerScore(jstring jCaller, jstring jRank, jstring jformatScore, jlong jScore, jint timestamp)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *rank = env->GetStringUTFChars(jRank, NULL);
+		const char *score = env->GetStringUTFChars(jformatScore, NULL);
+
+		game_PlayerScore *event = (game_PlayerScore*)gevent_CreateEventStruct3(
+			sizeof(game_PlayerScore),
+			offsetof(game_PlayerScore, caller), caller,
+			offsetof(game_PlayerScore, rank), rank,
+			offsetof(game_PlayerScore, formatScore), score);
+
+		event->timestamp = (int)timestamp;
+		event->score = (long)jScore;
+
+		env->ReleaseStringUTFChars(jRank, rank);
+		env->ReleaseStringUTFChars(jformatScore, score);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PLAYER_SCORES_COMPLETE_EVENT, event, 1, this);
+	}
+
+	void onGameStarted(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_GAME_STARTED_EVENT, event, 1, this);
+	}
+
+	void onInvitationReceived(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_INVITATION_RECEIVED_EVENT, event, 1, this);
+	}
+
+	void onJoinedRoom(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_JOINED_ROOM_EVENT, event, 1, this);
+	}
+
+	void onLeftRoom(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_LEFT_ROOM_EVENT, event, 1, this);
+	}
+
+	void onRoomConnected(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_ROOM_CONNECTED_EVENT, event, 1, this);
+	}
+
+	void onRoomCreated(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_ROOM_CREATED_EVENT, event, 1, this);
+	}
+
+	void onConnectedToRoom(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_CONNECTED_TO_ROOM_EVENT, event, 1, this);
+	}
+
+	void onDisconnectedFromRoom(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_DISCONNECTED_FROM_ROOM_EVENT, event, 1, this);
+	}
+
+	void onPeerDeclined(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_DECLINED_EVENT, event, 1, this);
+	}
+
+	void onPeerInvitedToRoom(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_INVITED_EVENT, event, 1, this);
+	}
+
+	void onPeerJoined(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_JOINED_EVENT, event, 1, this);
+	}
+
+	void onPeerLeft(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_LEFT_EVENT, event, 1, this);
+	}
+
+	void onPeersConnected(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_CONNECTED_EVENT, event, 1, this);
+	}
+
+	void onPeersDisconnected(jstring jCaller)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		game_EmptyEvent *event = (game_EmptyEvent*)gevent_CreateEventStruct1(
+			sizeof(game_EmptyEvent),
+			offsetof(game_EmptyEvent, caller), caller);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PEER_DISCONNECTED_EVENT, event, 1, this);
+	}
+
+	void onRoomAutoMatching(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_ROOM_AUTO_MATCHING_EVENT, event, 1, this);
+	}
+
+	void onRoomConnecting(jstring jCaller, jstring jId)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *id = env->GetStringUTFChars(jId, NULL);
+
+		game_SimpleEvent *event = (game_SimpleEvent*)gevent_CreateEventStruct2(
+			sizeof(game_SimpleEvent),
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_SimpleEvent, id), id);
+
+		env->ReleaseStringUTFChars(jId, id);
+		env->ReleaseStringUTFChars(jCaller, caller);
+		gevent_EnqueueEvent(gid_, callback_s, GAME_ROOM_CONNECTING_EVENT, event, 1, this);
+	}
+
+	void onDataReceived(jstring jCaller, jbyteArray jMessage, jstring jSender)
+	{
+		JNIEnv *env = g_getJNIEnv();
+		const char *caller = env->GetStringUTFChars(jCaller, NULL);
+		const char *sender = env->GetStringUTFChars(jSender, NULL);
+
+		size_t structSize = sizeof(game_ReceivedEvent);
+		size_t dataSize = env->GetArrayLength(jMessage);
+
+		//game_ReceivedEvent *event = (game_ReceivedEvent*)malloc(structSize + dataSize);
+
+		game_ReceivedEvent *event = (game_ReceivedEvent*)gevent_CreateEventStruct2(
+			structSize + dataSize,
+			offsetof(game_SimpleEvent, caller), caller,
+			offsetof(game_ReceivedEvent, sender), sender);
+
+		event->data = (char*)event + structSize;
+		env->GetByteArrayRegion(jMessage, 0, dataSize, (jbyte*)event->data);
+		event->size = dataSize;
+
+		env->ReleaseStringUTFChars(jSender, sender);
+		env->ReleaseStringUTFChars(jCaller, caller);
+
+		gevent_EnqueueEvent(gid_, callback_s, GAME_DATA_RECEIVED_EVENT, event, 1, this);
+	}
+
 	g_id addCallback(gevent_Callback callback, void *udata)
 	{
 		return callbackList_.addCallback(callback, udata);
@@ -789,6 +1233,7 @@ private:
 	jclass clsBundle;
 	std::vector<Achievement> achievements;
 	std::vector<Score> scores;
+	std::vector<game_PlayerEntry> player;
 	g_id gid_;
 };
 
@@ -884,6 +1329,97 @@ void Java_com_giderosmobile_android_plugins_gaming_Game_onStateDeleted(JNIEnv *e
 	((GGame*)data)->onStateDeleted(jCaller, key);
 }
 
+void Java_com_giderosmobile_android_plugins_gaming_Game_onGameStarted(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onGameStarted(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onInvitationReceived(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onInvitationReceived(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onJoinedRoom(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onJoinedRoom(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onLeftRoom(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onLeftRoom(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onRoomConnected(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onRoomConnected(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onRoomCreated(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onRoomCreated(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onConnectedToRoom(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onConnectedToRoom(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onDisconnectedFromRoom(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onDisconnectedFromRoom(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeerDeclined(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeerDeclined(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeerInvitedToRoom(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeerInvitedToRoom(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeerJoined(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeerJoined(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeerLeft(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeerLeft(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeersConnected(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeersConnected(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPeersDisconnected(JNIEnv *env, jclass clz, jstring jCaller, jlong data)
+{
+	((GGame*)data)->onPeersDisconnected(jCaller);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onRoomAutoMatching(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onRoomAutoMatching(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onRoomConnecting(JNIEnv *env, jclass clz, jstring jCaller, jstring id, jlong data)
+{
+	((GGame*)data)->onRoomConnecting(jCaller,id);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onDataReceived(JNIEnv *env, jclass clz, jstring jCaller, jbyteArray message, jstring sender, jlong data)
+{
+	((GGame*)data)->onDataReceived(jCaller,message, sender);
+}
+
+void Java_com_giderosmobile_android_plugins_gaming_Game_onPlayerScore(JNIEnv *env, jclass clz, jstring jCaller, jstring rank, jstring formatscore, jlong score, jint timestamp, jlong data)
+{
+	((GGame*)data)->onPlayerScore(jCaller,rank, formatscore, score, timestamp);
+}
+
+
 }
 
 static GGame *s_game = NULL;
@@ -941,6 +1477,15 @@ void game_logout(const char *ad)
 	}
 }
 
+bool game_loggedin(const char *ad)
+{
+	if(s_game)
+	{
+		return s_game->loggedin(ad);
+	}
+	return false;
+}
+
 void game_reportScore(const char *game, const char *id, long score, int immediate)
 {
 	if(s_game)
@@ -954,6 +1499,14 @@ void game_showAchievements(const char *game)
 	if(s_game)
 	{
 		s_game->showAchievements(game);
+	}
+}
+
+void game_getPlayerInfo(const char *game)
+{
+	if(s_game)
+	{
+		s_game->getPlayerInfo(game);
 	}
 }
 
@@ -997,6 +1550,14 @@ void game_loadScores(const char *game, const char *id, int span, int collection,
 	}
 }
 
+void game_loadPlayerScores(const char *game, const char *id, int span, int collection, int maxResults)
+{
+	if(s_game)
+	{
+		s_game->loadPlayerScores(game, id, span, collection, maxResults);
+	}
+}
+
 void game_loadState(const char *game, int key)
 {
 	if(s_game)
@@ -1019,6 +1580,82 @@ void game_deleteState(const char *game, int key)
 {
 	if(s_game)
 		s_game->deleteState(game, key);
+}
+
+void game_autoMatch(const char *game, int minPlayers, int maxPlayers)
+{
+	if(s_game)
+		s_game->autoMatch(game, minPlayers, maxPlayers);
+}
+
+void game_invitePlayers(const char *game, int minPlayers, int maxPlayers)
+{
+	if(s_game)
+		s_game->invitePlayers(game, minPlayers, maxPlayers);
+}
+
+void game_joinRoom(const char *game, const char* id)
+{
+	if(s_game)
+		s_game->joinRoom(game,id);
+}
+
+void game_showInvitations(const char *game)
+{
+	if(s_game)
+		s_game->showInvitations(game);
+}
+
+void game_showWaitingRoom(const char *game, int minPlayers)
+{
+	if(s_game)
+		s_game->showWaitingRoom(game,minPlayers);
+}
+
+void game_sendTo(const char *game, const char* id, const void* data, size_t size, int isReliable)
+{
+	if(s_game)
+		s_game->sendTo(game, id, data, size, isReliable);
+}
+
+void game_sendToAll(const char *game, const void* data, size_t size, int isReliable)
+{
+	if(s_game)
+		s_game->sendToAll(game, data, size, isReliable);
+}
+
+const char* game_getCurrentPlayer(const char *game)
+{
+	if(s_game)
+		return s_game->getCurrentPlayer(game);
+	return NULL;
+}
+
+const char* game_getCurrentPlayerId(const char *game)
+{
+	if(s_game)
+		return s_game->getCurrentPlayerId(game);
+	return NULL;
+}
+
+const char* game_getCurrentPicture(const char *game, int highRes)
+{
+	if(s_game)
+		return s_game->getCurrentPicture(game, highRes);
+	return NULL;
+}
+
+void game_getCurrentScore(const char *game, const char *id, int span, int collection)
+{
+	if(s_game)
+		s_game->getCurrentScore(game,id, span, collection);
+}
+
+game_PlayerEntry* game_getAllPlayers(const char *game)
+{
+	if(s_game)
+		return s_game->getAllPlayers(game);
+	return NULL;
 }
 
 g_id game_addCallback(gevent_Callback callback, void *udata)

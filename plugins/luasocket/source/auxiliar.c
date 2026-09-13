@@ -35,7 +35,7 @@ void auxiliar_newclass(lua_State *L, const char *classname, luaL_Reg *func) {
      * to the index table */
     for (; func->name; func++) {     /* mt,"__index",it */
         lua_pushstring(L, func->name);
-        lua_pushcfunction(L, func->func);
+        lua_pushcnfunction(L, func->func, func->name);
         lua_rawset(L, func->name[0] == '_' ? -5: -3);
     }
     lua_rawset(L, -3);               /* mt */
@@ -153,6 +153,7 @@ void *auxiliar_getclassudata(lua_State *L, const char *classname, int objidx) {
 int auxiliar_typeerror (lua_State *L, int narg, const char *tname) {
   const char *msg = lua_pushfstring(L, "%s expected, got %s", tname, 
       luaL_typename(L, narg));
-  return luaL_argerror(L, narg, msg);
+  luaL_argerror(L, narg, msg);
+  return 0;
 }
 

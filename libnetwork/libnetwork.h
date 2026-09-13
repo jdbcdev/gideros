@@ -8,6 +8,35 @@
 
 #define GIDEROS_DEFAULT_PORT	15000
 
+enum GiderosPacketType {
+	gptMakeDir = 0,
+	gptWriteFile = 1,
+	gptPlay = 2,
+	gptStop = 3,
+	gptPrint = 4, //Player->Studio
+	//gptDelete=5, //UNUSED
+	gptFileList=6, //Player->Studio
+	gptGetFileList=7,
+	gptSetProjectName=8,
+	gptDeleteFile=9,
+	gptRunning=10, //Player->Studio
+	gptSetProperties=11,
+	gptEnablePlugins=12,
+
+	//Debugging
+	gptLookupSymbol=20,
+	gptSetBreakpoints=21,
+	gptResume=22,
+	gptBreaked=23, //Player->Studio
+	gptSymbolValue=24, //Player->Studio
+
+	//Profiling
+	gptProfilingOn=30,
+	gptProfilingResult=31,
+
+	gptLast
+};
+
 #ifdef WINSTORE
 
 #ifndef UNICODE
@@ -56,7 +85,15 @@ struct NetworkEvent
 
 class QueueElement;
 
-class NetworkBase
+class NetworkLink
+{
+public:
+	virtual int sendData(const void* data, unsigned int size, bool noCheck=false)=0;
+	virtual void tick(NetworkEvent* event)=0;
+	virtual ~NetworkLink() { };
+};
+
+class NetworkBase : public NetworkLink
 {
 public:
 	int sendData(const void* data, unsigned int size, bool noCheck=false);

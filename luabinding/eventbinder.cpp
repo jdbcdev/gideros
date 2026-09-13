@@ -10,6 +10,8 @@
 #include "progressevent.h"
 #include "keyboardevent.h"
 #include "completeevent.h"
+#include "layoutevent.h"
+#include "permissionevent.h"
 
 EventBinder::EventBinder(lua_State* L)
 {
@@ -27,6 +29,12 @@ EventBinder::EventBinder(lua_State* L)
 	binder.createClass("Event", NULL, create, 0, functionList);
 
 	lua_getglobal(L, "Event");	// get metatable
+
+	lua_pushstring(L, OpenUrlEvent::OPEN_URL.type());
+	lua_setfield(L, -2, "OPEN_URL");
+
+	lua_pushstring(L, TextInputEvent::TEXT_INPUT.type());
+	lua_setfield(L, -2, "TEXT_INPUT");
 
 	lua_pushstring(L, Event::ENTER_FRAME.type());
 	lua_setfield(L, -2, "ENTER_FRAME");
@@ -72,6 +80,9 @@ EventBinder::EventBinder(lua_State* L)
     lua_pushstring(L, Event::APPLICATION_RESIZE.type());
     lua_setfield(L, -2, "APPLICATION_RESIZE");
 
+    lua_pushstring(L, PermissionEvent::PERMISSION.type());
+    lua_setfield(L, -2, "APPLICATION_PERMISSION");
+
     lua_pushstring(L, Event::MEMORY_WARNING.type());
     lua_setfield(L, -2, "MEMORY_WARNING");
 
@@ -90,8 +101,14 @@ EventBinder::EventBinder(lua_State* L)
     lua_pushstring(L, MouseEvent::MOUSE_HOVER.type());
     lua_setfield(L, -2, "MOUSE_HOVER");
 
-	lua_pushstring(L, MouseEvent::MOUSE_WHEEL.type());
-	lua_setfield(L, -2, "MOUSE_WHEEL");
+    lua_pushstring(L, MouseEvent::MOUSE_WHEEL.type());
+    lua_setfield(L, -2, "MOUSE_WHEEL");
+
+    lua_pushstring(L, MouseEvent::MOUSE_ENTER.type());
+    lua_setfield(L, -2, "MOUSE_ENTER");
+
+    lua_pushstring(L, MouseEvent::MOUSE_LEAVE.type());
+    lua_setfield(L, -2, "MOUSE_LEAVE");
 
 
 	lua_pushstring(L, TouchEvent::TOUCHES_BEGIN.type());
@@ -120,6 +137,11 @@ EventBinder::EventBinder(lua_State* L)
 	lua_pushstring(L, ProgressEvent::PROGRESS.type());
 	lua_setfield(L, -2, "PROGRESS");
 
+	lua_pushstring(L, HeaderEvent::HEADER.type());
+	lua_setfield(L, -2, "HEADER");
+
+    lua_pushstring(L, LayoutEvent::RESIZED.type());
+    lua_setfield(L, -2, "LAYOUT_RESIZED");
 
 	lua_pushstring(L, KeyboardEvent::KEY_UP.type());
 	lua_setfield(L, -2, "KEY_UP");

@@ -1,33 +1,10 @@
 TARGET=Ads
 SRCS=$(addprefix emscripten/,adsbinder ads)
-INCS=../../../Sdk/include
+INCS=$(addprefix ../../../Sdk/,include include/gideros)
 
-EMCC=emcc
-BUILD=Build
+build: all
+	@cp ads.js $(BUILD)/Html/AdsBase.js
+	@cp AdsAdSense.js $(BUILD)/Html
 
-OPTS=-O2 
-ifneq ($(DEBUG),)
-OPTS+=-g4 -s ASSERTIONS=1
-endif
-
-OBJS=$(addprefix $(BUILD)/,$(addsuffix .em.o,$(SRCS)))
-CINCS=$(addprefix -I../,$(INCS))
-CFLGS=-DFT2_BUILD_LIBRARY -DDARWIN_NO_CARBON -DHAVE_UNISTD_H \
-	-DOPT_GENERIC -DREAL_IS_FLOAT \
-	$(OPTS) --bind
-
-all: path $(OBJS)
-	emcc $(OBJS) -s SIDE_MODULE=1 -s DISABLE_EXCEPTION_CATCHING=0 $(OPTS) --pre-js ads.js -o $(BUILD)/$(TARGET).js
-
-path:
-	mkdir -p $(sort $(dir $(OBJS)))
-
-clean:
-	rm -rf $(BUILD)
-
-$(BUILD)/%.em.o: ../%.cpp
-	$(EMCC) $(CINCS) $(CFLGS) -c $< --default-obj-ext .em.o -o $@
-
-$(BUILD)/%.em.o: ../%.c
-	$(EMCC) $(CINCS) $(CFLGS) -c $< --default-obj-ext .em.o -o $@
+include ../../../../emscripten/Plugin.mk
 

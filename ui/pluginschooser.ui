@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>427</width>
-    <height>351</height>
+    <width>750</width>
+    <height>470</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -77,6 +77,20 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <widget class="QPushButton" name="standardPlugins">
+       <property name="text">
+        <string>Standard plugins</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="userPlugins">
+       <property name="text">
+        <string>User plugins</string>
+       </property>
+      </widget>
+     </item>
      <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">

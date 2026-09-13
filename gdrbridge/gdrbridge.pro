@@ -11,7 +11,12 @@ QT       -= gui
 TARGET = gdrbridge
 CONFIG   += console
 CONFIG   -= app_bundle
+CONFIG   += silent
 
 TEMPLATE = app
 
 SOURCES += main.cpp
+
+unix:!macx {
+QMAKE_LFLAGS += '-Wl,-rpath,\'\$$ORIGIN\''
+}

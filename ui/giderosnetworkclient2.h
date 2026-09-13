@@ -7,6 +7,8 @@
 #include <QString>
 #include <QTcpSocket>
 #include <QUdpSocket>
+#include "QtWebSockets/qwebsocketserver.h"
+#include "QtWebSockets/qwebsocket.h"
 
 struct ProjectProperties;
 
@@ -26,11 +28,12 @@ public:
 
 	qint64 bytesToWrite() const;
 
+    unsigned int sendCommand(const void* data, unsigned int size);
     unsigned int sendFile(const QString& remoteName, const QString& localFileName);
 	unsigned int sendCreateFolder(const QString& folderName);
 	unsigned int sendPlay(const QStringList& luafiles);
 	unsigned int sendProjectName(const QString& projectName);
-	unsigned int sendProjectProperties(const ProjectProperties& properties);
+    unsigned int sendProjectProperties(const ProjectProperties& properties, QString projectName);
 	unsigned int sendStop();
 	unsigned int sendDeleteFiles();
 	unsigned int sendGetFileList();
@@ -52,6 +55,9 @@ public slots:
 private slots:
 	void onConnected();
 	void onDisconnected();
+	void onWebConnection();
+	void onWebClosed();
+	void onWebMessage(QByteArray data);
 	void error(QAbstractSocket::SocketError socketError);
 	void bytesWritten(qint64 bytes);
 	void readyRead();
@@ -75,6 +81,8 @@ private:
 	Status status_;
 	int nextid_;
 	QByteArray readArray_;
+	QWebSocketServer *websocket_;
+	QList<QWebSocket *> webclients;
 };
 
 #endif // GIDEROSNETWORKCLIENT2_H

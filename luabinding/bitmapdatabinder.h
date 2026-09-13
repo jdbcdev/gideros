@@ -10,10 +10,11 @@ public:
 	
 private:
 	static int create(lua_State* L);
-	static int destruct(lua_State* L);
+	static int destruct(void *p);
 
     static int setRegion(lua_State *L);
     static int getRegion(lua_State *L);
+    static int getScale(lua_State *L);
 };
 
 #endif

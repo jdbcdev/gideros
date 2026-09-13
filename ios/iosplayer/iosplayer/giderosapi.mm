@@ -1,4 +1,8 @@
+#if TARGET_OS_OSX
+#import <Cocoa/Cocoa.h>
+#else
 #import <UIKit/UIKit.h>
+#endif
 
 #include <sys/stat.h>
 
@@ -18,9 +22,8 @@
 
 #include <gstdio.h>
 
-#include <splashscreen.h>
-#include <application.h>
 #include <stage.h>
+#include <splashscreen.h>
 
 #include <gpath.h>
 
@@ -52,6 +55,7 @@
 #include <gapplication-ios.h>
 
 #include <gaudio.h>
+#include <debugging.h>
 
 #define THREADED_RENDER_LOOP 1
 
@@ -100,51 +104,18 @@
 
 @end
 
-@interface LuaException : NSException
-@end
-@implementation LuaException
-@end
-
 
 extern "C" {
 void g_setFps(int);
 int g_getFps();
 }
 void drawInfo();
+void drawInfoMargins(int xm,int ym);
 void refreshLocalIPs();
 void g_exit();
 
 static volatile const char* licenseKey_ = "9852564f4728e0c11e34ca3eb5fe20b2";
 //-----------------------------------------01234567890123456------------------
-
-struct ProjectProperties
-{
-	ProjectProperties()
-	{
-		scaleMode = 0;
-		logicalWidth = 320;
-		logicalHeight = 480;
-		orientation = 0;
-		fps = 60;
-		retinaDisplay = 0;
-		autorotation = 0;		
-		mouseToTouch = 1;
-		touchToMouse = 1;
-		mouseTouchOrder = 0;
-	}
-
-	int scaleMode;
-	int logicalWidth;
-	int logicalHeight;
-	std::vector<std::pair<std::string, float> > imageScales;
-	int orientation;
-	int fps;
-	int retinaDisplay;
-	int autorotation;
-	int mouseToTouch;
-	int touchToMouse;
-	int mouseTouchOrder;
-};
 
 class ApplicationManager;
 
@@ -169,6 +140,7 @@ public:
 	
 	static void printToServer_s(const char *str, int len, void *data)
 	{
+        NSLog(@"%s", str);
         if (data)
             static_cast<NetworkManager*>(data)->printToServer(str, len);
 	}
@@ -181,7 +153,7 @@ public:
     	buffer[0] = 4;
     	memcpy(buffer + 1, str,size-2);
     	buffer[size-1]=0;
-		
+        
 		server_->sendData(buffer, size, true);
 		
 		free(buffer);
@@ -220,10 +192,11 @@ public:
     void drawFirstFrame();
 
 	void luaError(const char *msg);
+	void forceTick();
 	
 //	void surfaceCreated();
 //	void surfaceChanged(int width, int height);
-	void drawFrame();
+	void drawFrame(bool force);
 	
 //	void setDirectories(const char *externalDir, const char *internalDir, const char *cacheDir);
 //	void setFileSystem(const char *files);
@@ -241,9 +214,10 @@ public:
 	void touchesMoved(NSSet *touches, NSSet *allTouches);
 	void touchesEnded(NSSet *touches, NSSet *allTouches);
 	void touchesCancelled(NSSet *touches, NSSet *allTouches);
+	void touchesReset();
 
-    void keyDown(int keyCode, int repeat);
-    void keyUp(int keyCode, int repeat);
+    void keyDown(int keyCode, int mods, int repeat);
+    void keyUp(int keyCode, int mods, int repeat);
     void keyChar(NSString *text);
 
 	void suspend();
@@ -258,7 +232,7 @@ public:
 	void exitRenderLoopHelper();
 	
 	void didReceiveMemoryWarning();
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
 	BOOL shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation);	
 	void willRotateToInterfaceOrientationHelper(UIInterfaceOrientation toInterfaceOrientation);
 	void willRotateToInterfaceOrientation(UIInterfaceOrientation toInterfaceOrientation);
@@ -267,6 +241,7 @@ public:
 #else
         void willRotateToInterfaceOrientationHelperTV(Orientation toInterfaceOrientation);
 #endif
+    void requestDeviceOrientation(gapplication_Orientation iO,gapplication_AutoOrientation iAutoRot);
     
     void handleOpenUrl(NSURL *url);
     
@@ -276,7 +251,7 @@ public:
     
     bool isKeyboardVisible();
     bool setKeyboardVisibility(bool visible);
-
+    bool setTextInput(int type,const char *buffer,int selstart,int selend,const char *label,const char *actionLabel, const char *hintText, const char *context);
 
 private:
 	void loadProperties();
@@ -285,7 +260,6 @@ private:
 	int convertKeyCode(int keyCode);
 	
 private:
-	UIView *view_;
 	bool player_;
     bool keyboardVisible_;
 	LuaApplication *application_;
@@ -317,17 +291,24 @@ private:
 #endif
 	
 	int nframe_;
+public:
+	float scaleFactor_;
+    UIView *view_;
 };
+
+float gdr_ScaleFactor=1;
 
 
 NetworkManager::NetworkManager(ApplicationManager* application)
 {
 	application_ = application;
     server_ = new Server(15000, ::getDeviceName().c_str());
+	LuaDebugging::studioLink(server_);
 }
 
 NetworkManager::~NetworkManager()
 {
+	LuaDebugging::studioLink(NULL);
 	delete server_;
 }
 
@@ -353,36 +334,37 @@ void NetworkManager::tick()
 		if (event.eventCode == eDataReceived)
 		{
 			const std::vector<char>& data = event.data;
+            LuaDebugging::studioCommand(data);
 			
 			switch (data[0])
 			{
-				case 0:
+				case gptMakeDir:
 					createFolder(data);
 					break;
-				case 1:
+				case gptWriteFile:
 					createFile(data);
 					break;
-                case 2:{
+                case gptPlay:{
                     const char* absfilename = g_pathForFile("../luafiles.txt");
                     FILE* fos = fopen(absfilename, "wb");
                     fwrite(&data[0], data.size(), 1, fos);
-                    +fclose(fos);
+                    fclose(fos);
 					play(data);
                 }
 					break;
-				case 3:
+				case gptStop:
 					stop();
 					break;
-				case 7:
+				case gptGetFileList:
 					sendFileList();
 					break;
-				case 8:
+				case gptSetProjectName:
 					setProjectName(data);
 					break;
-				case 9:
+				case gptDeleteFile:
 					deleteFile(data);
 					break;
-                case 11:{
+                case gptSetProperties:{
                     const char* absfilename = g_pathForFile("../properties.bin");
                     FILE* fos = fopen(absfilename, "wb");
                     fwrite(&data[0], data.size(), 1, fos);
@@ -522,33 +504,12 @@ void NetworkManager::deleteFile(const std::vector<char> &data)
 void NetworkManager::setProperties(const std::vector<char> &data)
 {
 	ProjectProperties properties;
-	
-	ByteBuffer buffer(&data[0], data.size());
-	
-	char chr;
-	buffer >> chr;
-	
-	buffer >> properties.scaleMode;
-	buffer >> properties.logicalWidth;
-	buffer >> properties.logicalHeight;
-	
-	int scaleCount;
-	buffer >> scaleCount;
-	properties.imageScales.resize(scaleCount);
-	for (int i = 0; i < scaleCount; ++i)
-	{
-		buffer >> properties.imageScales[i].first;
-		buffer >> properties.imageScales[i].second;
-	}
-	
-	buffer >> properties.orientation;
-	buffer >> properties.fps;
-	buffer >> properties.retinaDisplay;
-	buffer >> properties.autorotation;
-	buffer >> properties.mouseToTouch;
-	buffer >> properties.touchToMouse;
-	buffer >> properties.mouseTouchOrder;
-    
+	properties.load(data, true);
+    if (properties.windowWidth == 0 && properties.windowHeight == 0) {
+        properties.windowWidth = properties.logicalWidth;
+        properties.windowHeight = properties.logicalHeight;
+    }
+
 	application_->setProjectProperties(properties);
 }
 
@@ -608,6 +569,30 @@ void NetworkManager::calculateMD5(const char* file)
 		md5_[file] = md5;
 }
 
+extern void eventFlush();
+
+extern "C" {
+UIViewController *g_getRootViewController();
+}
+
+static ApplicationManager *s_manager = NULL;
+
+void getSafeDisplayArea(int &l,int &t,int &r,int &b,ApplicationManager *app)
+{
+		CGRect sa;
+        [app->view_ getSafeArea:&sa];
+		float scale=app->scaleFactor_;
+		l=sa.origin.x*scale;
+		t=sa.origin.y*scale;
+		r=sa.size.width*scale;
+		b=sa.size.height*scale;
+}
+
+void getSafeDisplayArea(int &l,int &t,int &r,int &b)
+{
+    if (s_manager)
+        getSafeDisplayArea(l,t,r,b,s_manager);
+}
 
 ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool player)
 {
@@ -638,14 +623,13 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
 
 	// event
 	gevent_Init();
+	gevent_SetFlusher(eventFlush);
 
     // application
     gapplication_init();
 	
 	// input
-#if TARGET_OS_TV == 0
     ginput_init();
-#endif
 	
 	// geolocation
 #if TARGET_OS_TV == 0
@@ -677,24 +661,30 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
 		application_->setPrintFunc(NetworkManager::printToServer_s, networkManager_);
 	application_->enableExceptions();
 	application_->initialize();
-	application_->setResolution(width_, height_);
-#if TARGET_OS_TV == 0
-    willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
+    application_->setResolution(width_, height_);
+    hardwareOrientation_ = ePortrait;
+    #if TARGET_OS_OSX
+    hardwareOrientation_ = eFixed;
+    #endif
+    deviceOrientation_ = ePortrait;
+
+    #if TARGET_OS_TV == 1
+    hardwareOrientation_ = eLandscapeLeft;
+    deviceOrientation_ = eLandscapeLeft;
+    #endif
+
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    willRotateToInterfaceOrientationHelper(UIInterfaceOrientationUnknown);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
 #endif
+    scaleFactor_=1;
+	int sl,st,sr,sb;
+	getSafeDisplayArea(sl,st,sr,sb,this);
+	drawInfoMargins(sl,st);
 
 	Binder::disableTypeChecking();
 	
-	hardwareOrientation_ = ePortrait;
-    
-    deviceOrientation_ = ePortrait;
-
-#if TARGET_OS_TV == 1
-	hardwareOrientation_ = eLandscapeLeft;
-	deviceOrientation_ = eLandscapeLeft;
-#endif
-
 	running_ = false;
 
 #if THREADED_RENDER_LOOP
@@ -734,6 +724,7 @@ ApplicationManager::ApplicationManager(UIView *view, int width, int height, bool
 #endif
 		loadProperties();
 
+        s_manager=this;
 		// Gideros has became open source and free, because this, there's no more splash art
 		loadLuaFiles();
 
@@ -783,9 +774,7 @@ ApplicationManager::~ApplicationManager()
 #endif
 	
 	// input
-#if TARGET_OS_TV == 0
     ginput_cleanup();
-#endif
 	
     // application
     gapplication_cleanup();
@@ -804,17 +793,16 @@ ApplicationManager::~ApplicationManager()
 
 void ApplicationManager::drawFirstFrame()
 {
-#if TARGET_OS_TV == 0
-    willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
-#else
-    willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
-#endif
-
+/*#if THREADED_RENDER_LOOP
+    renderTick_ = true;
+    [renderCond_ signal];
+#else*/
 	[view_ setFramebuffer];
 	application_->clearBuffers();
 	application_->renderScene(1);
 	drawIPs();
 	[view_ presentFramebuffer];
+//#endif
 }
 
 void ApplicationManager::setOpenProject(const char* project){
@@ -845,32 +833,12 @@ void ApplicationManager::openProject(const char* project){
         
         ProjectProperties properties;
         
-        ByteBuffer buffer(&buf_prop[0], buf_prop.size());
-        
-        char chr;
-        buffer >> chr;
-        
-        buffer >> properties.scaleMode;
-        buffer >> properties.logicalWidth;
-        buffer >> properties.logicalHeight;
-        
-        int scaleCount;
-        buffer >> scaleCount;
-        properties.imageScales.resize(scaleCount);
-        for (int i = 0; i < scaleCount; ++i)
-        {
-            buffer >> properties.imageScales[i].first;
-            buffer >> properties.imageScales[i].second;
+		properties.load(buf_prop, true);
+        if (properties.windowWidth == 0 && properties.windowHeight == 0) {
+            properties.windowWidth = properties.logicalWidth;
+            properties.windowHeight = properties.logicalHeight;
         }
-        
-        buffer >> properties.orientation;
-        buffer >> properties.fps;
-        buffer >> properties.retinaDisplay;
-        buffer >> properties.autorotation;
-        buffer >> properties.mouseToTouch;
-        buffer >> properties.touchToMouse;
-        buffer >> properties.mouseTouchOrder;
-        
+
         setProjectProperties(properties);
         
         //loading lua files
@@ -888,7 +856,7 @@ void ApplicationManager::openProject(const char* project){
         fclose(fis_lua);
         
         ByteBuffer buffer2(&buf_lua[0], buf_lua.size());
-        
+		char chr;        
         buffer2 >> chr;
         
         while (buffer2.eob() == false)
@@ -925,11 +893,13 @@ void *ApplicationManager::renderLoop()
 
         if (renderLoopActive_)
         {
-            [view_ setFramebuffer];
-            application_->clearBuffers();
-            application_->renderScene(1);
-            drawIPs();
-            [view_ presentFramebuffer];
+            @autoreleasepool {                
+                [view_ setFramebuffer];
+                application_->clearBuffers();
+                application_->renderScene(1);
+                drawIPs();
+                [view_ presentFramebuffer];
+            }
         }
 		
         [autorotationMutex_ unlock];
@@ -948,7 +918,7 @@ void *ApplicationManager::renderLoop()
 
 #endif
 
-void ApplicationManager::drawFrame()
+void ApplicationManager::drawFrame(bool force)
 {
 #if THREADED_RENDER_LOOP
 	if (autorotating_)
@@ -996,16 +966,23 @@ void ApplicationManager::drawFrame()
     if (status.error())
         luaError(status.errorString());
 
+    bool now=force;
+    if (!application_->onDemandDraw(now))
+        now=true;
+    if (now||force) {
 #if THREADED_RENDER_LOOP
-	renderTick_ = true;
-    [renderCond_ signal];
-    [renderCond_ unlock];
+        renderTick_ = true;
+        [renderCond_ signal];
 #endif
     
 #if !THREADED_RENDER_LOOP
-    application_->renderScene(1);
-    drawIPs();
-    [view_ presentFramebuffer];
+        application_->renderScene(1);
+        drawIPs();
+        [view_ presentFramebuffer];
+#endif
+    }
+#if THREADED_RENDER_LOOP
+    [renderCond_ unlock];
 #endif
 }
 	
@@ -1025,7 +1002,7 @@ void ApplicationManager::luaError(const char *error)
 	}
 	else
 	{
-        @throw [[LuaException alloc] initWithName:@"Lua" reason:[NSString stringWithUTF8String:error] userInfo:nil];
+        [view_ reportLuaError:[NSString stringWithUTF8String:error]];
 		//g_exit();
 	}
 }
@@ -1043,55 +1020,58 @@ void ApplicationManager::loadProperties()
 	g_fread(&buf[0], 1, len, fis);
 	g_fclose(fis);
 	
-	ByteBuffer buffer(&buf[0], buf.size());
-	
-	buffer >> properties_.scaleMode;
-	buffer >> properties_.logicalWidth;
-	buffer >> properties_.logicalHeight;
-	
-	int scaleCount;
-	buffer >> scaleCount;
-	properties_.imageScales.resize(scaleCount);
-	for (int i = 0; i < scaleCount; ++i)
-	{
-		buffer >> properties_.imageScales[i].first;
-		buffer >> properties_.imageScales[i].second;
-	}
-	
-	buffer >> properties_.orientation;
-	buffer >> properties_.fps;
-	buffer >> properties_.retinaDisplay;
-	buffer >> properties_.autorotation;
-	buffer >> properties_.mouseToTouch;
-	buffer >> properties_.touchToMouse;
-	buffer >> properties_.mouseTouchOrder;
+	properties_.load(buf, false);
+    if (properties_.windowWidth == 0 && properties_.windowHeight == 0) {
+        properties_.windowWidth = properties_.logicalWidth;
+        properties_.windowHeight = properties_.logicalHeight;
+    }
 
+#if !TARGET_OS_OSX
 	bool phone = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
+#else
+    bool phone= false;
+#endif
 	bool notRetina = (properties_.retinaDisplay == 0) || (properties_.retinaDisplay == 1 && !phone) || (properties_.retinaDisplay == 2 && phone);
 	
 	float contentScaleFactor = 1;
-	[view_ enableRetinaDisplay:(notRetina ? NO : YES)];
-	if ([view_ respondsToSelector:@selector(contentScaleFactor)] == YES)
-		contentScaleFactor = view_.contentScaleFactor;
-	application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
+#if !TARGET_OS_OSX
+    [view_ enableRetinaDisplay:(notRetina ? NO : YES)];
+    if ([view_ respondsToSelector:@selector(contentScaleFactor)] == YES)
+        contentScaleFactor = view_.contentScaleFactor;
+#else
+    [view_ enableRetinaDisplay:(notRetina ? NO : YES) scalePtr:&contentScaleFactor];
+#endif
+	scaleFactor_=contentScaleFactor;
+    gdr_ScaleFactor=contentScaleFactor;
+    CGSize drawableSize = view_.bounds.size;
+    drawableSize.width *= contentScaleFactor;
+    drawableSize.height *= contentScaleFactor;
+    application_->setResolution(drawableSize.width, drawableSize.height);
 	application_->setHardwareOrientation(hardwareOrientation_);
 	application_->getApplication()->setDeviceOrientation(deviceOrientation_);
 	application_->setOrientation((Orientation)properties_.orientation);
-	application_->setLogicalDimensions(properties_.logicalWidth, properties_.logicalHeight);
+    application_->setLogicalDimensions(properties_.logicalWidth, properties_.logicalHeight);
 	application_->setLogicalScaleMode((LogicalScaleMode)properties_.scaleMode);
 	application_->setImageScales(properties_.imageScales);
-#if TARGET_OS_TV == 0
-    willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
+#if TARGET_OS_OSX
+    if (properties_.windowWidth != 0 && properties_.windowHeight != 0) {
+        if ((properties_.orientation==eLandscapeLeft)||
+            (properties_.orientation==eLandscapeRight))
+            setWindowSize(properties_.windowHeight,properties_.windowWidth);
+        else
+            setWindowSize(properties_.windowWidth,properties_.windowHeight);
+    }
+#endif
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    willRotateToInterfaceOrientationHelper(UIInterfaceOrientationUnknown);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
 #endif
 
 	g_setFps(properties_.fps);
-#if TARGET_OS_TV == 0
 	ginput_setMouseToTouchEnabled(properties_.mouseToTouch);
 	ginput_setTouchToMouseEnabled(properties_.touchToMouse);
 	ginput_setMouseTouchOrder(properties_.mouseTouchOrder);
-#endif
 }
 
 void ApplicationManager::loadLuaFiles()
@@ -1148,32 +1128,54 @@ void ApplicationManager::play(const std::vector<std::string>& luafiles)
 	application_->deinitialize();
 	application_->initialize();
 
+#if !TARGET_OS_OSX
 	bool phone = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
+#else
+    bool phone = false;
+#endif
 	bool notRetina = (properties_.retinaDisplay == 0) || (properties_.retinaDisplay == 1 && !phone) || (properties_.retinaDisplay == 2 && phone);
 	
 	float contentScaleFactor = 1;
-	[view_ enableRetinaDisplay:(notRetina ? NO : YES)];
+
+#if !TARGET_OS_OSX
+    [view_ enableRetinaDisplay:(notRetina ? NO : YES)];
 	if ([view_ respondsToSelector:@selector(contentScaleFactor)] == YES)
 		contentScaleFactor = view_.contentScaleFactor;
-	application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
+#else
+    [view_ enableRetinaDisplay:(notRetina ? NO : YES) scalePtr:&contentScaleFactor];
+#endif
+	scaleFactor_=contentScaleFactor;
+    gdr_ScaleFactor=contentScaleFactor;
+    CGSize drawableSize = view_.bounds.size;
+    drawableSize.width *= contentScaleFactor;
+    drawableSize.height *= contentScaleFactor;
+	application_->setResolution(drawableSize.width, drawableSize.height);
 	application_->setHardwareOrientation(hardwareOrientation_);
 	application_->getApplication()->setDeviceOrientation(deviceOrientation_);
 	application_->setOrientation((Orientation)properties_.orientation);
 	application_->setLogicalDimensions(properties_.logicalWidth, properties_.logicalHeight);
 	application_->setLogicalScaleMode((LogicalScaleMode)properties_.scaleMode);
 	application_->setImageScales(properties_.imageScales);
-#if TARGET_OS_TV == 0
-    willRotateToInterfaceOrientationHelper([UIApplication sharedApplication].statusBarOrientation);
+#if TARGET_OS_OSX
+    if (properties_.windowWidth != 0 && properties_.windowHeight != 0) {
+        if ((properties_.orientation==eLandscapeLeft)||
+            (properties_.orientation==eLandscapeRight))
+            setWindowSize(properties_.windowHeight,properties_.windowWidth);
+        else
+            setWindowSize(properties_.windowWidth,properties_.windowHeight);
+    }
+#endif
+    
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    willRotateToInterfaceOrientationHelper(UIInterfaceOrientationUnknown);
 #else
     willRotateToInterfaceOrientationHelperTV(eLandscapeRight);
 #endif
 
 	g_setFps(properties_.fps);
-#if TARGET_OS_TV == 0
 	ginput_setMouseToTouchEnabled(properties_.mouseToTouch);
 	ginput_setTouchToMouseEnabled(properties_.touchToMouse);
 	ginput_setMouseTouchOrder(properties_.mouseTouchOrder);
-#endif
 
     GStatus status;
     for (std::size_t i = 0; i < luafiles.size(); ++i)
@@ -1281,6 +1283,17 @@ void ApplicationManager::setProjectProperties(const ProjectProperties &propertie
 	properties_ = properties;
 }
 
+void ApplicationManager::forceTick()
+{
+ 	if (!renderLoopActive_)
+ 	{
+    	GStatus status;
+    	application_->tick(&status);
+    	if (status.error())
+        	luaError(status.errorString());
+    }
+}
+
 void ApplicationManager::suspend()
 {
     gapplication_enqueueEvent(GAPPLICATION_PAUSE_EVENT, NULL, 0);
@@ -1337,6 +1350,7 @@ void ApplicationManager::resume()
 
 void ApplicationManager::exitRenderLoop()
 {
+	ShaderEngine::setReady(false);
     gapplication_enqueueEvent(GAPPLICATION_EXIT_EVENT, NULL, 0);
     
 #if THREADED_RENDER_LOOP
@@ -1391,16 +1405,21 @@ void ApplicationManager::touchesCancelled(NSSet *touches, NSSet *allTouches)
 {
     ginputp_touchesCancelled(touches, allTouches, (UIView*)view_);
 }
+
+void ApplicationManager::touchesReset()
+{
+    ginputp_touchesReset((UIView*)view_);
+}
 #endif
 
-void ApplicationManager::keyDown(int keyCode, int repeat)
+void ApplicationManager::keyDown(int keyCode, int mods, int repeat)
 {
-    ginputp_keyDown(keyCode,repeat);
+    ginputp_keyDown(keyCode,mods,repeat);
 }
 
-void ApplicationManager::keyUp(int keyCode, int repeat)
+void ApplicationManager::keyUp(int keyCode, int mods, int repeat)
 {
-    ginputp_keyUp(keyCode,repeat);
+    ginputp_keyUp(keyCode,mods,repeat);
 }
 
 void ApplicationManager::keyChar(NSString *text)
@@ -1425,50 +1444,54 @@ void ApplicationManager::didReceiveMemoryWarning()
 #endif
 }
 
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
 BOOL ApplicationManager::shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation)
 {
-	BOOL result;
-	
-	bool phone = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
-	bool dontAutorotate = (properties_.autorotation == 0) || (properties_.autorotation == 1 && !phone) || (properties_.autorotation == 2 && phone);
-	
-	if (dontAutorotate)
-		result = (interfaceOrientation == UIInterfaceOrientationPortrait);
-	else
-	{
-		if (application_->orientation() == eLandscapeLeft || application_->orientation() == eLandscapeRight)
-			result = (interfaceOrientation == UIInterfaceOrientationLandscapeLeft || interfaceOrientation == UIInterfaceOrientationLandscapeRight);
-		else
-			result = (interfaceOrientation == UIInterfaceOrientationPortrait || interfaceOrientation == UIInterfaceOrientationPortraitUpsideDown);
-	}
-
-	return result;
+	return (properties_.autorotation==1)||(properties_.autorotation==2);
 }
 
 NSUInteger ApplicationManager::supportedInterfaceOrientations()
 {
-	NSUInteger result;
+	NSUInteger result=UIInterfaceOrientationMaskPortrait;
 	
-	bool phone = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
-	bool dontAutorotate = (properties_.autorotation == 0) || (properties_.autorotation == 1 && !phone) || (properties_.autorotation == 2 && phone);
-
-    if (dontAutorotate){
-        result = UIInterfaceOrientationMaskPortrait;
-    }
-    else
-    {
-		if (application_->orientation() == eLandscapeLeft || application_->orientation() == eLandscapeRight)
-            result = UIInterfaceOrientationMaskLandscapeLeft | UIInterfaceOrientationMaskLandscapeRight;
-        else
-            result = UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskPortraitUpsideDown;
+	if (properties_.autorotation==1) {
+		switch (application_->orientation()) {
+			case eLandscapeLeft:
+			case eLandscapeRight:
+				result=UIInterfaceOrientationMaskLandscapeLeft|UIInterfaceOrientationMaskLandscapeRight;
+                break;
+			case ePortrait:
+			case ePortraitUpsideDown:
+				result=UIInterfaceOrientationMaskPortrait|UIInterfaceOrientationMaskPortraitUpsideDown;
+                break;
+		}
+	}
+	else if (properties_.autorotation==2) {
+        result= UIInterfaceOrientationMaskAll;
+	}
+	else {
+		switch (application_->orientation()) {
+			case eLandscapeLeft:
+				result=UIInterfaceOrientationMaskLandscapeLeft;
+                break;
+			case eLandscapeRight:
+				result=UIInterfaceOrientationMaskLandscapeRight;
+                break;
+			case ePortrait:
+				result=UIInterfaceOrientationMaskPortrait;
+                break;
+			case ePortraitUpsideDown:
+				result=UIInterfaceOrientationMaskPortraitUpsideDown;
+                break;
+		}
     }
 
     return result;
 }
 #endif
 
-#if TARGET_OS_TV == 1
+
+#if TARGET_OS_TV || TARGET_OS_OSX
 void ApplicationManager::willRotateToInterfaceOrientationHelperTV(Orientation deviceOrientation_)
 {
     application_->getApplication()->setDeviceOrientation(deviceOrientation_);
@@ -1476,9 +1499,24 @@ void ApplicationManager::willRotateToInterfaceOrientationHelperTV(Orientation de
 
 }
 #else
-void ApplicationManager::willRotateToInterfaceOrientationHelper(UIInterfaceOrientation toInterfaceOrientation)
+void ApplicationManager::willRotateToInterfaceOrientationHelper(UIInterfaceOrientation itfOrientation)
 {
-    switch (toInterfaceOrientation)
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    if (itfOrientation==UIInterfaceOrientationUnknown)
+    {
+        if (@available(iOS 13.0, *)) {
+            UIWindowScene *scene=[UIApplication sharedApplication].windows.firstObject.windowScene;
+            if (@available(iOS 16.0, *))
+                itfOrientation=scene.effectiveGeometry.interfaceOrientation;
+            else
+                itfOrientation=scene.interfaceOrientation;
+        } else {
+            itfOrientation=[UIApplication sharedApplication].statusBarOrientation;
+        }
+    }
+#endif
+
+    switch ([[UIDevice currentDevice] orientation])
     {
         case UIInterfaceOrientationPortrait:
             deviceOrientation_ = ePortrait;
@@ -1487,30 +1525,48 @@ void ApplicationManager::willRotateToInterfaceOrientationHelper(UIInterfaceOrien
             deviceOrientation_ = ePortraitUpsideDown;
             break;
         case UIInterfaceOrientationLandscapeRight:
-            deviceOrientation_ = eLandscapeLeft;
-            break;
-        case UIInterfaceOrientationLandscapeLeft:
             deviceOrientation_ = eLandscapeRight;
             break;
-        default:
-            deviceOrientation_ = ePortrait;
+        case UIInterfaceOrientationLandscapeLeft:
+            deviceOrientation_ = eLandscapeLeft;
+            break;
+    }
+
+    switch (itfOrientation)
+    {
+        case UIInterfaceOrientationPortrait:
+            hardwareOrientation_ = ePortrait;
+            break;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            hardwareOrientation_ = ePortraitUpsideDown;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            hardwareOrientation_ = eLandscapeRight;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            hardwareOrientation_ = eLandscapeLeft;
             break;
     }
     application_->getApplication()->setDeviceOrientation(deviceOrientation_);
-
-
-    
-    Orientation orientation = application_->orientation();
-
-    bool b1 = orientation == ePortrait || orientation == ePortraitUpsideDown;
-    bool b2 = deviceOrientation_ == ePortrait || deviceOrientation_ == ePortraitUpsideDown;
-
-    if (b1 != b2)
-        hardwareOrientation_ = deviceOrientation_;
-    else
-        hardwareOrientation_ = orientation;
-
     application_->setHardwareOrientation(hardwareOrientation_);
+    
+    Orientation so=application_->getApplication()->orientation();
+    Orientation devo=hardwareOrientation_;
+    
+    bool sl=(so==eLandscapeLeft)||(so==eLandscapeRight);
+    bool dl=(devo==eLandscapeLeft)||(devo==eLandscapeRight);
+    int iAutoRot=ProjectProperties::current.autorotation;
+    switch (iAutoRot) {
+        case GAPPLICATION_AUTO_ORIENTATION_DUAL:
+            if ((sl&&dl)||(!(sl||dl))) // If orientation already correct, keep device orientation
+                application_->setOrientation(devo);
+        break;
+        case GAPPLICATION_AUTO_ORIENTATION_ALL:
+            application_->setOrientation(devo);
+        break;
+        default:
+        break;
+    }
 }
 
 void ApplicationManager::willRotateToInterfaceOrientation(UIInterfaceOrientation toInterfaceOrientation)
@@ -1532,6 +1588,28 @@ void ApplicationManager::didRotateFromInterfaceOrientation(UIInterfaceOrientatio
 }
 #endif
 
+void ApplicationManager::requestDeviceOrientation(gapplication_Orientation iO,gapplication_AutoOrientation iAutoRot)
+{
+#if TARGET_OS_TV || TARGET_OS_OSX
+#else
+	properties_.autorotation=iAutoRot;
+	UIInterfaceOrientation ior=UIInterfaceOrientationPortrait;
+	switch (iO) {
+		case GAPPLICATION_LANDSCAPE_LEFT: ior=UIInterfaceOrientationLandscapeLeft; break;
+		case GAPPLICATION_LANDSCAPE_RIGHT: ior=UIInterfaceOrientationLandscapeRight; break;
+		case GAPPLICATION_PORTRAIT_UPSIDE_DOWN: ior=UIInterfaceOrientationPortraitUpsideDown; break;
+	}
+    if (@available (iOS 16, tvOS 16, *)) {
+        [g_getRootViewController() setNeedsUpdateOfSupportedInterfaceOrientations];
+    }
+    else {
+        NSNumber *value = [NSNumber numberWithInt:ior];
+        [[UIDevice currentDevice] setValue:value forKey:@"orientation"];
+        [UIViewController attemptRotationToDeviceOrientation];
+    }
+#endif
+}
+ 
 void ApplicationManager::handleOpenUrl(NSURL *url)
 {
     gapplication_OpenUrlEvent *event = (gapplication_OpenUrlEvent*)gevent_CreateEventStruct1(
@@ -1575,7 +1653,25 @@ void ApplicationManager::background()
 
 void ApplicationManager::surfaceChanged(int width,int height)
 {
-    if (ShaderEngine::Engine) ShaderEngine::Engine->resizeFramebuffer(width, height);
+    if ((hardwareOrientation_==eLandscapeRight)||(hardwareOrientation_==eLandscapeLeft)) {
+        width_=height;
+        height_=width;
+    }
+    else {
+        width_ = width;
+        height_ = height;
+    }
+    application_->setResolution(width_, height_);
+	int sl,st,sr,sb;
+	getSafeDisplayArea(sl,st,sr,sb,this);
+	drawInfoMargins(sl,st);
+    if (ShaderEngine::Engine)
+    	ShaderEngine::Engine->resizeFramebuffer(width, height);
+    Event event(Event::APPLICATION_RESIZE);
+    GStatus status;
+    application_->broadcastEvent(&event, &status);
+    if (status.error())
+        luaError(status.errorString());
 }
 
 
@@ -1590,15 +1686,112 @@ bool ApplicationManager::setKeyboardVisibility(bool visible)
         [view_ becomeFirstResponder];
     else
         [view_ resignFirstResponder];
+#if TARGET_OS_OSX
+    return false; //No virtual keyboard
+#else
     return true;
+#endif    
 }
-
-static ApplicationManager *s_manager = NULL;
 
 bool setKeyboardVisibility(bool visible){
     if (s_manager)
         return s_manager->setKeyboardVisibility(visible);
     return false;
+}
+
+bool ApplicationManager::setTextInput(int type,const char *buffer,int selstart,int selend,const char *label,const char *actionLabel, const char *hintText, const char *context)
+{
+#if TARGET_OS_OSX
+    return false; //No virtual keyboard
+#else
+	UIKeyboardType kt=UIKeyboardTypeDefault;
+	switch (type) {
+		case 0: //None
+		break;
+		case 1: //Text
+			if (type&0x10) //URI
+				kt=UIKeyboardTypeURL;
+			if (type&0x20) //Email
+				kt=UIKeyboardTypeEmailAddress;
+		break;
+		case 2: //Number
+			kt=UIKeyboardTypeNumberPad;
+			if (type&0x2000) //Decimal
+				kt=UIKeyboardTypeDecimalPad;
+			if (type&0x1000) //Signed
+				kt=UIKeyboardTypeNumbersAndPunctuation;
+		break;
+		case 3: //Phone
+			kt=UIKeyboardTypePhonePad;
+		break;
+		case 4: //Date
+			kt=UIKeyboardTypeNumbersAndPunctuation;
+		break;
+	}
+    if (kt!=[[view_ valueForKey:@"keyboardType"] integerValue]) {
+        [view_ setValue:[NSNumber numberWithInt:kt] forKey:@"keyboardType"];
+        if ([view_ isFirstResponder]) {
+            [view_ resignFirstResponder];
+            [view_ becomeFirstResponder];
+        }
+    }
+#endif
+	return false;
+}
+
+bool setTextInput(int type,const char *buffer,int selstart,int selend,const char *label,const char *actionLabel, const char *hintText, const char *context)
+{
+    if (s_manager)
+        return s_manager->setTextInput(type,buffer,selstart,selend,label,actionLabel,hintText,context);
+    return false;
+}
+
+int setClipboard(std::string data,std::string mimeType, int luaFunc) {
+#if TARGET_OS_OSX
+    NSPasteboard *pb=[NSPasteboard generalPasteboard];
+    if (mimeType=="text/plain") {
+        [pb clearContents];
+        [pb declareTypes:[NSArray arrayWithObject:NSPasteboardTypeString] owner:nil];
+        [pb setString:[NSString stringWithUTF8String:data.c_str()] forType:NSPasteboardTypeString];
+        return 1;
+    }
+#elif !TARGET_OS_TV
+    UIPasteboard *pb=[UIPasteboard generalPasteboard];
+    if (mimeType=="text/plain") {
+        pb.string=[NSString stringWithUTF8String:data.c_str()];
+        return 1;
+    }
+#endif
+	return -1;
+}
+
+int getClipboard(std::string &data,std::string &mimeType, int luaFunc) {
+#if TARGET_OS_OSX
+    NSString *s=[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+    if (s!=nil) {
+        data=[s UTF8String];
+        mimeType="text/plain";
+        return 1;
+    }
+#elif !TARGET_OS_TV
+    NSString *s=[UIPasteboard generalPasteboard].string;
+    if (s!=nil) {
+        data=[s UTF8String];
+        mimeType="text/plain";
+        return 1;
+    }
+#endif
+    return -1;
+}
+
+int getKeyboardModifiers() {
+	return 0;
+}
+
+void eventFlush()
+{
+    if (s_manager)
+        s_manager->forceTick();
 }
 
 extern "C" {
@@ -1614,9 +1807,9 @@ void gdr_surfaceChanged(int width,int height)
          s_manager->surfaceChanged(width,height);
 }
 
-void gdr_drawFrame()
+void gdr_drawFrame(bool force)
 {
-	s_manager->drawFrame();
+	s_manager->drawFrame(force);
 }
 
 void gdr_exitGameLoop()
@@ -1651,7 +1844,7 @@ void gdr_resume()
 {
 	s_manager->resume();
 }
-#if TARGET_OS_TV == 0
+#if !TARGET_OS_TV && !TARGET_OS_OSX
 BOOL gdr_shouldAutorotateToInterfaceOrientation(UIInterfaceOrientation interfaceOrientation)
 {
 	return s_manager->shouldAutorotateToInterfaceOrientation(interfaceOrientation);
@@ -1678,35 +1871,63 @@ void gdr_didReceiveMemoryWarning()
 }
 
 #if TARGET_OS_TV == 0
-void gdr_touchesBegan(NSSet *touches, NSSet *allTouches)
-{
-	s_manager->touchesBegan(touches, allTouches);
-}
-
-void gdr_touchesMoved(NSSet *touches, NSSet *allTouches)
-{
-	s_manager->touchesMoved(touches, allTouches);
-}
-
-void gdr_touchesEnded(NSSet *touches, NSSet *allTouches)
-{
-	s_manager->touchesEnded(touches, allTouches);
-}
-
-void gdr_touchesCancelled(NSSet *touches, NSSet *allTouches)
-{
-	s_manager->touchesCancelled(touches, allTouches);
-}
-#endif
+    void gdr_touchesBegan(NSSet *touches, NSSet *allTouches)
+    {
+        s_manager->touchesBegan(touches, allTouches);
+    }
     
-void gdr_keyDown(int keyCode, int repeat)
+    void gdr_touchesMoved(NSSet *touches, NSSet *allTouches)
+    {
+        s_manager->touchesMoved(touches, allTouches);
+    }
+    
+    void gdr_touchesEnded(NSSet *touches, NSSet *allTouches)
+    {
+        s_manager->touchesEnded(touches, allTouches);
+    }
+    
+    void gdr_touchesCancelled(NSSet *touches, NSSet *allTouches)
+    {
+        s_manager->touchesCancelled(touches, allTouches);
+    }
+    void gdr_touchesReset() {
+        s_manager->touchesReset();
+    }
+#endif
+#if TARGET_OS_OSX
+    void gdr_mouseDown(int x, int y, int button,int mod) {
+        ginputp_mouseDown(x,y,button,mod);
+    }
+    void gdr_mouseMove(int x, int y, int button,int mod) {
+        ginputp_mouseMove(x,y,button,mod);
+    }
+    void gdr_mouseHover(int x, int y, int button,int mod) {
+        ginputp_mouseHover(x,y,button,mod);
+    }
+    void gdr_mouseUp(int x, int y, int button,int mod) {
+        ginputp_mouseUp(x,y,button,mod);
+    }
+    void gdr_mouseWheel(int x, int y, int button, int delta,int mod) {
+        ginputp_mouseWheel(x,y,button,delta,mod);
+    }
+	void gdr_mouseEnter(int x, int y, int buttons, int mod)
+	{
+		ginputp_mouseEnter(x, y, buttons, mod);
+	}
+	void gdr_mouseLeave(int x, int y, int mod)
+	{
+		ginputp_mouseLeave(x, y, mod);
+	}
+#endif
+
+void gdr_keyDown(int keyCode, int mods, int repeat)
 {
-    s_manager->keyDown(keyCode,repeat);
+    s_manager->keyDown(keyCode,mods,repeat);
 }
 
-void gdr_keyUp(int keyCode, int repeat)
+void gdr_keyUp(int keyCode, int mods, int repeat)
 {
-    s_manager->keyUp(keyCode,repeat);
+    s_manager->keyUp(keyCode,mods,repeat);
 }
     
 void gdr_keyChar(NSString *text)
@@ -1741,6 +1962,12 @@ BOOL gdr_keyboardVisible()
         return s_manager->isKeyboardVisible();
     return FALSE;
 }
+
+void gapplication_requestDeviceOrientation(gapplication_Orientation iO,gapplication_AutoOrientation iAutoRot) {
+    if (s_manager)
+ 		s_manager->requestDeviceOrientation(iO,iAutoRot);
+}
+
 
     
 }

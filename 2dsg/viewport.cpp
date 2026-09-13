@@ -5,21 +5,55 @@
 Viewport::Viewport(Application* application) : Sprite(application)
 {
 	content_ = NULL;
+    target_ = NULL;
 	hasProjection_=false;
+	captureMode_=false;
+    colClear_[0]=-1; //Indicate no clear at all
+}
+
+void Viewport::cloneFrom(Viewport *s) {
+    Sprite::cloneFrom(s);
+
+    matrix_=s->matrix_;
+    projection_=s->projection_;
+    hasProjection_=s->hasProjection_;
+    setContent(s->content_);
+    setTarget(s->target_,s->captureMode_,s->colClear_);
 }
 
 Viewport::~Viewport()
 {
-	setContent(NULL);
+    setContent(NULL);
+    setTarget(NULL,false,colClear_);
 }
 
 void Viewport::setContent(Sprite *s)
 {
-    if (s)
-    	s->ref();
-    if (content_)
+    if (s) {
+        s->ref();
+        if (!s->viewports)
+            s->viewports=new std::vector<Sprite *>();
+        s->viewports->push_back(this);
+    }
+    if (content_&&content_->viewports) {
+        content_->viewports->erase(std::find(content_->viewports->begin(),content_->viewports->end(),this));
         content_->unref();
+    }
     content_ = s;
+}
+
+void Viewport::setTarget(GRenderTarget *s, bool capture, const float *colClear)
+{
+    if (s)
+        s->ref();
+    if (target_)
+        target_->unref();
+    target_ = s;
+    captureMode_=capture;
+    if (colClear)
+        for (int k=0;k<4;k++) colClear_[k]=colClear[k];
+    else
+        colClear_[0]=-1; //Indicate no clear at all
 }
 
 void Viewport::setTransform(const Matrix4* matrix)
@@ -48,17 +82,35 @@ void Viewport::doDraw(const CurrentTransform&t, float sx, float sy, float ex, fl
 {
 	if (content_)
 	{
-		if (hasProjection_)
+        if (target_) {
+            GRenderTarget *rt=target_;
+            if (colClear_[0]>=0) {
+                unsigned int colC=((int)(colClear_[0]*255)<<24)|((int)(colClear_[1]*255)<<16)|((int)(colClear_[2]*255)<<0);
+                rt->clear(colC,colClear_[3],0,0,-1,-1,true,captureMode_);
+            }
+            if (captureMode_)
+				rt->draw(content_,t,true,true);
+            else {
+				target_=NULL; //Avoid reentrancy
+				rt->draw(this,Matrix4(),true);
+				target_=rt;
+            }
+        }
+        else if (hasProjection_)
 		{
 			ShaderEngine::DepthStencil dp=ShaderEngine::Engine->pushDepthStencil();
 			dp.dClear=true;
 			ShaderEngine::Engine->setDepthStencil(dp);
 			Matrix4 oldProj=ShaderEngine::Engine->getProjection();
-			Matrix4 np=(oldProj*t)*projection_;
-			np.scale(1,1,-1); //Defeat ortho projection
+			Matrix4 oldView=ShaderEngine::Engine->getView();
+            Matrix4 np=oldProj;
+            np=(np*t)*projection_;
 			ShaderEngine::Engine->setProjection(np);
-			((Sprite*)content_)->draw(matrix_, sx,sy,ex,ey);
+			ShaderEngine::Engine->setView(matrix_);
+			Matrix4 id;
+			((Sprite*)content_)->draw(id, sx,sy,ex,ey);
 			ShaderEngine::Engine->setProjection(oldProj);
+			ShaderEngine::Engine->setView(oldView);
 			ShaderEngine::Engine->popDepthStencil();
 		}
 		else

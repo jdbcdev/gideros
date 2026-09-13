@@ -9,11 +9,16 @@
 #include <QProcess>
 #include <QFile>
 #include "ExportCommon.h"
+#include <QRegularExpression>
 
-QString Utilities::RemoveSpaces(QString text,bool allowUnderscore)
+#if defined(Q_OS_MACX) || defined (Q_OS_LINUX)
+#include <unistd.h>
+#endif
+
+QString Utilities::RemoveSpaces(QString text,RemoveSpaceMode mode)
 {
 	QString res;
-    if (allowUnderscore)
+    if ((mode==IDENTIFIER)||(mode==UNDERSCORES))
     {
     	res=text;
         for (int i = 0; i < res.size(); ++i)
@@ -24,14 +29,14 @@ QString Utilities::RemoveSpaces(QString text,bool allowUnderscore)
             bool upper = ('A' <= c) && (c <= 'Z');
             bool lower = ('a' <= c) && (c <= 'z');
 
-            if ((!number && !upper && !lower) || (number && i == 0))
+            if ((!number && !upper && !lower) || ((mode==IDENTIFIER) && number && i == 0))
             	res[i] = QChar('_');
         }
     }
     else
     {
         // 1234 Hebe Gube 456 --> HebeGube456
-        bool letter = false;
+        bool letter = (mode==ALLOWDIGIT);
         for (int i = 0; i < text.size(); ++i)
         {
             char c = text[i].toLatin1();
@@ -43,7 +48,7 @@ QString Utilities::RemoveSpaces(QString text,bool allowUnderscore)
             if (upper || lower)
                 letter = true;
 
-            if ((number || upper || lower) && letter)
+            if ((upper || lower || number) && letter)
             	res += text[i];
         }
     }
@@ -76,6 +81,7 @@ bool Utilities::bitwiseMatchReplace(unsigned char *b,int bo,const unsigned char 
 
 int Utilities::bitwiseReplace(char *b,int bs,const char *m,int ms,const char *r,int rs)
 {
+    Q_UNUSED(rs);
  if (!memcmp(m,r,ms))
 	return 0; //No actual replacement needed
  int rcount=0;
@@ -128,9 +134,8 @@ int Utilities::bitwiseReplace(char *b,int bs,const char *m,int ms,const char *r,
         bool submatch = false;
         for (int i = 0; i < wildcards[j].size(); ++i)
         {
-            QRegExp rx(wildcards[j][i]);
-            rx.setPatternSyntax(QRegExp::Wildcard);
-            if (rx.exactMatch(srcName2))
+            QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(wildcards[j][i])));
+            if (rx.match(srcName2).hasMatch())
             {
                 submatch = true;
                 break;
@@ -151,17 +156,19 @@ int Utilities::bitwiseReplace(char *b,int bs,const char *m,int ms,const char *r,
             return;
         QByteArray data = in.readAll();
         in.close();
-	int rcount=0;
+		int rcount=0;
 
-        for (int i = 0; i < replaceList[match].size(); ++i)
+        for (int i = 0; i < replaceList[match].size(); ++i) {
+			//ExportCommon::exportInfo("%d.%d: RepSize %d -> %d\n",match,i,replaceList[match][i].first.size(),replaceList[match][i].second.size());
         	if (replaceList[match][i].first.size()==replaceList[match][i].second.size()) //Perform bitwise replacement if sizes are equal
         		rcount+=bitwiseReplace(data.data(),data.size(),
         			replaceList[match][i].first.constData(),replaceList[match][i].first.size(),
         			replaceList[match][i].second.constData(),replaceList[match][i].second.size());
         	else
-		{
+			{
         		data.replace(replaceList[match][i].first, replaceList[match][i].second);
-			rcount++;
+				rcount++;
+			}
 		}
 
         QFile out(destName);
@@ -187,9 +194,8 @@ bool Utilities::shouldCopy(const QString &fileName, const QStringList &include, 
 
     for (int i = 0; i < include.size(); ++i)
     {
-        QRegExp rx(include[i]);
-        rx.setPatternSyntax(QRegExp::Wildcard);
-        if (rx.exactMatch(fileName2))
+        QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(include[i])));
+        if (rx.match(fileName2).hasMatch())
         {
             result = true;
             break;
@@ -198,9 +204,8 @@ bool Utilities::shouldCopy(const QString &fileName, const QStringList &include, 
 
     for (int i = 0; i < exclude.size(); ++i)
     {
-        QRegExp rx(exclude[i]);
-        rx.setPatternSyntax(QRegExp::Wildcard);
-        if (rx.exactMatch(fileName2))
+        QRegularExpression rx(QRegularExpression::anchoredPattern(QRegularExpression::wildcardToRegularExpression(exclude[i])));
+        if (rx.match(fileName2).hasMatch())
         {
             result = false;
             break;
@@ -223,7 +228,7 @@ void Utilities::copyFolder(	const QDir& sourceDir,
 
     QStringList files;
 
-    files = sourceDir.entryList(QDir::Files | QDir::Hidden);
+    files = sourceDir.entryList(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
     ExportCommon::progressSteps(files.count());
     for(int i = 0; i < files.count(); i++)
     {
@@ -237,7 +242,7 @@ void Utilities::copyFolder(	const QDir& sourceDir,
         ExportCommon::progressStep(files[i].toUtf8().constData());
     }
 
-    files = sourceDir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot);
+    files = sourceDir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
     ExportCommon::progressSteps(files.count());
     for(int i = 0; i < files.count(); i++)
     {
@@ -261,14 +266,59 @@ void Utilities::copyFolder(	const QDir& sourceDir,
                        exclude);
         ExportCommon::progressStep(files[i].toUtf8().constData());
     }
+
+    QFileInfoList syms = sourceDir.entryInfoList(QDir::Files | QDir::Hidden | QDir::AllDirs | QDir::NoDotAndDotDot);
+    for(int i = 0; i < syms.count(); i++)
+    {
+    	if (syms[i].isSymLink())
+    	{
+            QString srcName = sourceDir.absoluteFilePath(syms[i].fileName());
+            ExportCommon::exportInfo("Processing symlink %s\n",srcName.toStdString().c_str());
+            if (shouldCopy(srcName, include, exclude))
+            {
+                QString destFile = syms[i].fileName();
+                for (int i = 0; i < renameList.size(); ++i)
+                    destFile.replace(renameList[i].first, renameList[i].second);
+                QString destName = destDir.absoluteFilePath(destFile);
+                QString target;
+#if defined(Q_OS_MACX) || defined (Q_OS_LINUX)
+                char buffer[1024];
+                int linkLen=readlink(srcName.toUtf8().constData(),buffer,1024);
+                if (linkLen>=0)
+                {
+                    buffer[linkLen]=0;
+                	target=QString::fromUtf8(buffer);
+                }
+                else
+#else
+                	target = syms[i].symLinkTarget();
+#endif
+                for (int i = 0; i < renameList.size(); ++i)
+                    target.replace(renameList[i].first, renameList[i].second);
+                ExportCommon::exportInfo("Link %s -> %s\n",destName.toStdString().c_str(),target.toStdString().c_str());
+                QFile::remove(destName);
+                QFile::link(target,destName);
+            }
+    	}
+    }
+
 }
 
-int Utilities::processOutput(QString command, QString dir, QProcessEnvironment env, bool cmdlog){
+int Utilities::processOutput(QString command, QStringList args, QString dir, QProcessEnvironment env, bool cmdlog){
     QProcess process;
     if (!dir.isEmpty())
     	process.setWorkingDirectory(dir);
     process.setProcessEnvironment(env);
-    process.start(command);
+    process.setProgram(command);
+#ifdef Q_OS_WIN
+    if (command=="cmd.exe") //Special case for cmd.exe
+        process.setNativeArguments(args.join(' '));
+    else
+        process.setArguments(args);
+#else
+    process.setArguments(args);
+#endif
+    process.start();
     bool commandOut = !cmdlog;
     while (true)
     {
@@ -285,8 +335,9 @@ int Utilities::processOutput(QString command, QString dir, QProcessEnvironment e
         QString error = process.readAllStandardError();
         if(error.length() > 0){
             if(!commandOut)
-            	ExportCommon::exportInfo("%s",command.toStdString().c_str());
-        	ExportCommon::exportError("%s",error.toStdString().c_str());
+                ExportCommon::exportInfo("%s",command.toStdString().c_str());
+
+            ExportCommon::exportError("%s",error.toStdString().c_str());
         }
     	if ((process.error()!=QProcess::Timedout)||end)
     		break;

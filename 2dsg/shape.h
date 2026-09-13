@@ -17,7 +17,9 @@ public:
 	};
 
     Shape(Application *application);
-	virtual ~Shape();
+    virtual Sprite *clone() { Shape *clone=new Shape(application_); clone->cloneFrom(this); return clone; }
+    void cloneFrom(Shape *);
+    virtual ~Shape();
 
 	void setLineStyle(float thickness, unsigned int color, float alpha = 1.f);
 
@@ -34,6 +36,7 @@ public:
 	void endPath();
 
 	void clear();
+    static std::vector<double> tesselate(const std::vector<std::vector<Point2f> > & contours, WindingRule windingRule);
 protected:
 	virtual void extraBounds(float* minx, float* miny, float* maxx, float* maxy) const;
 

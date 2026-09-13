@@ -6,6 +6,8 @@
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 #endif
 
+static lua_State *L = NULL;
+
 static void luaL_newweaktable(lua_State *L, const char *mode)
 {
 	lua_newtable(L);			// create table for instance list
@@ -45,7 +47,7 @@ static char keyWeak = ' ';
 class Controller : public GEventDispatcherProxy
 {
 public:
-    Controller(lua_State *L) : L(L)
+    Controller(lua_State *L)
     {
         ghid_init();
 		ghid_addCallback(callback_s, this);		
@@ -72,7 +74,12 @@ public:
 	{
 		return ghid_getControllerName(player);
 	}
-	
+
+	void getControllerInfo(int player,int *vid,int *pid)
+	{
+		return ghid_getControllerInfo(player,vid,pid);
+	}
+
 	void vibrate(int player, long ms)
 	{
 		ghid_vibrate(player, ms);
@@ -206,6 +213,12 @@ private:
 			
 			lua_pushnumber(L, event2->playerId);
             lua_setfield(L, -2, "playerId");
+
+			lua_pushnumber(L, event2->product_id);
+            lua_setfield(L, -2, "productId");
+
+			lua_pushnumber(L, event2->vendor_id);
+            lua_setfield(L, -2, "vendorId");
         }
 
 		lua_call(L, 2, 0);
@@ -214,13 +227,12 @@ private:
 	}
 
 private:
-    lua_State *L;
     bool initialized_;
 };
 
-static int destruct(lua_State* L)
+static int destruct(void* p)
 {
-	void *ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	GReferenced* object = static_cast<GReferenced*>(ptr);
 	Controller *c = static_cast<Controller*>(object->proxy());
 	
@@ -258,10 +270,29 @@ static int getControllerName(lua_State *L)
     return 1;
 }
 
+static int getControllerInfo(lua_State *L)
+{
+    Controller *c = getInstance(L, 1);
+    int vid,pid;
+	c->getControllerInfo(lua_tonumber(L, 2),&vid,&pid);
+	lua_newtable(L);
+	lua_pushnumber(L,vid); lua_setfield(L,-2,"vendorId");
+	lua_pushnumber(L,pid); lua_setfield(L,-2,"productId");
+    return 1;
+}
+
 static int vibrate(lua_State *L)
 {
     Controller *c = getInstance(L, 1);
 	c->vibrate(lua_tonumber(L, 2), lua_tonumber(L, 3));
+    return 0;
+}
+
+extern void setDeadZone(float dz);
+static int lSetDeadZone(lua_State *L)
+{
+	lua_Number dz=luaL_checknumber(L,1);
+	setDeadZone(dz);
     return 0;
 }
 
@@ -293,8 +324,10 @@ static int loader(lua_State *L)
 		{"isAnyAvailable", isAnyAvailable},
 		{"getPlayerCount", getPlayerCount},
 		{"getControllerName", getControllerName},
+		{"getControllerInfo", getControllerInfo},
 		{"getPlayers", getPlayers},
 		{"vibrate", vibrate},
+		{"setDeadZone", lSetDeadZone},
 		{NULL, NULL},
 	};
     
@@ -346,6 +379,8 @@ static int loader(lua_State *L)
 	lua_setfield(L, -2, "BUTTON_MENU");
 	lua_pushnumber(L, BUTTON_BACK);
 	lua_setfield(L, -2, "BUTTON_BACK");
+	lua_pushnumber(L, BUTTON_CENTER);
+	lua_setfield(L, -2, "BUTTON_CENTER");
 	lua_pushnumber(L, BUTTON_A);
 	lua_setfield(L, -2, "BUTTON_A");
 	lua_pushnumber(L, BUTTON_X);
@@ -372,10 +407,11 @@ static int loader(lua_State *L)
     
 static void g_initializePlugin(lua_State *L)
 {
+	::L = L;
     lua_getglobal(L, "package");
 	lua_getfield(L, -1, "preload");
 	
-	lua_pushcfunction(L, loader);
+	lua_pushcnfunction(L, loader,"plugin_init_controller");
 	lua_setfield(L, -2, "controller");
 	
 	lua_pop(L, 2);
@@ -383,7 +419,7 @@ static void g_initializePlugin(lua_State *L)
 
 static void g_deinitializePlugin(lua_State *L)
 {
-    
+    ::L = NULL;
 }
 
-REGISTER_PLUGIN("Controller", "1.0")
+REGISTER_PLUGIN_NAMED("Controller", "1.0",controller)

@@ -5,65 +5,65 @@
 #include "ogl.h"
 #include <utf8.h>
 
-TTTextField::TTTextField(Application* application, TTFont* font) : TextFieldBase(application)
+TTTextField::TTTextField(Application* application, TTFont* font, const char* text, const char* sample, FontBase::TextLayoutParameters *layout) : TextFieldBase(application)
 {
 	font_ = font;
-	font_->ref();
+	if (font_)
+		font_->ref();
 
 	data_ = NULL;
 
-	textColor_ = 0;
+	if (text)
+		text_ = text;
 
-	letterSpacing_ = 0;
+	if (sample)
+		sample_ = sample;
 
-	graphicsBase_.getBounds(&minx_, &miny_, &maxx_, &maxy_);
-}
-
-TTTextField::TTTextField(Application* application, TTFont* font, const char* text) : TextFieldBase(application)
-{
-    font_ = font;
-    font_->ref();
-
-    data_ = NULL;
-
-    text_ = text;
-    updateWide();
-
-    textColor_ = 0;
-
-    letterSpacing_ = 0;
-
-    createGraphics();
-}
-
-TTTextField::TTTextField(Application* application, TTFont* font, const char* text, const char* sample) : TextFieldBase(application)
-{
-	font_ = font;
-	font_->ref();
-
-	data_ = NULL;
-
-	text_ = text;
-	updateWide();
-
-    sample_ = sample;
-
-	textColor_ = 0;
-
-	letterSpacing_ = 0;
+    r_=g_=b_=0;
+    a_=1;
 
     float scalex = application_->getLogicalScaleX();
     float scaley = application_->getLogicalScaleY();
 
-    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
-    wsample_.resize(wsize);
-    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
-    font_->renderFont(wsample_.c_str(), letterSpacing_, &sminx, &sminy, &smaxx, &smaxy);
+    if (layout)
+		layout_=*layout;
+
+    FontBase::TextLayoutParameters empty;
+    FontBase::TextLayout l;
+    bool isRGB;
+    font_->renderFont(sample_.c_str(), &empty, &sminx, &sminy, &smaxx, &smaxy, 0, isRGB, l);
     sminx = sminx/scalex;
     sminy = sminy/scaley;
     smaxx = smaxx/scalex;
     smaxy = smaxy/scaley;
 
+
+    createGraphics();
+}
+
+void TTTextField::cloneFrom(TTTextField *s)
+{
+    TextFieldBase::cloneFrom(s);
+    font_ = s->font_;
+    if (font_ != 0)
+        font_->ref();
+    a_=s->a_;
+    r_=s->r_;
+    g_=s->g_;
+    b_=s->b_;
+    minx_=s->minx_;
+    miny_=s->miny_;
+    maxx_=s->maxx_;
+    maxy_=s->maxy_;
+    sminx=s->sminx;
+    sminy=s->sminy;
+    smaxx=s->smaxx;
+    smaxy=s->smaxy;
+
+    styleFlags_=s->styleFlags_;
+
+    //data_=s->data_;
+    //graphicsBase_=s->graphicsBase_;
 
     createGraphics();
 }
@@ -79,81 +79,103 @@ TTTextField::~TTTextField()
 	font_->unref();
 }
 
+#define FDIF_EPSILON 0.01 //This assumes that logical space coordinates is similar to pixel space, which may not be true at all
+#define FDIF(a,b) (((a>b)?(a-b):(b-a))>FDIF_EPSILON)
 void TTTextField::createGraphics()
 {
-	if (data_)
+	invalidate(INV_GRAPHICS|INV_BOUNDS);
+	scaleChanged(); //Mark current scale as graphics scale
+    RENDER_LOCK();
+    if (data_)
 	{
 		application_->getTextureManager()->destroyTexture(data_);
 		data_ = NULL;
 	}
 
-	if (wtext_.empty())
+	float lmw=textlayout_.mw;
+	float lbh=textlayout_.bh;
+	float lw=textlayout_.w;
+	float lh=textlayout_.h;
+	if (text_.empty())
 	{
 		graphicsBase_.clear();
 		graphicsBase_.getBounds(&minx_, &miny_, &maxx_, &maxy_);
-		return;
+        font_->layoutText("", &layout_,textlayout_);
 	}
+	else {
+		float scalex = application_->getLogicalScaleX();
+		float scaley = application_->getLogicalScaleY();
 
-    float scalex = application_->getLogicalScaleX();
-    float scaley = application_->getLogicalScaleY();
+		TextureParameters parameters;
+		float smoothing=font_->getSmoothing();
+		if (smoothing!=0)
+		{
+			parameters.filter = eLinear;
+			scalex/=smoothing;
+			scaley/=smoothing;
+		}
 
+		int minx, miny, maxx, maxy;
+		bool isRGB;
+        unsigned long col=((unsigned long)(r_*0xFF0000)&0xFF0000)|((unsigned long)(g_*0xFF00)&0xFF00)|((unsigned long)(b_*0xFF)&0xFF)|((unsigned long)(a_*0xFF000000)&0xFF000000);
+        Dib dib = font_->renderFont(text_.c_str(), &layout_, &minx, &miny, &maxx, &maxy,col,isRGB,textlayout_);
+		parameters.format=isRGB?eRGBA8888:eA8;
 
-    int minx, miny, maxx, maxy;
-    Dib dib = font_->renderFont(wtext_.c_str(), letterSpacing_, &minx, &miny, &maxx, &maxy);
+		if (!sample_.empty())
+		{
+			maxx = maxx - minx;
+			minx = 0;
+			miny = miny - sminy*scaley;
+			maxy = maxy - sminy*scaley;
+		}
 
-    if (!wsample_.empty())
-    {
-        maxx = maxx - minx;
-        minx = 0;
-        miny = miny - sminy*scaley;
-        maxy = maxy - sminy*scaley;
-    }
+		int dx = minx - 1;
+		int dy = miny - 1;
 
-    int dx = minx - 1;
-    int dy = miny - 1;
+		data_ = application_->getTextureManager()->createTextureFromDib(dib, parameters);
 
-	TextureParameters parameters;
-    if (font_->getSmoothing())
-        parameters.filter = eLinear;
-	data_ = application_->getTextureManager()->createTextureFromDib(dib, parameters);
+		graphicsBase_.data = data_;
 
-	graphicsBase_.data = data_;
+		graphicsBase_.mode = ShaderProgram::TriangleStrip;
 
-	graphicsBase_.mode = ShaderProgram::TriangleStrip;
+		graphicsBase_.vertices.resize(4);
+		graphicsBase_.vertices[0] = Point2f(dx / scalex,					dy / scaley);
+		graphicsBase_.vertices[1] = Point2f((data_->width + dx) / scalex,	dy / scaley);
+		graphicsBase_.vertices[2] = Point2f((data_->width + dx) / scalex,	(data_->height + dy) / scaley);
+		graphicsBase_.vertices[3] = Point2f(dx / scalex,					(data_->height + dy) / scaley);
+		graphicsBase_.vertices.Update();
 
-	graphicsBase_.vertices.resize(4);
-	graphicsBase_.vertices[0] = Point2f(dx / scalex,					dy / scaley);
-	graphicsBase_.vertices[1] = Point2f((data_->width + dx) / scalex,	dy / scaley);
-	graphicsBase_.vertices[2] = Point2f((data_->width + dx) / scalex,	(data_->height + dy) / scaley);
-	graphicsBase_.vertices[3] = Point2f(dx / scalex,					(data_->height + dy) / scaley);
-	graphicsBase_.vertices.Update();
+		float u = (float)data_->width / (float)data_->exwidth;
+		float v = (float)data_->height / (float)data_->exheight;
 
-	float u = (float)data_->width / (float)data_->exwidth;
-	float v = (float)data_->height / (float)data_->exheight;
+		graphicsBase_.texcoords.resize(4);
+		graphicsBase_.texcoords[0] = Point2f(0, 0);
+		graphicsBase_.texcoords[1] = Point2f(u, 0);
+		graphicsBase_.texcoords[2] = Point2f(u, v);
+		graphicsBase_.texcoords[3] = Point2f(0, v);
+		graphicsBase_.texcoords.Update();
 
-	graphicsBase_.texcoords.resize(4);
-	graphicsBase_.texcoords[0] = Point2f(0, 0);
-	graphicsBase_.texcoords[1] = Point2f(u, 0);
-	graphicsBase_.texcoords[2] = Point2f(u, v);
-	graphicsBase_.texcoords[3] = Point2f(0, v);
-	graphicsBase_.texcoords.Update();
+		graphicsBase_.indices.resize(4);
+		graphicsBase_.indices[0] = 0;
+		graphicsBase_.indices[1] = 1;
+		graphicsBase_.indices[2] = 3;
+		graphicsBase_.indices[3] = 2;
+		graphicsBase_.indices.Update();
 
-	graphicsBase_.indices.resize(4);
-	graphicsBase_.indices[0] = 0;
-	graphicsBase_.indices[1] = 1;
-	graphicsBase_.indices[2] = 3;
-	graphicsBase_.indices[3] = 2;
-	graphicsBase_.indices.Update();
+		if (!isRGB)
+		{
+            graphicsBase_.setColor(r_,g_,b_,a_);
+		}
 
-	int r = (textColor_ >> 16) & 0xff;
-	int g = (textColor_ >> 8) & 0xff;
-	int b = textColor_ & 0xff;
-	graphicsBase_.setColor(r / 255.f, g / 255.f, b / 255.f, 1);
-
-    minx_ = minx/scalex;
-    miny_ = miny/scaley;
-    maxx_ = maxx/scalex;
-    maxy_ = maxy/scaley;
+		minx_ = minx/scalex;
+		miny_ = miny/scaley;
+		maxx_ = maxx/scalex;
+		maxy_ = maxy/scaley;
+		styleFlags_=textlayout_.styleFlags;
+	}
+    RENDER_UNLOCK();
+    bool layoutSizeChanged=FDIF(textlayout_.mw,lmw)||FDIF(textlayout_.bh,lbh)||FDIF(textlayout_.h,lh)||FDIF(textlayout_.w,lw);
+	if (layoutSizeChanged) layoutSizesChanged();
 }
 
 void TTTextField::extraBounds(float* minx, float* miny, float* maxx, float* maxy) const
@@ -170,7 +192,12 @@ void TTTextField::extraBounds(float* minx, float* miny, float* maxx, float* maxy
 
 void TTTextField::doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey)
 {
-	graphicsBase_.draw(shader_);
+    G_UNUSED(sx);
+    G_UNUSED(sy);
+    G_UNUSED(ex);
+    G_UNUSED(ey);
+    if (scaleChanged()) createGraphics();
+	graphicsBase_.draw(getShader(graphicsBase_.getShaderType()));
 }
 
 void TTTextField::setFont(FontBase* font)
@@ -181,6 +208,7 @@ void TTTextField::setFont(FontBase* font)
     font_ = static_cast<TTFont*>(font);;
     font_->ref();
 
+    prefWidth_=prefHeight_=-1;
     createGraphics();
 }
 
@@ -190,9 +218,9 @@ void TTTextField::setText(const char* text)
 		return;
 
 	text_ = text;
-	updateWide();
 
-	createGraphics();
+    prefWidth_=prefHeight_=-1;
+    createGraphics();
 }
 
 const char* TTTextField::text() const
@@ -200,40 +228,47 @@ const char* TTTextField::text() const
 	return text_.c_str();
 }
 
-void TTTextField::setTextColor(unsigned int color)
+void TTTextField::setTextColor(float r,float g,float b,float a)
 {
-	textColor_ = color;
+    a_ = a;
+    r_ = r;
+    g_ = g;
+    b_ = b;
 
-	int r = (textColor_ >> 16) & 0xff;
-	int g = (textColor_ >> 8) & 0xff;
-	int b = textColor_ & 0xff;
-	graphicsBase_.setColor(r / 255.f, g / 255.f, b / 255.f, 1);
+    if (styleFlags_&TEXTSTYLEFLAG_COLOR) {
+        createGraphics();
+        graphicsBase_.setColor(1,1,1,1);
+    }
+    else
+        graphicsBase_.setColor(r,g,b,a);
+    invalidate(INV_GRAPHICS);
 }
 
-unsigned int TTTextField::textColor() const
+void TTTextField::textColor(float &r,float &g,float &b,float &a)
 {
-	return textColor_;
+    r=r_; g=g_; b=b_; a=a_;
 }
 
 void TTTextField::setLetterSpacing(float letterSpacing)
 {
-	if (letterSpacing_ == letterSpacing)
+	if (layout_.letterSpacing == letterSpacing)
 		return;
 
-	letterSpacing_ = letterSpacing;
+	layout_.letterSpacing = letterSpacing;
+    prefWidth_=prefHeight_=-1;
 
 	createGraphics();
 }
 
 float TTTextField::letterSpacing() const
 {
-	return letterSpacing_;
+	return layout_.letterSpacing;
 }
 
 float TTTextField::lineHeight() const
 {
     float scaley = application_->getLogicalScaleY();
-    return wsample_.empty()? 0 : smaxy - sminy;
+    return sample_.empty()? 0 : smaxy - sminy;
 }
 
 void TTTextField::setSample(const char* sample)
@@ -242,11 +277,17 @@ void TTTextField::setSample(const char* sample)
 
     float scalex = application_->getLogicalScaleX();
     float scaley = application_->getLogicalScaleY();
+	float smoothing=font_->getSmoothing();
+    if (smoothing!=0)
+    {
+        scalex/=smoothing;
+        scaley/=smoothing;
+    }
 
-    size_t wsize = utf8_to_wchar(sample_.c_str(), sample_.size(), NULL, 0, 0);
-    wsample_.resize(wsize);
-    utf8_to_wchar(sample_.c_str(), sample_.size(), &wsample_[0], wsize, 0);
-    font_->renderFont(wsample_.c_str(), letterSpacing_, &sminx, &sminy, &smaxx, &smaxy);
+    FontBase::TextLayoutParameters empty;
+    FontBase::TextLayout l;
+    bool isRGB;
+    font_->renderFont(sample, &empty, &sminx, &sminy, &smaxx, &smaxy,0,isRGB,l);
     sminx = sminx/scalex;
     sminy = sminy/scaley;
     smaxx = smaxx/scalex;
@@ -258,4 +299,14 @@ void TTTextField::setSample(const char* sample)
 const char* TTTextField::sample() const
 {
     return sample_.c_str();
+}
+
+void TTTextField::setLayout(FontBase::TextLayoutParameters *l)
+{
+	if (l)
+	{
+        prefWidth_=prefHeight_=-1;
+        layout_=*l;
+		createGraphics();
+	}
 }

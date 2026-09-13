@@ -19,23 +19,25 @@ struct GGSoundInterface
     void (*SoundDelete)(g_id sound);
     unsigned int (*SoundGetLength)(g_id sound);
 
-    g_id (*SoundPlay)(g_id sound, g_bool paused);
+    g_id (*SoundPlay)(g_id sound, g_bool paused, g_bool streaming);
     void (*ChannelStop)(g_id channel);
     void (*ChannelSetPosition)(g_id channel, unsigned int position);
     unsigned int (*ChannelGetPosition)(g_id channel);
     void (*ChannelSetPaused)(g_id channel, g_bool paused);
     g_bool (*ChannelIsPaused)(g_id channel);
-    g_bool (*ChannelIsPlaying)(g_id channel);
-    void (*ChannelSetVolume)(g_id channel, float volume);
+    g_bool (*ChannelIsPlaying)(g_id channel, int *bufferSize, float *bufferSeconds);
+    void (*ChannelSetVolume)(g_id channel, float volume, float balance);
     float (*ChannelGetVolume)(g_id channel);
     void (*ChannelSetPitch)(g_id channel, float pitch);
     float (*ChannelGetPitch)(g_id channel);
     void (*ChannelSetLooping)(g_id channel, g_bool looping);
     g_bool (*ChannelIsLooping)(g_id channel);
     void (*ChannelSetWorldPosition)(g_id channel,float x,float y,float z,float vx,float vy,float vz);
+    void (*ChannelSetEffect)(g_id channel,const char *effect, float *params);
     g_id (*ChannelAddCallback)(g_id channel, gevent_Callback callback, void *udata);
     void (*ChannelRemoveCallback)(g_id channel, gevent_Callback callback, void *udata);
     void (*ChannelRemoveCallbackWithGid)(g_id channel, g_id gid);
+    g_id (*ChannelGetStreamId)(g_id channel);
 };
 
 class GGSound : public GReferenced
@@ -56,14 +58,14 @@ public:
         std::string dot2 = dot ? (dot + 1) : "";
         std::transform(dot2.begin(), dot2.end(), dot2.begin(), ::tolower);
 
-        if (dot2 == "wav")
+        if ((dot2 == "wav")&&(strncmp("|B|",fileName,3)))
         {
             gid = gaudio_SoundCreateFromFile(fileName, g_false, error);
             setSoundInterface();
         }
         else
         {
-            if ((dot2=="mp3") && gaudio_BackgroundMusicIsAvailable())
+            if ((dot2=="mp3") && (false&&gaudio_BackgroundMusicIsAvailable())) //Enable BGM through a flag maybe ?
             {
                 gid = gaudio_BackgroundMusicCreateFromFile(fileName, error);
                 setBackgroundMusicInterface();
@@ -96,10 +98,25 @@ public:
         }
     }
 
+    GGSound(lua_State *L, std::vector<signed short> samples, bool stereo, int rate) :
+        L(L)
+    {
+        /* TODO: create a better way to get main thread */
+        LuaApplication *application = (LuaApplication*)luaL_getdata(L);
+        lua_State *mainL = application->getLuaState();
+        L = mainL;
+        this->L = mainL;
+
+        gid = gaudio_SoundCreateFromData(samples.data(),samples.size(),rate,stereo);
+        setSoundInterface();
+    }
+
+
     ~GGSound()
     {
-        if (!sig_.empty())
+        if ((!sig_.empty())&&(!lua_isclosing(L)))
         {
+        	lua_checkstack(L,16);
             luaL_rawgetptr(L, LUA_REGISTRYINDEX, &keySound);
             lua_pushlstring(L, &sig_[0], sig_.size());
             lua_pushnil(L);
@@ -142,9 +159,11 @@ private:
         interface.ChannelSetLooping = gaudio_ChannelSetLooping;
         interface.ChannelIsLooping = gaudio_ChannelIsLooping;
         interface.ChannelSetWorldPosition = gaudio_ChannelSetWorldPosition;
+        interface.ChannelSetEffect = gaudio_ChannelSetEffect;
         interface.ChannelAddCallback = gaudio_ChannelAddCallback;
         interface.ChannelRemoveCallback = gaudio_ChannelRemoveCallback;
         interface.ChannelRemoveCallbackWithGid = gaudio_ChannelRemoveCallbackWithGid;
+        interface.ChannelGetStreamId = gaudio_ChannelGetStreamId;
     }
 
     void setBackgroundMusicInterface()
@@ -165,9 +184,11 @@ private:
         interface.ChannelSetLooping = gaudio_BackgroundChannelSetLooping;
         interface.ChannelIsLooping = gaudio_BackgroundChannelIsLooping;
         interface.ChannelSetWorldPosition = NULL;
+        interface.ChannelSetEffect = NULL;
         interface.ChannelAddCallback = gaudio_BackgroundChannelAddCallback;
         interface.ChannelRemoveCallback = gaudio_BackgroundChannelRemoveCallback;
         interface.ChannelRemoveCallbackWithGid = gaudio_BackgroundChannelRemoveCallbackWithGid;
+        interface.ChannelGetStreamId = NULL;
     }
 };
 
@@ -175,7 +196,7 @@ private:
 class GGSoundChannel : public EventDispatcher
 {
 public:
-    GGSoundChannel(lua_State *L, GGSound *sound, unsigned int startTime, bool looping, bool paused) :
+    GGSoundChannel(lua_State *L, GGSound *sound, unsigned int startTime, bool looping, bool paused, bool streaming) :
         L(L), sound_(sound)
     {
         /* TODO: create a better way to get main thread */
@@ -188,7 +209,7 @@ public:
 
         sound_->ref();
 
-        gid = interface.SoundPlay(sound->gid, g_true);
+        gid = interface.SoundPlay(sound->gid, g_true, streaming);
 
         if (gid == 0)
             return;
@@ -242,12 +263,12 @@ public:
             interface.ChannelSetPosition(gid, position);
     }
 
-    void setVolume(float volume)
+    void setVolume(float volume, float balance)
     {
         volume_ = volume;
 
         if (gid)
-            interface.ChannelSetVolume(gid, volume);
+            interface.ChannelSetVolume(gid, volume, balance);
     }
 
     float getVolume()
@@ -268,17 +289,22 @@ public:
         return pitch_;
     }
 
+    g_id getStreamId()
+    {
+        return (gid&&interface.ChannelGetStreamId)?interface.ChannelGetStreamId(gid):0;
+    }
+
     bool isPitchingAvailable()
     {
         return interface.ChannelSetPitch != NULL;
     }
 
-    bool isPlaying()
+    bool isPlaying(int *bufferSize, float *bufferSeconds)
     {
         if (gid == 0)
             return false;
 
-        return interface.ChannelIsPlaying(gid);
+        return interface.ChannelIsPlaying(gid, bufferSize, bufferSeconds);
     }
 
     void setPaused(bool paused)
@@ -310,9 +336,14 @@ public:
     void setWorldPosition(float x,float y,float z,float vx,float vy,float vz)
     {
         if (gid&&interface.ChannelSetWorldPosition)
-        	interface.ChannelSetWorldPosition(gid,x,y,z,vx,vy,vz);
+            interface.ChannelSetWorldPosition(gid,x,y,z,vx,vy,vz);
     }
 
+    void setEffect(const char *effect,float *params)
+    {
+        if (gid&&interface.ChannelSetEffect)
+            interface.ChannelSetEffect(gid,effect,params);
+    }
 
 
     lua_State *L;
@@ -355,6 +386,7 @@ private:
 
     void callback(int type, void *event)
     {
+        G_UNUSED(event);
         if (type == GAUDIO_CHANNEL_COMPLETE_EVENT)
         {
             lastPosition_ = interface.ChannelGetPosition(gid);
@@ -379,8 +411,10 @@ AudioBinder::AudioBinder(lua_State *L)
 
     const luaL_Reg Sound_functionList[] = {
         {"play", Sound_play},
+        {"decode", Sound_decode},
         {"getLength", Sound_getLength},
         {"setListenerPosition", Sound_setListenerPosition},
+        {"hasEffect", Sound_hasEffect},
         {NULL, NULL},
     };
 
@@ -400,6 +434,8 @@ AudioBinder::AudioBinder(lua_State *L)
         {"setLooping", SoundChannel_setLooping},
         {"isLooping", SoundChannel_isLooping},
         {"setWorldPosition", SoundChannel_setWorldPosition},
+        {"setEffect", SoundChannel_setEffect},
+        {"getStreamId", SoundChannel_getStreamId},
         {NULL, NULL},
     };
 
@@ -435,23 +471,43 @@ int AudioBinder::Sound_create(lua_State *L)
 
     Binder binder(L);
 
-    const char *fileName = luaL_checkstring(L, 1);
+    bool isRaw=lua_type(L,1)==LUA_TTABLE;
 
+    const char *fileName = NULL;
     std::vector<char> sig;
-    int flags = gpath_getDriveFlags(gpath_getPathDrive(fileName));
-    if (flags & GPATH_RO)
+    std::vector<signed short> samples;
+    bool stereo=false;
+    int rate=8000;
+    if (isRaw)
     {
-        append(sig, fileName, strlen(fileName) + 1);
+        rate=luaL_checknumber(L,2);
+        stereo=lua_toboolean(L,3);
+        int len=lua_objlen(L,1);
+        for (int k=0;k<len;k++) {
+            lua_rawgeti(L,1,k+1);
+            samples.push_back(lua_tonumber(L,-1)*32767);
+            lua_pop(L,1);
+        }
     }
     else
     {
-        if (flags & GPATH_REAL)
+        fileName = luaL_checkstring(L, 1);
+
+        int flags = gpath_getDriveFlags(gpath_getPathDrive(fileName));
+        if (flags & GPATH_RO)
         {
             append(sig, fileName, strlen(fileName) + 1);
+        }
+        else
+        {
+            if (flags & GPATH_REAL)
+            {
+                append(sig, fileName, strlen(fileName) + 1);
 
-            struct stat s;
-            stat(gpath_transform(fileName), &s);
-            append(sig, &s.st_mtime, sizeof(s.st_mtime));
+                struct stat s;
+                stat(gpath_transform(fileName), &s);
+                append(sig, &s.st_mtime, sizeof(s.st_mtime));
+            }
         }
     }
 
@@ -476,8 +532,11 @@ int AudioBinder::Sound_create(lua_State *L)
     }
     else
     {
-        gaudio_Error error;
-        sound = new GGSound(L, fileName, &error, sig);
+        gaudio_Error error=GAUDIO_NO_ERROR;
+        if (isRaw)
+            sound = new GGSound(L, samples, stereo, rate);
+        else
+            sound = new GGSound(L, fileName, &error, sig);
 
         switch (error)
         {
@@ -513,9 +572,81 @@ int AudioBinder::Sound_create(lua_State *L)
     return 1;
 }
 
-int AudioBinder::Sound_destruct(lua_State *L)
+int AudioBinder::Sound_decode(lua_State *L)
 {
-    void *ptr = *(void**)lua_touserdata(L, 1);
+    StackChecker checker(L, "AudioBinder::Sound_create", 1);
+
+    Binder binder(L);
+
+    const char *fileName = luaL_checkstring(L, 1);
+
+    gaudio_Error error=GAUDIO_NO_ERROR;
+    std::vector<unsigned char> data;
+    int numChannels,sampleRate,bytesPerSample;
+    numChannels=luaL_optinteger(L,4,0);
+    sampleRate=luaL_optinteger(L,5,0);
+    bytesPerSample=luaL_optinteger(L,6,0);
+    gaudio_SoundReadFile(fileName,luaL_optnumber(L,2,0),luaL_optnumber(L,3,0),data,numChannels,bytesPerSample,sampleRate,&error);
+
+    switch (error)
+    {
+    case GAUDIO_NO_ERROR:
+        break;
+    case GAUDIO_CANNOT_OPEN_FILE:
+        luaL_error(L, "%s: No such file or directory.", fileName);
+        break;
+    case GAUDIO_UNRECOGNIZED_FORMAT:
+        luaL_error(L, "%s: Sound format is not recognized.", fileName);
+        break;
+    case GAUDIO_ERROR_WHILE_READING:
+        luaL_error(L, "%s: Error while reading.", fileName);
+        break;
+    case GAUDIO_UNSUPPORTED_FORMAT:
+        luaL_error(L, "%s: Sound format is not supported.", fileName);
+        break;
+    case GAUDIO_INTERNAL_ERROR:
+        luaL_error(L, "%s: Sound internal error.", fileName);
+        break;
+    }
+
+
+    size_t bsize=data.size()/bytesPerSample;
+    lua_createtable(L,bsize,0);
+    if (bytesPerSample==1) {
+        signed char *sf=(signed char *)data.data();
+        for (size_t k=0;k<bsize;k++)
+        {
+            lua_pushnumber(L,(1.0/128)*(*(sf++)));
+            lua_rawseti(L,-2,k+1);
+        }
+    }
+    else {
+        signed short *sf=(signed short *)data.data();
+        for (size_t k=0;k<bsize;k++) {
+            lua_pushnumber(L,(1.0/32768)*(*(sf++)));
+            lua_rawseti(L,-2,k+1);
+        }
+    }
+    lua_pushinteger(L,numChannels);
+    lua_pushinteger(L,sampleRate);
+    lua_pushinteger(L,bytesPerSample);
+    lua_pushlstring(L,(const char *) data.data(),data.size());
+
+    return 5;
+}
+
+int AudioBinder::Sound_destruct(void *p)
+{
+    void *ptr = GIDEROS_DTOR_UDATA(p);
+    GGSound *sound = static_cast<GGSound*>(ptr);
+    lua_postgc(sound->L,Sound_destruct_real,ptr);
+
+    return 0;
+}
+
+int AudioBinder::Sound_destruct_real(lua_State *L, void *ptr)
+{
+    G_UNUSED(L);
     GGSound *sound = static_cast<GGSound*>(ptr);
     sound->unref();
 
@@ -541,6 +672,12 @@ int AudioBinder::Sound_setListenerPosition(lua_State *L)
     return 0;
 }
 
+int AudioBinder::Sound_hasEffect(lua_State *L)
+{
+    lua_pushboolean(L,gaudio_SoundHasEffect(luaL_checkstring(L,1)));
+    return 1;
+}
+
 int AudioBinder::Sound_play(lua_State *L)
 {
     Binder binder(L);
@@ -561,8 +698,9 @@ int AudioBinder::Sound_play(lua_State *L)
     }
 
     bool paused = lua_toboolean(L, 4);
+    bool streaming = lua_toboolean(L, 5);
 
-    GGSoundChannel *soundChannel = new GGSoundChannel(L, sound, startTime, looping, paused);
+    GGSoundChannel *soundChannel = new GGSoundChannel(L, sound, startTime, looping, paused, streaming);
 
     if (soundChannel->gid == 0)
     {
@@ -582,15 +720,23 @@ int AudioBinder::Sound_play(lua_State *L)
     return 1;
 }
 
-int AudioBinder::SoundChannel_destruct(lua_State *L)
+int AudioBinder::SoundChannel_destruct(void *p)
 {
-    void *ptr = *(void**)lua_touserdata(L, 1);
+    void *ptr = GIDEROS_DTOR_UDATA(p);
+    GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(ptr);
+    lua_postgc(soundChannel->L,SoundChannel_destruct_real,ptr);
+
+    return 0;
+}
+
+int AudioBinder::SoundChannel_destruct_real(lua_State *L, void *ptr)
+{
+    G_UNUSED(L);
     GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(ptr);
     soundChannel->unref();
 
     return 0;
 }
-
 
 int AudioBinder::SoundChannel_stop(lua_State *L)
 {
@@ -638,7 +784,7 @@ int AudioBinder::SoundChannel_setVolume(lua_State *L)
 
     GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
 
-    soundChannel->setVolume(luaL_checknumber(L, 2));
+    soundChannel->setVolume(luaL_checknumber(L, 2),luaL_optnumber(L, 3, 0));
 
     return 0;
 }
@@ -654,6 +800,17 @@ int AudioBinder::SoundChannel_getVolume(lua_State *L)
     return 1;
 }
 
+int AudioBinder::SoundChannel_getStreamId(lua_State *L)
+{
+    Binder binder(L);
+
+    GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
+
+    lua_pushnumber(L, soundChannel->getStreamId());
+
+    return 1;
+}
+
 int AudioBinder::SoundChannel_setPitch(lua_State *L)
 {
     Binder binder(L);
@@ -661,7 +818,7 @@ int AudioBinder::SoundChannel_setPitch(lua_State *L)
     GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
 
     if (!soundChannel->isPitchingAvailable())
-        return luaL_error(L, "Sound pitching is not supported for background music.");
+        luaL_error(L, "Sound pitching is not supported for background music.");
 
     soundChannel->setPitch(luaL_checknumber(L, 2));
 
@@ -675,7 +832,7 @@ int AudioBinder::SoundChannel_getPitch(lua_State *L)
     GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
 
     if (!soundChannel->isPitchingAvailable())
-        return luaL_error(L, "Sound pitching is not supported for background music.");
+        luaL_error(L, "Sound pitching is not supported for background music.");
 
     lua_pushnumber(L, soundChannel->getPitch());
 
@@ -688,9 +845,13 @@ int AudioBinder::SoundChannel_isPlaying(lua_State *L)
 
     GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
 
-    lua_pushboolean(L, soundChannel->isPlaying());
+    int bufferSize=0;
+    float bufferSeconds=0;
+    lua_pushboolean(L, soundChannel->isPlaying(&bufferSize, &bufferSeconds));
+    lua_pushinteger(L,bufferSize);
+    lua_pushnumber(L,bufferSeconds);
 
-    return 1;
+    return 3;
 }
 
 int AudioBinder::SoundChannel_setPaused(lua_State *L)
@@ -746,5 +907,25 @@ int AudioBinder::SoundChannel_setWorldPosition(lua_State *L)
     soundChannel->setWorldPosition(luaL_optnumber(L, 2,0.0),luaL_optnumber(L, 3,0.0),luaL_optnumber(L, 4,0.0),
     		luaL_optnumber(L, 5,0.0),luaL_optnumber(L, 6,0.0),luaL_optnumber(L, 7,0.0));
 
+    return 0;
+}
+
+int AudioBinder::SoundChannel_setEffect(lua_State *L)
+{
+    Binder binder(L);
+
+    GGSoundChannel *soundChannel = static_cast<GGSoundChannel*>(binder.getInstance("SoundChannel", 1));
+
+    float params[32];
+    if (lua_istable(L,3)) {
+        int tsize=lua_objlen(L,3);
+        if (tsize>32) tsize=32;
+        for (int k=1;k<=tsize;k++) {
+            lua_rawgeti(L,3,k);
+            params[k-1]=luaL_checknumber(L,-1);
+            lua_pop(L,1);
+        }
+    }
+    soundChannel->setEffect(luaL_optstring(L,2,NULL),params);
     return 0;
 }

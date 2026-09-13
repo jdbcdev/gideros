@@ -1,0 +1,5 @@
+<plugin
+ name="Easing"
+ description="Easing functions to help tween between states">
+ <target name="APK,iOS,Html5,WinRT,Windows,MacOSX,Win32" />
+</plugin>

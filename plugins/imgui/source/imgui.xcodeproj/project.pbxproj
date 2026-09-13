@@ -1,0 +1,308 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0321C67924F6433600E4B278 /* imgui_bindings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0321C67824F6433600E4B278 /* imgui_bindings.cpp */; };
+		039DC2D725DD229B00C802F2 /* TextEditor.h in Headers */ = {isa = PBXBuildFile; fileRef = 039DC2D525DD229A00C802F2 /* TextEditor.h */; };
+		039DC2D825DD229B00C802F2 /* TextEditor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 039DC2D625DD229B00C802F2 /* TextEditor.cpp */; };
+		03ACF90824F644F600851C74 /* imgui_user.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF8FC24F644F500851C74 /* imgui_user.h */; };
+		03ACF90924F644F600851C74 /* imgui_demo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03ACF8FD24F644F500851C74 /* imgui_demo.cpp */; };
+		03ACF90A24F644F600851C74 /* imstb_truetype.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF8FE24F644F500851C74 /* imstb_truetype.h */; };
+		03ACF90B24F644F600851C74 /* imgui_draw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03ACF8FF24F644F500851C74 /* imgui_draw.cpp */; };
+		03ACF90C24F644F600851C74 /* imgui_widgets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03ACF90024F644F500851C74 /* imgui_widgets.cpp */; };
+		03ACF90D24F644F600851C74 /* imgui_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF90124F644F500851C74 /* imgui_internal.h */; };
+		03ACF90E24F644F600851C74 /* imgui.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF90224F644F500851C74 /* imgui.h */; };
+		03ACF90F24F644F600851C74 /* imstb_textedit.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF90324F644F500851C74 /* imstb_textedit.h */; };
+		03ACF91024F644F600851C74 /* imstb_rectpack.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF90424F644F600851C74 /* imstb_rectpack.h */; };
+		03ACF91124F644F600851C74 /* imgui_user.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03ACF90524F644F600851C74 /* imgui_user.cpp */; };
+		03ACF91224F644F600851C74 /* imconfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 03ACF90624F644F600851C74 /* imconfig.h */; };
+		03ACF91324F644F600851C74 /* imgui.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03ACF90724F644F600851C74 /* imgui.cpp */; };
+		03C31B702AC7017400BEFA9E /* imgui_tables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03C31B6F2AC7017400BEFA9E /* imgui_tables.cpp */; };
+		5F9FAAA115DD87E20039718F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5F9FAAA015DD87E20039718F /* Foundation.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0321C67824F6433600E4B278 /* imgui_bindings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_bindings.cpp; path = Common/imgui_bindings.cpp; sourceTree = "<group>"; };
+		039DC2D525DD229A00C802F2 /* TextEditor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TextEditor.h; path = Common/TextEditor.h; sourceTree = "<group>"; };
+		039DC2D625DD229B00C802F2 /* TextEditor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = TextEditor.cpp; path = Common/TextEditor.cpp; sourceTree = "<group>"; };
+		03ACF8FC24F644F500851C74 /* imgui_user.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imgui_user.h; path = Common/imgui_user.h; sourceTree = "<group>"; };
+		03ACF8FD24F644F500851C74 /* imgui_demo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_demo.cpp; path = Common/imgui_src/imgui_demo.cpp; sourceTree = "<group>"; };
+		03ACF8FE24F644F500851C74 /* imstb_truetype.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imstb_truetype.h; path = Common/imgui_src/imstb_truetype.h; sourceTree = "<group>"; };
+		03ACF8FF24F644F500851C74 /* imgui_draw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_draw.cpp; path = Common/imgui_src/imgui_draw.cpp; sourceTree = "<group>"; };
+		03ACF90024F644F500851C74 /* imgui_widgets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_widgets.cpp; path = Common/imgui_src/imgui_widgets.cpp; sourceTree = "<group>"; };
+		03ACF90124F644F500851C74 /* imgui_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imgui_internal.h; path = Common/imgui_src/imgui_internal.h; sourceTree = "<group>"; };
+		03ACF90224F644F500851C74 /* imgui.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imgui.h; path = Common/imgui_src/imgui.h; sourceTree = "<group>"; };
+		03ACF90324F644F500851C74 /* imstb_textedit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imstb_textedit.h; path = Common/imgui_src/imstb_textedit.h; sourceTree = "<group>"; };
+		03ACF90424F644F600851C74 /* imstb_rectpack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imstb_rectpack.h; path = Common/imgui_src/imstb_rectpack.h; sourceTree = "<group>"; };
+		03ACF90524F644F600851C74 /* imgui_user.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_user.cpp; path = Common/imgui_user.cpp; sourceTree = "<group>"; };
+		03ACF90624F644F600851C74 /* imconfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = imconfig.h; path = Common/imgui_src/imconfig.h; sourceTree = "<group>"; };
+		03ACF90724F644F600851C74 /* imgui.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui.cpp; path = Common/imgui_src/imgui.cpp; sourceTree = "<group>"; };
+		03C31B6F2AC7017400BEFA9E /* imgui_tables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = imgui_tables.cpp; path = Common/imgui_src/imgui_tables.cpp; sourceTree = "<group>"; };
+		5F9FAA9D15DD87E20039718F /* libimgui.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libimgui.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		5F9FAAA015DD87E20039718F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5F9FAA9A15DD87E10039718F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F9FAAA115DD87E20039718F /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5F9FAA9215DD87E10039718F = {
+			isa = PBXGroup;
+			children = (
+				03C31B6F2AC7017400BEFA9E /* imgui_tables.cpp */,
+				039DC2D625DD229B00C802F2 /* TextEditor.cpp */,
+				039DC2D525DD229A00C802F2 /* TextEditor.h */,
+				03ACF90624F644F600851C74 /* imconfig.h */,
+				03ACF8FD24F644F500851C74 /* imgui_demo.cpp */,
+				03ACF8FF24F644F500851C74 /* imgui_draw.cpp */,
+				03ACF90124F644F500851C74 /* imgui_internal.h */,
+				03ACF90524F644F600851C74 /* imgui_user.cpp */,
+				03ACF8FC24F644F500851C74 /* imgui_user.h */,
+				03ACF90024F644F500851C74 /* imgui_widgets.cpp */,
+				03ACF90724F644F600851C74 /* imgui.cpp */,
+				03ACF90224F644F500851C74 /* imgui.h */,
+				03ACF90424F644F600851C74 /* imstb_rectpack.h */,
+				03ACF90324F644F500851C74 /* imstb_textedit.h */,
+				03ACF8FE24F644F500851C74 /* imstb_truetype.h */,
+				0321C67824F6433600E4B278 /* imgui_bindings.cpp */,
+				5F9FAA9F15DD87E20039718F /* Frameworks */,
+				5F9FAA9E15DD87E20039718F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5F9FAA9E15DD87E20039718F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5F9FAA9D15DD87E20039718F /* libimgui.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5F9FAA9F15DD87E20039718F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				5F9FAAA015DD87E20039718F /* Foundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		5F9FAA9B15DD87E10039718F /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				03ACF90E24F644F600851C74 /* imgui.h in Headers */,
+				03ACF91024F644F600851C74 /* imstb_rectpack.h in Headers */,
+				03ACF90A24F644F600851C74 /* imstb_truetype.h in Headers */,
+				03ACF90F24F644F600851C74 /* imstb_textedit.h in Headers */,
+				03ACF90824F644F600851C74 /* imgui_user.h in Headers */,
+				03ACF90D24F644F600851C74 /* imgui_internal.h in Headers */,
+				039DC2D725DD229B00C802F2 /* TextEditor.h in Headers */,
+				03ACF91224F644F600851C74 /* imconfig.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		5F9FAA9C15DD87E10039718F /* imgui */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5F9FAAAA15DD87E20039718F /* Build configuration list for PBXNativeTarget "imgui" */;
+			buildPhases = (
+				5F9FAA9915DD87E10039718F /* Sources */,
+				5F9FAA9A15DD87E10039718F /* Frameworks */,
+				5F9FAA9B15DD87E10039718F /* Headers */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = imgui;
+			productName = luasocket;
+			productReference = 5F9FAA9D15DD87E20039718F /* libimgui.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5F9FAA9415DD87E10039718F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0420;
+				ORGANIZATIONNAME = "Gideros Mobile";
+			};
+			buildConfigurationList = 5F9FAA9715DD87E10039718F /* Build configuration list for PBXProject "imgui" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				en,
+			);
+			mainGroup = 5F9FAA9215DD87E10039718F;
+			productRefGroup = 5F9FAA9E15DD87E20039718F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5F9FAA9C15DD87E10039718F /* imgui */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5F9FAA9915DD87E10039718F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				039DC2D825DD229B00C802F2 /* TextEditor.cpp in Sources */,
+				03ACF90B24F644F600851C74 /* imgui_draw.cpp in Sources */,
+				03ACF91124F644F600851C74 /* imgui_user.cpp in Sources */,
+				03ACF90924F644F600851C74 /* imgui_demo.cpp in Sources */,
+				0321C67924F6433600E4B278 /* imgui_bindings.cpp in Sources */,
+				03ACF90C24F644F600851C74 /* imgui_widgets.cpp in Sources */,
+				03C31B702AC7017400BEFA9E /* imgui_tables.cpp in Sources */,
+				03ACF91324F644F600851C74 /* imgui.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5F9FAAA815DD87E20039718F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					../../../Sdk/include,
+					../../../2dsg,
+					../../../2dsg/gfxbackends,
+					../../../libgideros,
+					../../../libgid/include,
+					../../../luabinding,
+					"$(LUA_INCLUDES:default=../../../lua/src)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		5F9FAAA915DD87E20039718F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					../../../Sdk/include,
+					../../../2dsg,
+					../../../2dsg/gfxbackends,
+					../../../libgideros,
+					../../../libgid/include,
+					../../../luabinding,
+					"$(LUA_INCLUDES:default=../../../lua/src)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5F9FAAAB15DD87E20039718F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DSTROOT = /tmp/imgui.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				OTHER_LDFLAGS = "";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		5F9FAAAC15DD87E20039718F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DSTROOT = /tmp/imgui.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				OTHER_LDFLAGS = "";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5F9FAA9715DD87E10039718F /* Build configuration list for PBXProject "imgui" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5F9FAAA815DD87E20039718F /* Debug */,
+				5F9FAAA915DD87E20039718F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5F9FAAAA15DD87E20039718F /* Build configuration list for PBXNativeTarget "imgui" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5F9FAAAB15DD87E20039718F /* Debug */,
+				5F9FAAAC15DD87E20039718F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5F9FAA9415DD87E10039718F /* Project object */;
+}

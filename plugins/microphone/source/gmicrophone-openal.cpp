@@ -20,11 +20,27 @@
 #include <alc.h>
 #endif
 
+#ifdef WINSTORE
+#undef max
+#endif
+
 #include <map>
-
+#ifdef USE_PTHREADS
 #include <pthread.h>
-
+#else
+#include <thread>
+#endif
 #include <math.h>
+
+#ifdef __APPLE__
+#include <QApplication>
+#include <QPermissions>
+
+static void permissionResult()
+{
+	
+}
+#endif
 
 namespace {
 
@@ -48,7 +64,7 @@ static void calculateAmplitudeData(int numChannels, int bitsPerSample, gmicropho
         }
 
         event->peakAmplitude = peak;
-        event->averageAmplitude = sqrt(sum / n);
+        event->averageAmplitude = (float) sqrt(sum / n);
     }
     else if (bitsPerSample == 16)
     {
@@ -66,7 +82,7 @@ static void calculateAmplitudeData(int numChannels, int bitsPerSample, gmicropho
         }
 
         event->peakAmplitude = peak;
-        event->averageAmplitude = sqrt(sum / n);
+        event->averageAmplitude = (float) sqrt(sum / n);
     }
 }
 
@@ -82,6 +98,21 @@ public:
     {
         while (!microphones_.empty())
             Delete(microphones_.begin()->first);
+    }
+
+    void GetDeviceList(std::vector<std::string> &list)
+    {
+        if (alcIsExtensionPresent(NULL, "ALC_enumeration_EXT") == AL_TRUE)
+        {
+            char *s = (char *)alcGetString(NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
+            if (s) {
+                while (*s) {
+                    int sl=strlen(s);
+                    list.push_back(std::string(s));
+                    s+=sl+1;
+                }
+            }
+        }
     }
 
     g_id Create(const char *deviceName, int numChannels, int sampleRate, int bitsPerSample, gmicrophone_Error *error)
@@ -107,6 +138,29 @@ public:
             return 0;
         }
 
+#ifdef __APPLE__
+        // Request permission to access the camera and microphone.
+        QMicrophonePermission microphonePermission;
+        switch (qApp->checkPermission(microphonePermission))
+        {
+            case Qt::PermissionStatus::Undetermined:
+            {
+                qApp->requestPermission(microphonePermission, &permissionResult);
+                if (error)
+   	                *error = GMICROPHONE_PROMPTING_PERMISSION;
+   	            return 0;
+            }
+            case Qt::PermissionStatus::Denied:
+            {
+ 	           if (error)
+ 	                *error = GMICROPHONE_CANNOT_OPEN_DEVICE;
+ 	 		   return 0;
+            }
+            case Qt::PermissionStatus::Granted:
+                break;
+        }
+ #endif
+
         ALenum format = 0;
         if (bitsPerSample == 8)
         {
@@ -123,7 +177,7 @@ public:
                 format = AL_FORMAT_STEREO16;
         }
 
-        ALCdevice *device = alcCaptureOpenDevice(NULL, sampleRate, format, sampleRate / 5);
+        ALCdevice *device = alcCaptureOpenDevice(deviceName, sampleRate, format, sampleRate / 5);
         if (device == NULL)
         {
             if (error)
@@ -172,8 +226,11 @@ public:
             return;
 
         microphone2->exit = false;
+#ifdef USE_PTHREADS
         pthread_create(&microphone2->thread, NULL, run_s, microphone2);
-
+#else
+		microphone2->thread=std::thread(run_s, microphone2);
+#endif
         microphone2->isStarted = true;
     }
 
@@ -190,8 +247,11 @@ public:
             return;
 
         microphone2->exit = true;
+#ifdef USE_PTHREADS
         pthread_join(microphone2->thread, NULL);
-
+#else
+		microphone2->thread.join();
+#endif
         microphone2->isStarted = false;
 
         gevent_RemoveEventsWithGid(microphone2->gid);
@@ -319,7 +379,11 @@ private:
         int bitsPerSample;
         int bytesPerSample;
         bool isStarted;
+#ifdef USE_PTHREADS
         pthread_t thread;
+#else
+        std::thread thread;
+#endif        
         volatile bool exit;
 
     private:
@@ -392,4 +456,9 @@ void gmicrophone_RemoveCallbackWithId(g_id microphone, g_id callback)
     s_manager->RemoveCallbackWithId(microphone, callback);
 }
 
+}
+
+void gmicrophone_GetDeviceList(std::vector<std::string> &list)
+{
+    s_manager->GetDeviceList(list);
 }

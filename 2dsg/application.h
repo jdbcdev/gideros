@@ -13,6 +13,7 @@
 #include <timercontainer.h>
 #include <refptr.h>
 #include "Matrices.h"
+#include <functional>
 
 
 class Font;
@@ -36,7 +37,7 @@ public:
     void setDeviceOrientation(Orientation orientation);
     Orientation getDeviceOrientation() const;
 	
-	void setResolution(int width, int height);
+	void setResolution(int width, int height,bool keepBuffers=false);
 	void resolution(int* width, int* height);
 
 	void initView();
@@ -44,21 +45,24 @@ public:
 
 	void enterFrame();
 	void clearBuffers();
-	void renderScene(int deltaFrameCount = -1);
+	void renderScene(int deltaFrameCount = -1,float *vmat=NULL,float *pmat=NULL,const std::function<void(ShaderEngine *,Matrix4 &)> &preStage=nullptr);
+    bool onDemandDraw(bool &now);
 
-    void mouseDown(int x, int y, int button);
-    void mouseUp(int x, int y, int button);
-    void mouseMove(int x, int y, int button);
-    void mouseHover(int x, int y, int button);
-	void mouseWheel(int x, int y, int wheel);
+    void mouseDown(int x, int y, int button, int modifiers, int type);
+    void mouseUp(int x, int y, int button, int modifiers, int type);
+    void mouseMove(int x, int y, int button, int modifiers, int type);
+    void mouseHover(int x, int y, int button, int modifiers, int type);
+	void mouseWheel(int x, int y, int wheel, int modifiers);
+    void mouseEnter(int x, int y, int buttons, int modifiers);
+    void mouseLeave(int x, int y, int modifiers);
 
     void touchesBegin(ginput_TouchEvent *event);
     void touchesMove(ginput_TouchEvent *event);
     void touchesEnd(ginput_TouchEvent *event);
     void touchesCancel(ginput_TouchEvent *event);
 
-    void keyDown(int keyCode, int realCode);
-    void keyUp(int keyCode, int realCode);
+    void keyDown(int keyCode, int realCode, int modifiers);
+    void keyUp(int keyCode, int realCode, int modifiers);
     void keyChar(const char *code);
 
 	void setClearColorBuffer(bool b)
@@ -95,6 +99,11 @@ public:
 	int getHardwareWidth() const;
 	int getHardwareHeight() const;
 
+    void enableOnDemandDraw(bool onDemand)
+    {
+        onDemandDraw_ = onDemand;
+    }
+
 	void setImageScales(const std::vector<std::pair<std::string, float> >& imageScales);
 	const std::vector<std::pair<std::string, float> >& getImageScales() const;
 
@@ -105,8 +114,8 @@ public:
 	void addTicker(Ticker* ticker);
 	void removeTicker(Ticker* ticker);
 
-	void setBackgroundColor(float r, float g, float b);
-	void getBackgroundColor(float* r, float* g, float* b);
+	void setBackgroundColor(float r, float g, float b, float a=1.f);
+	void getBackgroundColor(float* r, float* g, float* b, float* a=NULL);
 
 	float getLogicalTranslateX() const;
 	float getLogicalTranslateY() const;
@@ -157,6 +166,7 @@ private:
 	int nframe_;
 	double time_;
 	double lastFrameRenderTime_;
+    bool onDemandDraw_;
 
 	bool clearColorBuffer_;
 
@@ -181,7 +191,7 @@ private:
 
         bool operator < (const ImageScale &other) const
         {
-            return midscale > other.midscale;
+            return scale > other.scale;
         }
     };
 
@@ -190,7 +200,7 @@ private:
 	std::set<Ticker*> tickers_;
 	bool tickersIteratorInvalid_;
 
-	float backr_, backg_, backb_;
+	float backr_, backg_, backb_, backa_;
 
     TimerContainer timerContainer_;
 

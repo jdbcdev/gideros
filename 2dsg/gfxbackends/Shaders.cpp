@@ -14,13 +14,17 @@
 ShaderProgram *ShaderProgram::stdBasic=NULL;
 ShaderProgram *ShaderProgram::stdColor=NULL;
 ShaderProgram *ShaderProgram::stdTexture=NULL;
+ShaderProgram *ShaderProgram::stdTextureAlpha=NULL;
 ShaderProgram *ShaderProgram::stdTextureColor=NULL;
+ShaderProgram *ShaderProgram::stdTextureAlphaColor=NULL;
 ShaderProgram *ShaderProgram::stdParticle=NULL;
 ShaderProgram *ShaderProgram::stdParticles=NULL;
+ShaderProgram *ShaderProgram::stdParticles3=NULL;
 ShaderProgram *ShaderProgram::pathShaderFillC=NULL;
 ShaderProgram *ShaderProgram::pathShaderStrokeC = NULL;
 ShaderProgram *ShaderProgram::pathShaderStrokeLC = NULL;
 ShaderEngine *ShaderEngine::Engine=NULL;
+bool ShaderEngine::ready=true;
 
 void ShaderProgram::Retain()
 {
@@ -61,6 +65,9 @@ void *ShaderProgram::LoadShaderFile(const char *fname, const char *ext, long *le
 bool ShaderProgram::updateConstant(int index,ShaderProgram::ConstantType type, int mult,const void *ptr)
 {
 	char *b=(char *)(uniforms[index]._localPtr);
+    if ((mult>uniforms[index].mult)||(type!=uniforms[index].type)) {
+        return false; //Format mismatch
+    }
 	int sl=0;
 	switch (type)
 	{
@@ -80,6 +87,8 @@ bool ShaderProgram::updateConstant(int index,ShaderProgram::ConstantType type, i
 	case CMATRIX:
 		sl=64;
 		break;
+	case CTEXTURE:
+		break;
 	}
 	if (!sl) return false;
 	sl*=mult;
@@ -90,23 +99,32 @@ bool ShaderProgram::updateConstant(int index,ShaderProgram::ConstantType type, i
 
 void ShaderEngine::reset(bool reinit)
 {
+    G_UNUSED(reinit);
 	setColor(1,1,1,1);
     oglProjection.identity();
     oglVPProjection.identity();
     oglVPProjectionUncorrected.identity();
     oglModel.identity();
+    oglView.identity();
     oglCombined.identity();
-    dsCurrent.dTest=false;
-    dsCurrent.sRef=0;
-    dsCurrent.sMask=0xFF;
-    dsCurrent.sClear=false;
-    dsCurrent.sFail=STENCIL_KEEP;
-    dsCurrent.dFail=STENCIL_KEEP;
-    dsCurrent.dPass=STENCIL_KEEP;
-    dsCurrent.sFunc=STENCIL_DISABLE;
+    screenScaleX=1;
+    screenScaleY=1;
+    DepthStencil ds;
+    ds.dTest=false;
+    ds.dMask=true;
+    ds.sRef=0;
+    ds.sMask=0xFF;
+    ds.sWMask=0xFF;
+    ds.sClearValue=0;
+    ds.sClear=false;
+    ds.sFail=STENCIL_KEEP;
+    ds.dFail=STENCIL_KEEP;
+    ds.dPass=STENCIL_KEEP;
+    ds.sFunc=STENCIL_DISABLE;
+    ds.cullMode=CULL_NONE;
     while (!dsStack.empty())
     	dsStack.pop();
-    setDepthStencil(dsCurrent);
+    setDepthStencil(ds);
 }
 
 void ShaderEngine::setViewportProjection(const Matrix4 vp, float width, float height)
@@ -116,6 +134,15 @@ void ShaderEngine::setViewportProjection(const Matrix4 vp, float width, float he
 	oglVPProjectionUncorrected=vp;
 	oglVPProjection=vp;
 	adjustViewportProjection(oglVPProjection,width,height);
+}
+
+ShaderTexture::Packing ShaderEngine::getPreferredPackingForTextureFormat(ShaderTexture::Format format)
+{
+	switch (format) {
+	case ShaderTexture::FMT_DEPTH: return ShaderTexture::PK_USHORT;
+	default:
+		return ShaderTexture::PK_UBYTE;
+	}
 }
 
 ShaderEngine::DepthStencil ShaderEngine::pushDepthStencil()
@@ -128,9 +155,11 @@ void ShaderEngine::popDepthStencil()
 {
 	if (!dsStack.empty())
 	{
-		dsCurrent=dsStack.top();
+        DepthStencil ds=dsStack.top();
 		dsStack.pop();
-	    setDepthStencil(dsCurrent);
+        ds.dClear=false;
+        ds.sClear=false;
+        setDepthStencil(ds);
 	}
 }
 
@@ -146,6 +175,18 @@ void ShaderEngine::prepareDraw(ShaderProgram *program)
 	c=program->getSystemConstant(ShaderProgram::SysConst_WorldMatrix);
 	if (c>=0) {
 		program->setConstant(c,ShaderProgram::CMATRIX,1,oglModel.data());
+	}
+	c=program->getSystemConstant(ShaderProgram::SysConst_ViewMatrix);
+	if (c>=0) {
+		program->setConstant(c,ShaderProgram::CMATRIX,1,oglView.data());
+	}
+	c=program->getSystemConstant(ShaderProgram::SysConst_ProjectionMatrix);
+	if (c>=0) {
+		program->setConstant(c,ShaderProgram::CMATRIX,1,oglProjection.data());
+	}
+	c=program->getSystemConstant(ShaderProgram::SysConst_ViewProjectionMatrix);
+	if (c>=0) {
+		program->setConstant(c,ShaderProgram::CMATRIX,1,(oglProjection*oglView).data());
 	}
 	c=program->getSystemConstant(ShaderProgram::SysConst_WorldInverseTransposeMatrix);
 	if (c>=0) {
@@ -167,6 +208,14 @@ void ShaderEngine::prepareDraw(ShaderProgram *program)
 		float clk=iclock();
 		program->setConstant(c,ShaderProgram::CFLOAT,1,&clk);
 	}
+    c=program->getSystemConstant(ShaderProgram::SysConst_RenderTargetScale);
+    if (c>=0) {
+        float sx=screenScaleX,sy=screenScaleY;
+        ShaderBuffer *fbo=getFramebuffer();
+        if (fbo) fbo->getScale(sx,sy);
+        float s[2]={sx,sy};
+        program->setConstant(c,ShaderProgram::CFLOAT2,1,s);
+    }
 }
 
 Matrix4 ShaderEngine::setFrustum(float l, float r, float b, float t, float n, float f)
@@ -189,12 +238,12 @@ Matrix4 ShaderEngine::setFrustum(float l, float r, float b, float t, float n, fl
 	return mat;
 }
 
-Matrix4 ShaderEngine::setOrthoFrustum(float l, float r, float b, float t, float n, float f)
+Matrix4 ShaderEngine::setOrthoFrustum(float l, float r, float b, float t, float n, float f,bool forRT)
 {
 	Matrix4 mat;
 	mat[0] = 2 / (r - l);
 	mat[5] = 2 / (t - b);
-	mat[10] = -2 / (f - n);
+    mat[10] = (forRT?2:-2) / (f - n);
 	mat[12] = -(r + l) / (r - l);
 	mat[13] = -(t + b) / (t - b);
 	mat[14] = -(f + n) / (f - n);
@@ -210,7 +259,7 @@ void ShaderEngine::pushClip(float x,float y,float w,float h)
 	Vector4 v2(x+w,y+h,0,1);
 	Vector4 v3(x+w,y,0,1);
 	Vector4 v4(x,y+h,0,1);
-	Matrix4 xform=oglVPProjection*oglModel;
+	Matrix4 xform=oglVPProjection*oglView*oglModel;
 	v1=xform*v1;
 	v2=xform*v2;
 	v3=xform*v3;
@@ -250,6 +299,37 @@ void ShaderEngine::popClip()
 	}
 }
 
+int ShaderEngine::hasClip()
+{
+    if (scissorStack.empty()) return -1; //No clip
+    Scissor &s=scissorStack.top();
+    return ((s.w<=0)&&(s.h<=0))?1:0; //Fully clipped or some part visible
+}
+
+bool ShaderEngine::checkClip(float x,float y,float w,float h)
+{
+	if (scissorStack.empty()) return false; //Not clipped out
+    Scissor &st=scissorStack.top();
+    if ((st.w<=0)&&(st.h<=0)) return true; //Fully clipped
+    Vector4 v1(x,y,0,1);
+	Vector4 v2(x+w,y+h,0,1);
+	Vector4 v3(x+w,y,0,1);
+	Vector4 v4(x,y+h,0,1);
+	Matrix4 xform=oglVPProjection*oglView*oglModel;
+	v1=xform*v1;
+	v2=xform*v2;
+	v3=xform*v3;
+	v4=xform*v4;
+	x=(std::min)((std::min)(v1.x,v2.x),(std::min)(v3.x,v4.x));
+	y=(std::min)((std::min)(v1.y,v2.y),(std::min)(v3.y,v4.y));
+	float x2=(std::max)((std::max)(v1.x,v2.x),(std::max)(v3.x,v4.x));
+	float y2=(std::max)((std::max)(v1.y,v2.y),(std::max)(v3.y,v4.y));
+	w=x2-x;
+	h=y2-y;
+    Scissor s(st,x,y,w,h);
+	return (s.h<=0)||(s.w<=0);
+}
+
 void ShaderEngine::setColor(float r,float g,float b,float a)
 {
     constCol[0]=r;
@@ -258,16 +338,42 @@ void ShaderEngine::setColor(float r,float g,float b,float a)
     constCol[3]=a;
 }
 
+void ShaderEngine::getColor(float &r,float &g,float &b,float &a)
+{
+    r=constCol[0];
+    g=constCol[1];
+    b=constCol[2];
+    a=constCol[3];
+}
+
+ShaderProgram *ShaderEngine::getDefault(StandardProgram id,int variant)
+{
+	switch (id) {
+	case STDP_BASIC: return ShaderProgram::stdBasic;
+	case STDP_COLOR: return ShaderProgram::stdColor;
+	case STDP_TEXTURE: return ShaderProgram::stdTexture;
+	case STDP_TEXTUREALPHA: return ShaderProgram::stdTextureAlpha;
+	case STDP_TEXTURECOLOR: return ShaderProgram::stdTextureColor;
+	case STDP_TEXTUREALPHACOLOR: return ShaderProgram::stdTextureAlphaColor;
+	case STDP_PARTICLE: return ShaderProgram::stdParticle;
+    case STDP_PARTICLES: return (variant&STDPV_3D)?ShaderProgram::stdParticles3:ShaderProgram::stdParticles;
+	case STDP_PATHFILLCURVE: return ShaderProgram::pathShaderFillC;
+	case STDP_PATHSTROKECURVE: return ShaderProgram::pathShaderStrokeC;
+	case STDP_PATHSTROKELINE: return ShaderProgram::pathShaderStrokeLC;
+	default: return NULL;
+	}
+}
+
 void ShaderEngine::setModel(const Matrix4 m)
 {
     oglModel=m;
-	oglCombined=oglProjection*oglModel;
+	oglCombined=oglProjection*oglView*oglModel;
 }
 
 void ShaderProgram::shaderInitialized()
 {
 	sysconstmask=0;
-	for (int i=0;i<uniforms.size();i++)
+    for (size_t i=0;i<uniforms.size();i++)
 		if (uniforms[i].sys)
 		{
 			int sn=uniforms[i].sys;
@@ -278,9 +384,9 @@ void ShaderProgram::shaderInitialized()
 
 int ShaderProgram::getConstantByName(const char *name)
 {
-	for (int i=0;i<uniforms.size();i++)
+    for (size_t i=0;i<uniforms.size();i++)
 		if (!(strcmp(uniforms[i].name.c_str(),name)))
-			return i;
+			return (int) i;
 	return -1;
 }
 
@@ -290,5 +396,10 @@ int ShaderProgram::getSystemConstant(SystemConstant t)
 	if (sysconstmask&(1<<n))
 		return sysconstidx[n];
 	return -1;
+}
+
+void ShaderProgram::bindTexture(int num,ShaderTexture *texture)
+{
+	ShaderEngine::Engine->bindTexture(num, texture);
 }
 

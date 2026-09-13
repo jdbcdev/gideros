@@ -63,15 +63,15 @@ void g_createMetaClass(lua_State* L,
 {
         luaL_newmetatable(L, classname); // registry[classname] = {} and new empty metatable is now at top
 
-        lua_pushcfunction(L, &cindex);                   // duplicate metatable
+        lua_pushcnfunction(L, &cindex, "__index");                   // duplicate metatable
         lua_setfield(L, -2, "__index"); // mt.__index = mt
 		
-		lua_pushcfunction(L, &cnewindex);
+		lua_pushcnfunction(L, &cnewindex, "__newindex");
         lua_setfield(L, -2, "__newindex");
 
-        if (destructor)
+        if (destructor) //TODO Handle Luau destructor
         {
-                lua_pushcfunction(L, destructor);
+                lua_pushcnfunction(L, destructor, "__gc");
                 lua_setfield(L, -2, "__gc"); // mt.__gc = destructor
         }
 
@@ -1298,13 +1298,13 @@ static int cindex(lua_State *L)
 		if(strcmp(key, "new") == 0)
 		{
 			lua_pushvalue(L, 1);
-			lua_pushcclosure(L, &createInstance, 1);
+			lua_pushcnclosure(L, &createInstance, 1, "createInstance");
 			return 1;
 		}
 		else if(strcmp(key, "newArray") == 0)
 		{
 			lua_pushvalue(L, 1);
-			lua_pushcclosure(L, &createArray, 1);
+			lua_pushcnclosure(L, &createArray, 1, "createArray");
 			return 1;
 		}
 		else
@@ -1314,7 +1314,7 @@ static int cindex(lua_State *L)
 			if(functions != NULL)
 			{
 				lua_pushvalue(L, 1);
-				lua_pushcclosure(L, &callStaticMethod, 1);
+				lua_pushcnclosure(L, &callStaticMethod, 1, "callStaticMethod");
 				return 1;
 			}
 			//trying out the property
@@ -1409,7 +1409,7 @@ static int cindex(lua_State *L)
 
 		if(functions != NULL)
 		{
-			lua_pushcfunction( L , &callMethod );
+			lua_pushcnfunction( L , &callMethod, "callMethod" );
 			return 1;
 		}
 		//trying out the property
@@ -1529,7 +1529,7 @@ static void g_initializePlugin(lua_State *L)
     lua_getglobal(L, "package");
 	lua_getfield(L, -1, "preload");
 	
-	lua_pushcfunction(L, loader);
+	lua_pushcnfunction(L, loader, "plugin_init_native");
 	lua_setfield(L, -2, "native");
 	
 	lua_pop(L, 2);

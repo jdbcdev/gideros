@@ -4,13 +4,19 @@
 #include "sprite.h"
 #include "graphicsbase.h"
 #include "texturebase.h"
+#include "bitmapdata.h"
 
 #define PIXEL_MAX_TEXTURES 8
 class Pixel : public Sprite
 {
-	static VertexBuffer<unsigned short> quad;
+    static size_t pixelsCount;
+    static VertexBuffer<unsigned short> quad;
+    static VertexBuffer<unsigned short> ninepatch;
 public:
     Pixel(Application *application);
+    virtual Sprite *clone() { Pixel *clone=new Pixel(application_); clone->cloneFrom(this); return clone; }
+    void cloneFrom(Pixel *);
+    virtual void applyGhost(Sprite *parent,GhostSprite *,bool leave=false);
 
 	void setColor(float r, float g, float b, float a)
 	{
@@ -20,6 +26,7 @@ public:
 		a_ = a;
 
 		isWhite_ = r == 1 && g == 1 && b == 1 && a == 1;
+		invalidate(INV_GRAPHICS);
 	}
 
 	void getColor(float &r,float &g, float &b, float &a)
@@ -31,11 +38,7 @@ public:
 	}
 
 
-	virtual ~Pixel()
-	{
-	}
-
-    void updateTexture();
+    virtual ~Pixel();
 
 	void setWidth(float width)
 	{
@@ -45,12 +48,17 @@ public:
 	{
 		setDimensions(width_,height);
 	}
-	void setDimensions(float width,float height);
+
+	bool setDimensions(float width,float height,bool forLayout=false);
     void getDimensions(float &width, float &height)
     {
         width = width_;
         height = height_;
     }
+    void getMinimumSize(float &w,float &h,bool preferred) { G_UNUSED(preferred); w=minw_; h=minh_; }
+
+	void setAnchorPoint(float x, float y);
+	void getAnchorPoint(float* x, float* y) const;
 
     void setTexturePosition(float x,float y);
     void getTexturePosition(float &x, float &y)
@@ -67,7 +75,7 @@ public:
     }
 
 	void setTexture(TextureBase *texture,int slot, const Matrix4* matrix = NULL);
-
+	void setTextureRegion(BitmapData *bitmapdata,int slot);
     void setTextureMatrix(const Matrix4* matrix);
 
     void setGradient(int c1, float a1, int c2, float a2, int c3, float a3, int c4, float a4);
@@ -83,22 +91,29 @@ public:
     void clearGradient()
     {
         colors_.clear();
+    	invalidate(INV_GRAPHICS);
     }
 
     void setStretching(bool isStretching)
     {
         isStretching_ = isStretching;
+    	invalidate(INV_GRAPHICS);
     }
+
+    void setNinePatch(float vl,float vr,float vt,float vb,float tl,float tr,float tt,float tb);
 
 private:
     virtual void doDraw(const CurrentTransform&, float sx, float sy, float ex, float ey);
 	virtual void extraBounds(float* minx, float* miny, float* maxx, float* maxy) const;
-    int getMixedColor(int c1, int c2, float a);
+    int getMixedColor(int c1, int c2, float a1, float a2, float a, float &ao);
+    void updateTexture();
+    void updateVertices();
 
 	VertexBuffer<Point2f> vertices;
 	VertexBuffer<Point2f> texcoords;
     VertexBuffer<unsigned char> colors_;
-    TextureBase *texture_[PIXEL_MAX_TEXTURES];
+    TextureBase *texture_;
+    TextureBase **extraTexture;
 	float r_, g_, b_, a_;
     int c1_, c2_, c3_, c4_;
     float a1_, a2_, a3_, a4_;
@@ -107,7 +122,28 @@ private:
     float sx_, sy_;
 	bool isWhite_;
     bool isStretching_;
+    bool isNinePatch_;
+    Matrix4 *tmatrix_;
+    float insetv_t_,insetv_b_,insetv_r_,insetv_l_;
+    float insett_t_,insett_b_,insett_r_,insett_l_;
+    float minw_,minh_;
+	float tx_,ty_,tw_,th_; //Texture coordinates in texels
+	float anchorx_, anchory_;
 
+public:
+    std::string styCache_c1;
+    std::string styCache_c2;
+    std::string styCache_c3;
+    std::string styCache_c4;
+    std::string styCache_color;
+};
+
+class GhostPixel : public GhostSprite {
+public:
+    GhostPixel(Sprite *m);
+    virtual ~GhostPixel();
+    bool hasColor;
+    unsigned char color[4];
 };
 
 #endif

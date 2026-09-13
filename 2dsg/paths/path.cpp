@@ -42,16 +42,16 @@ struct vector4f {
 #define kh_vector2f_hash_func(a) ((khint_t)((a.x) * 1e6f) ^ (khint_t)((a.y) * 1e6f))
 #define kh_vector4f_hash_func(a) ((khint_t)((a.x) * 1e6f) ^ (khint_t)((a.y) * 1e6f) ^ (khint_t)((a.z) * 1e6f) ^ (khint_t)((a.w) * 1e6f))
 
-KHASH_INIT(vector2f, struct vector2f, unsigned short, 1, kh_vector2f_hash_func,
+KHASH_INIT(vector2f, struct vector2f, unsigned int, 1, kh_vector2f_hash_func,
 		kh_vector2f_hash_equal)
-KHASH_INIT(vector4f, struct vector4f, unsigned short, 1, kh_vector4f_hash_func,
+KHASH_INIT(vector4f, struct vector4f, unsigned int, 1, kh_vector4f_hash_func,
 		kh_vector4f_hash_equal)
 
 /* TODO: better hash functions */
 
 struct merger4f {
 	khash_t(vector4f) *h;kvec_t(struct vector4f)
-	vertices;kvec_t(unsigned short)
+    vertices;kvec_t(int)
 	indices;
 };
 
@@ -68,7 +68,7 @@ static void free_merger4f(struct merger4f *m) {
 }
 
 static void merge4f(struct merger4f *m, const struct vector4f *vertices,
-		unsigned short *indices, int count) {
+        unsigned int *indices, int count) {
 	int i;
 
 	for (i = 0; i < count; ++i) {
@@ -340,20 +340,21 @@ static const int new_path_table[3][3] =
 // after 'M', only contains 'L' and 'Q'
 // optionally finishes with 'Z'
 struct reduced_path {
-	kvec_t(unsigned char)
-	commands;kvec_t(float)
-	coords;
+	kvec_t(unsigned char) commands;
+	kvec_t(float) coords;
+	kvec_t(unsigned int) indices;
 };
 
 typedef kvec_t(struct reduced_path)
 reduced_path_vec;
 
 struct geometry {
-	kvec_t(float)	vertices;
-	kvec_t(unsigned short)	indices;
+	kvec_t(float)
+    vertices;kvec_t(unsigned int)
+	indices;
 
 	VertexBuffer<float> *vertex_buffer;
-	VertexBuffer<unsigned short> *index_buffer;
+    VertexBuffer<unsigned int> *index_buffer;
 	int count;
 };
 
@@ -368,6 +369,8 @@ struct path {
 
 	float stroke_width;
 	float stroke_feather;
+    float stroke_margin;
+    float stroke_flatness;
 	int join_style;
 	int initial_end_cap;
 	int terminal_end_cap;
@@ -381,7 +384,7 @@ struct path {
 	struct geometry stroke_geoms[2]; /* 1: solid 2: quad */
 
 	VertexBuffer<vector4f> *fill_vertex_buffer;
-	VertexBuffer<unsigned short> *fill_index_buffer;
+    VertexBuffer<unsigned int> *fill_index_buffer;
 	int fill_counts[2];
 	int fill_starts[2];
 
@@ -409,6 +412,7 @@ static void delete_path(struct path *p) {
 	for (i = 0; i < kv_size(p->reduced_paths); ++i) {
 		kv_free(kv_a(p->reduced_paths, i).commands);
 		kv_free(kv_a(p->reduced_paths, i).coords);
+		kv_free(kv_a(p->reduced_paths, i).indices);
 	}
 	kv_free(p->reduced_paths);
 
@@ -454,9 +458,10 @@ static void new_path(reduced_path_vec *paths) {
 	kv_push_back(*paths, rp);
 }
 
-static void move_to(struct reduced_path *path, float x, float y) {
+static void move_to(struct reduced_path *path, int c, float x, float y) {
 	if (kv_empty(path->commands)) {
 		kv_push_back(path->commands, PATHCMD_MOVE_TO);
+		kv_push_back(path->indices, c);
 		kv_push_back(path->coords, x);
 		kv_push_back(path->coords, y);
 	} else {
@@ -465,35 +470,41 @@ static void move_to(struct reduced_path *path, float x, float y) {
 	}
 }
 
-static void line_to(struct reduced_path *path, float x1, float y1, float x2,
+static void line_to(struct reduced_path *path, int c, float x1, float y1, float x2,
 		float y2) {
 	if (kv_empty(path->commands)) {
 		kv_push_back(path->commands, PATHCMD_MOVE_TO);
+		kv_push_back(path->indices, c);
 		kv_push_back(path->coords, x1);
 		kv_push_back(path->coords, y1);
+		c=0;
 	}
 
 	kv_push_back(path->commands, PATHCMD_LINE_TO);
+	kv_push_back(path->indices, c);
 	kv_push_back(path->coords, x2);
 	kv_push_back(path->coords, y2);
 }
 
-static void quad_to(struct reduced_path *path, float x1, float y1, float x2,
+static void quad_to(struct reduced_path *path, int c, float x1, float y1, float x2,
 		float y2, float x3, float y3) {
 	if (kv_empty(path->commands)) {
 		kv_push_back(path->commands, PATHCMD_MOVE_TO);
+        kv_push_back(path->indices, c);
 		kv_push_back(path->coords, x1);
 		kv_push_back(path->coords, y1);
-	}
+        c=0;
+    }
 
 	kv_push_back(path->commands, PATHCMD_QUADRATIC_CURVE_TO);
+	kv_push_back(path->indices, c);
 	kv_push_back(path->coords, x2);
 	kv_push_back(path->coords, y2);
 	kv_push_back(path->coords, x3);
 	kv_push_back(path->coords, y3);
 }
 
-static void cubic_to(struct reduced_path *path, float x1, float y1, float x2,
+static void cubic_to(struct reduced_path *path, int c, float x1, float y1, float x2,
 		float y2, float x3, float y3, float x4, float y4) {
 	int i;
 
@@ -503,19 +514,23 @@ static void cubic_to(struct reduced_path *path, float x1, float y1, float x2,
 
 	if (kv_empty(path->commands)) {
 		kv_push_back(path->commands, PATHCMD_MOVE_TO);
+		kv_push_back(path->indices, c);
 		kv_push_back(path->coords, x1);
 		kv_push_back(path->coords, y1);
-	}
+        c=0;
+    }
 
 	for (i = 0; i < 8; ++i) {
 		double q[6];
 		cubic_to_quadratic(cout + i * 8, q);
 		kv_push_back(path->commands, PATHCMD_QUADRATIC_CURVE_TO);
+        kv_push_back(path->indices, c);
 		kv_push_back(path->coords, q[2]);
 		kv_push_back(path->coords, q[3]);
 		kv_push_back(path->coords, q[4]);
 		kv_push_back(path->coords, q[5]);
-	}
+        c=0;
+    }
 }
 
 static double angle(double ux, double uy, double vx, double vy) {
@@ -573,7 +588,7 @@ static void endpoint_to_center(double x1, double y1, double x2, double y2,
 		*dtheta += 2 * M_PI;
 }
 
-static void arc_tod(struct reduced_path *path, double x1, double y1, double rh,
+static void arc_tod(struct reduced_path *path, int c, double x1, double y1, double rh,
 		double rv, double phi, int fA, int fS, double x2, double y2) {
 	double cx, cy, theta1, dtheta;
 
@@ -604,27 +619,33 @@ static void arc_tod(struct reduced_path *path, double x1, double y1, double rh,
 		double yc = (ym * 4 - (y1 + y2)) / 2;
 
 		kv_push_back(path->commands, PATHCMD_QUADRATIC_CURVE_TO);
+        kv_push_back(path->indices, c);
 		kv_push_back(path->coords, xc);
 		kv_push_back(path->coords, yc);
 		kv_push_back(path->coords, x2);
 		kv_push_back(path->coords, y2);
-	}
+        c=0;
+    }
 }
 
-static void arc_to(struct reduced_path *path, float x1, float y1, float rh,
+static void arc_to(struct reduced_path *path, int c, float x1, float y1, float rh,
 		float rv, float phi, int fA, int fS, float x2, float y2) {
 	if (kv_empty(path->commands)) {
 		kv_push_back(path->commands, PATHCMD_MOVE_TO);
+		kv_push_back(path->indices, c);
 		kv_push_back(path->coords, x1);
 		kv_push_back(path->coords, y1);
+		c=0;
 	}
 
-	arc_tod(path, x1, y1, rh, rv, phi, fA, fS, x2, y2);
+	arc_tod(path, c, x1, y1, rh, rv, phi, fA, fS, x2, y2);
 }
 
-static void close_path(struct reduced_path *path) {
-	if (kv_back(path->commands) != PATHCMD_CLOSE_PATH)
+static void close_path(struct reduced_path *path, int c) {
+	if (kv_back(path->commands) != PATHCMD_CLOSE_PATH) {
 		kv_push_back(path->commands, PATHCMD_CLOSE_PATH);
+		kv_push_back(path->indices, c);
+	}
 }
 
 static void reduce_path(int num_commands, const unsigned char *commands,
@@ -643,24 +664,30 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 
 	int icoord = 0;
 
+	float bearing = 0;
 	float spx = 0, spy = 0;
 	float cpx = 0, cpy = 0;
 	float pepx = 0, pepy = 0;
 	float ncpx = 0, ncpy = 0;
 	float npepx = 0, npepy = 0;
+	float rx, ry, rx1, ry1, rx2, ry2;
+#define relative(mx,my) if (bearing) \
+    { rx=cpx+cosf(bearing)*mx-sinf(bearing)*my; ry=cpy+cosf(bearing)*my+sinf(bearing)*mx; } \
+	else { rx=cpx+mx; ry=cpy+my; }
 
 	unsigned char prev_command = 2;
 
 	int i;
 
 	for (i = 0; i < num_commands; ++i) {
+		int cIdx=i+1;
 		switch (commands[i]) {
 		case PATHCMD_MOVE_TO:
 		case 'M':
 			if (new_path_table[prev_command][0])
 				new_path(reduced_paths);
 			prev_command = 0;
-			move_to(last_path, c0, c1);
+			move_to(last_path, cIdx, c0, c1);
 			set(c0, c1, c0, c1);
 			spx = ncpx;
 			spy = ncpy;
@@ -672,8 +699,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][0])
 			new_path(reduced_paths);
 			prev_command = 0;
-			move_to(last_path, cpx + c0, cpy + c1);
-			set(cpx + c0, cpy + c1, cpx + c0, cpy + c1);
+			relative(c0,c1);
+			move_to(last_path, cIdx, rx, ry);
+			set(rx,ry,rx,ry);
 			spx = ncpx;
 			spy = ncpy;
 			icoord += 2;
@@ -685,7 +713,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][2])
 			new_path(reduced_paths);
 			prev_command = 2;
-			close_path(last_path);
+			close_path(last_path, cIdx);
 			set(spx, spy, spx, spy);
 			break;
 
@@ -693,7 +721,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][0])
 			new_path(reduced_paths);
 			prev_command = 0;
-			move_to(last_path, 0, 0);
+			move_to(last_path, cIdx, 0, 0);
 			set(0, 0, 0, 0);
 			spx = ncpx;
 			spy = ncpy;
@@ -704,7 +732,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, c0, c1);
+			line_to(last_path, cIdx, cpx, cpy, c0, c1);
 			set(c0, c1, c0, c1);
 			icoord += 2;
 			break;
@@ -714,8 +742,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, cpx + c0, cpy + c1);
-			set(cpx + c0, cpy + c1, cpx + c0, cpy + c1);
+			relative(c0,c1);
+			line_to(last_path, cIdx, cpx, cpy, rx, ry);
+			set(rx,ry,rx,ry);
 			icoord += 2;
 			break;
 
@@ -724,7 +753,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, c0, cpy);
+			line_to(last_path, cIdx, cpx, cpy, c0, cpy);
 			set(c0, cpy, c0, cpy);
 			icoord += 1;
 			break;
@@ -734,8 +763,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, cpx + c0, cpy);
-			set(cpx + c0, cpy, cpx + c0, cpy);
+			relative(c0,0);
+			line_to(last_path, cIdx, cpx, cpy, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 1;
 			break;
 
@@ -744,7 +774,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, cpx, c0);
+			line_to(last_path, cIdx, cpx, cpy, cpx, c0);
 			set(cpx, c0, cpx, c0);
 			icoord += 1;
 			break;
@@ -754,8 +784,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			line_to(last_path, cpx, cpy, cpx, cpy + c0);
-			set(cpx, cpy + c0, cpx, cpy + c0);
+			relative(0,c0);
+			line_to(last_path, cIdx, cpx, cpy, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 1;
 			break;
 
@@ -764,7 +795,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			quad_to(last_path, cpx, cpy, c0, c1, c2, c3);
+			quad_to(last_path, cIdx, cpx, cpy, c0, c1, c2, c3);
 			set(c2, c3, c0, c1);
 			icoord += 4;
 			break;
@@ -774,8 +805,10 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			quad_to(last_path, cpx, cpy, cpx + c0, cpy + c1, cpx + c2, cpy + c3);
-			set(cpx + c2, cpy + c3, cpx + c0, cpy + c1);
+			relative(c2,c3); rx1=rx; ry1=ry;
+			relative(c0,c1);
+			quad_to(last_path, cIdx, cpx, cpy, rx,ry,rx1,ry1);
+			set(rx1,ry1,rx,ry);
 			icoord += 4;
 			break;
 
@@ -784,7 +817,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, c0, c1, c2, c3, c4, c5);
+			cubic_to(last_path, cIdx, cpx, cpy, c0, c1, c2, c3, c4, c5);
 			set(c4, c5, c2, c3);
 			icoord += 6;
 			break;
@@ -794,8 +827,11 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, cpx + c0, cpy + c1, cpx + c2, cpy + c3, cpx + c4, cpy + c5);
-			set(cpx + c4, cpy + c5, cpx + c2, cpy + c3);
+			relative(c2,c3); rx1=rx; ry1=ry;
+			relative(c4,c5); rx2=rx; ry2=ry;
+			relative(c0,c1);
+			cubic_to(last_path, cIdx, cpx, cpy, rx,ry,rx1,ry1,rx2,ry2);
+			set(rx2,ry2,rx1,ry1);
 			icoord += 6;
 			break;
 
@@ -804,7 +840,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			quad_to(last_path, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, c0, c1);
+			quad_to(last_path, cIdx, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, c0, c1);
 			set(c0, c1, 2 * cpx - pepx, 2 * cpy - pepy);
 			icoord += 2;
 			break;
@@ -814,8 +850,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			quad_to(last_path, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, cpx + c0, cpy + c1);
-			set(cpx + c0, cpy + c1, 2 * cpx - pepx, 2 * cpy - pepy);
+			relative(c0,c1);
+			quad_to(last_path, cIdx, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, rx,ry);
+			set(rx,ry, 2 * cpx - pepx, 2 * cpy - pepy);
 			icoord += 2;
 			break;
 
@@ -824,7 +861,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, c0, c1, c2, c3);
+			cubic_to(last_path, cIdx, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, c0, c1, c2, c3);
 			set(c2, c3, c0, c1);
 			icoord += 4;
 			break;
@@ -834,8 +871,10 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy, cpx + c0, cpy + c1, cpx + c2, cpy + c3);
-			set(cpx + c2, cpy + c3, cpx + c0, cpy + c1);
+			relative(c2,c3); rx1=rx; ry1=ry;
+			relative(c0,c1);
+			cubic_to(last_path, cIdx, cpx, cpy, 2 * cpx - pepx, 2 * cpy - pepy,rx,ry,rx1,ry1);
+			set(rx1,ry1,rx,ry);
 			icoord += 4;
 			break;
 
@@ -843,7 +882,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 0, 1, c3, c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 0, 1, c3, c4);
 			set(c3, c4, c3, c4);
 			icoord += 5;
 			break;
@@ -852,8 +891,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 0, 1, cpx + c3, cpy + c4);
-			set(cpx + c3, cpy + c4, cpx + c3, cpy + c4);
+			relative(c3,c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 0, 1, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 5;
 			break;
 
@@ -861,7 +901,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 0, 0, c3, c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 0, 0, c3, c4);
 			set(c3, c4, c3, c4);
 			icoord += 5;
 			break;
@@ -870,8 +910,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 0, 0, cpx + c3, cpy + c4);
-			set(cpx + c3, cpy + c4, cpx + c3, cpy + c4);
+			relative(c3,c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 0, 0, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 5;
 			break;
 
@@ -879,7 +920,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 1, 1, c3, c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 1, 1, c3, c4);
 			set(c3, c4, c3, c4);
 			icoord += 5;
 			break;
@@ -888,8 +929,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 1, 1, cpx + c3, cpy + c4);
-			set(cpx + c3, cpy + c4, cpx + c3, cpy + c4);
+			relative(c3,c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 1, 1, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 5;
 			break;
 
@@ -897,7 +939,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 1, 0, c3, c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 1, 0, c3, c4);
 			set(c3, c4, c3, c4);
 			icoord += 5;
 			break;
@@ -906,8 +948,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, 1, 0, cpx + c3, cpy + c4);
-			set(cpx + c3, cpy + c4, cpx + c3, cpy + c4);
+			relative(c3,c4);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, 1, 0, cpx + c3, cpy + c4);
+			set(rx,ry,rx,ry);
 			icoord += 5;
 			break;
 
@@ -916,7 +959,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, c3, c4, c5, c6);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, c3, c4, c5, c6);
 			set(c5, c6, c5, c6);
 			icoord += 7;
 			break;
@@ -926,8 +969,9 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			arc_to(last_path, cpx, cpy, c0, c1, c2, c3, c4, cpx + c5, cpy + c6);
-			set(cpx + c5, cpy + c6, cpx + c5, cpy + c6);
+			relative(c5,c6);
+			arc_to(last_path, cIdx, cpx, cpy, c0, c1, c2, c3, c4, rx,ry);
+			set(rx,ry,rx,ry);
 			icoord += 7;
 			break;
 
@@ -935,11 +979,11 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][0])
 			new_path(reduced_paths);
 			prev_command = 2;
-			move_to(last_path, c0, c1);
-			line_to(last_path, c0, c1, c0 + c2, c1);
-			line_to(last_path, c0 + c2, c1, c0 + c2, c1 + c3);
-			line_to(last_path, c0 + c2, c1 + c3, c0, c1 + c3);
-			close_path(last_path);
+			move_to(last_path, cIdx, c0, c1);
+			line_to(last_path, 0, c0, c1, c0 + c2, c1);
+			line_to(last_path, 0, c0 + c2, c1, c0 + c2, c1 + c3);
+			line_to(last_path, 0, c0 + c2, c1 + c3, c0, c1 + c3);
+			close_path(last_path,0);
 			set(c0, c1, c0, c1 + c3);
 			icoord += 4;
 			break;
@@ -948,7 +992,7 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, cpx, cpy, c0, c1, c2, c3);
+			cubic_to(last_path, cIdx, cpx, cpy, cpx, cpy, c0, c1, c2, c3);
 			set(c2, c3, c0, c1);
 			icoord += 4;
 			break;
@@ -957,9 +1001,19 @@ static void reduce_path(int num_commands, const unsigned char *commands,
 			if (new_path_table[prev_command][1])
 			new_path(reduced_paths);
 			prev_command = 1;
-			cubic_to(last_path, cpx, cpy, c0, c1, c2, c3, c2, c3);
+			cubic_to(last_path, cIdx, cpx, cpy, c0, c1, c2, c3, c2, c3);
 			set(c2, c3, c2, c3);
 			icoord += 4;
+			break;
+
+			case 'B':
+			bearing=c0*M_PI/180.0;
+			icoord += 1;
+			break;
+
+			case 'b':
+			bearing+=c0*M_PI/180.0;
+			icoord += 1;
 			break;
 
 			case PATHCMD_CIRCULAR_CCW_ARC_TO:
@@ -1036,7 +1090,9 @@ static void path_commands(unsigned int path, int num_commands,
 		kh_value(paths, iter) = p;
 
 		p->stroke_width = 1;
+        p->stroke_margin = 1;
 		p->stroke_feather = 0.25;
+        p->stroke_flatness = 0;
 		p->join_style = PATHJOIN_BEVEL; //PATHJOIN_MITER_REVERT;
 		p->initial_end_cap = PATHEND_FLAT;
 		p->terminal_end_cap = PATHEND_FLAT;
@@ -1057,12 +1113,12 @@ static void path_commands(unsigned int path, int num_commands,
 		for (i = 0; i < 2; ++i) {
 			p->stroke_geoms[i].vertex_buffer = new VertexBuffer<float>();
 			p->stroke_geoms[i].index_buffer =
-					new VertexBuffer<unsigned short>();
+                    new VertexBuffer<unsigned int>();
 			p->stroke_geoms[i].count = 0;
 		}
 
 		p->fill_vertex_buffer = new VertexBuffer<vector4f>();
-		p->fill_index_buffer = new VertexBuffer<unsigned short>();
+        p->fill_index_buffer = new VertexBuffer<unsigned int>();
 		p->fill_bounds_vbo = new VertexBuffer<float>();
 
 		set_path(path);
@@ -1116,10 +1172,10 @@ static void path_commands(unsigned int path, int num_commands,
 }
 
 static void add_stroke_line(struct path *p, double x0, double y0, double x1,
-		double y1) {
+        double y1, double *line_pos) {
 	struct geometry *g = &p->stroke_geoms[0];
 
-	int index = kv_size(g->vertices) / 4;
+    int index = kv_size(g->vertices) / 8;
 
 	double dx = x1 - x0;
 	double dy = y1 - y0;
@@ -1134,18 +1190,37 @@ static void add_stroke_line(struct path *p, double x0, double y0, double x1,
 	kv_push_back(g->vertices, y0);
 	kv_push_back(g->vertices, -dy);
 	kv_push_back(g->vertices, dx);
-	kv_push_back(g->vertices, x0);
+    kv_push_back(g->vertices, *line_pos);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+
+    kv_push_back(g->vertices, x0);
 	kv_push_back(g->vertices, y0);
 	kv_push_back(g->vertices, dy);
 	kv_push_back(g->vertices, -dx);
-	kv_push_back(g->vertices, x1);
+    kv_push_back(g->vertices, *line_pos);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+
+    kv_push_back(g->vertices, x1);
 	kv_push_back(g->vertices, y1);
 	kv_push_back(g->vertices, dy);
 	kv_push_back(g->vertices, -dx);
-	kv_push_back(g->vertices, x1);
+    kv_push_back(g->vertices, *line_pos+len);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+
+    kv_push_back(g->vertices, x1);
 	kv_push_back(g->vertices, y1);
 	kv_push_back(g->vertices, -dy);
 	kv_push_back(g->vertices, dx);
+    kv_push_back(g->vertices, *line_pos+len);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
+    kv_push_back(g->vertices, 0);
 
 	kv_push_back(g->indices, index);
 	kv_push_back(g->indices, index + 1);
@@ -1154,12 +1229,14 @@ static void add_stroke_line(struct path *p, double x0, double y0, double x1,
 	kv_push_back(g->indices, index);
 	kv_push_back(g->indices, index + 2);
 	kv_push_back(g->indices, index + 3);
+
+    *line_pos+=len;
 }
 
 static void add_stroke_line_dashed(struct path *path, double x0, double y0,
-		double x1, double y1, double *dash_offset) {
+        double x1, double y1, double *dash_offset, double *line_pos) {
 	if (path->num_dashes == 0) {
-		add_stroke_line(path, x0, y0, x1, y1);
+        add_stroke_line(path, x0, y0, x1, y1, line_pos);
 		return;
 	}
 
@@ -1179,16 +1256,18 @@ static void add_stroke_line_dashed(struct path *path, double x0, double y0,
 		if (o1 >= 0) {
 			double t0 = o0 / length;
 			double t1 = o1 / length;
+            double lp = *line_pos+o0;
 
 			add_stroke_line(path, (1 - t0) * x0 + t0 * x1,
 					(1 - t0) * y0 + t0 * y1, (1 - t1) * x0 + t1 * x1,
-					(1 - t1) * y0 + t1 * y1);
+                    (1 - t1) * y0 + t1 * y1, &lp);
 		}
 
 		offset += path->dashes[i] + path->dashes[i + 1];
 		i = (i + 2) % path->num_dashes;
 	}
 
+    *line_pos+=length;
 	*dash_offset = fmod(length + *dash_offset, path->dash_length);
 }
 
@@ -1312,7 +1391,7 @@ static double arc_length(double Ax, double Ay, double Bx, double By, double Cx,
 		double Cy, double t) {
 	double A = 4 * (Ax * Ax + Ay * Ay);
 	double B = 4 * (Ax * Bx + Ay * By);
-	double C = Bx * Bx + By * By;
+    double C = Bx * Bx + By * By;
 
 	return arc_length_helper(A, B, C, t) - arc_length_helper(A, B, C, 0);
 }
@@ -1463,9 +1542,108 @@ static void add_stroke_quad(struct path *p, float x0,
 }
 
 #else
+static float lengthSq(float x1,float y1,float x2,float y2,float px,float py)
+{
+       // Adjust vectors relative to x1,y1
+       // x2,y2 becomes relative vector from x1,y1 to end of segment
+       x2 -= x1;
+       y2 -= y1;
+       // px,py becomes relative vector from x1,y1 to test point
+       px -= x1;
+       py -= y1;
+       double dotprod = px * x2 + py * y2;
+       double projlenSq;
+       if (dotprod <= 0.0) {
+           // px,py is on the side of x1,y1 away from x2,y2
+           // distance to segment is length of px,py vector
+           // "length of its (clipped) projection" is now 0.0
+           projlenSq = 0.0;
+       } else {
+           // switch to backwards vectors relative to x2,y2
+           // x2,y2 are already the negative of x1,y1=>x2,y2
+           // to get px,py to be the negative of px,py=>x2,y2
+           // the dot product of two negated vectors is the same
+           // as the dot product of the two normal vectors
+           px = x2 - px;
+           py = y2 - py;
+           dotprod = px * x2 + py * y2;
+           if (dotprod <= 0.0) {
+               // px,py is on the side of x2,y2 away from x1,y1
+               // distance to segment is length of (backwards) px,py vector
+               // "length of its (clipped) projection" is now 0.0
+               projlenSq = 0.0;
+           } else {
+               // px,py is between x1,y1 and x2,y2
+               // dotprod is the length of the px,py vector
+               // projected on the x2,y2=>x1,y1 vector times the
+               // length of the x2,y2=>x1,y1 vector
+               projlenSq = dotprod * dotprod / (x2 * x2 + y2 * y2);
+           }
+       }
+       // Distance to line is now the length of the relative point
+       // vector minus the length of its projection onto the line
+       // (which is zero if the projection falls outside the range
+       //  of the line segment).
+       double lenSq = px * px + py * py - projlenSq;
+       if (lenSq < 0) {
+           lenSq = 0;
+       }
+       return lenSq;
+}
 
-static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
-		double y1, double x2, double y2) {
+static float flatnessSq(float x1,float y1,float x2,float y2,float px,float py)
+{
+    float lsq=lengthSq(x1,y1,x2,y2,px,py);
+    x2 -= x1;
+    y2 -= y1;
+    lsq/=(x2*x2+y2*y2);
+    return lsq;
+}
+
+static void subdivide_quad(float c[],float r[]) {
+        double x1 = c[0];
+        double y1 = c[1];
+        double ctrlx = c[2];
+        double ctrly = c[3];
+        double x2 = c[4];
+        double y2 = c[5];
+
+        r[4] = x2;
+        r[5] = y2;
+        x1 = (x1 + ctrlx) / 2.0;
+        y1 = (y1 + ctrly) / 2.0;
+        x2 = (x2 + ctrlx) / 2.0;
+        y2 = (y2 + ctrly) / 2.0;
+        ctrlx = (x1 + x2) / 2.0;
+        ctrly = (y1 + y2) / 2.0;
+        c[2] = x1;
+        c[3] = y1;
+        c[4] = ctrlx;
+        c[5] = ctrly;
+        r[0] = ctrlx;
+        r[1] = ctrly;
+        r[2] = x2;
+        r[3] = y2;
+}
+
+static double quad_length(double x0, double y0, double x1, double y1, double x2, double y2)
+{
+    double Ax = x0 - 2 * x1 + x2;
+    double Ay = y0 - 2 * y1 + y2;
+    double Bx = 2 * (x1 - x0);
+    double By = 2 * (y1 - y0);
+    double Cx = x0;
+    double Cy = y0;
+
+    double length = arc_length(Ax, Ay, Bx, By, Cx, Cy, 1);
+
+    if (!(std::isfinite(length)&&(length>=0)))
+        length=0;
+    return length;
+}
+
+static void add_stroke_quad_int(struct path *path, double x0, double y0, double x1,
+        double y1, double x2, double y2, double *line_pos) {
 	int i;
 
 	double Ax = x0 - 2 * x1 + x2;
@@ -1475,9 +1653,14 @@ static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
 	double Cx = x0;
 	double Cy = y0;
 
-	double cx, cy, ux, uy, vx, vy;
-	get_quadratic_bounds_oriented(x0, y0, x1, y1, x2, y2,
-			path->stroke_width + 1, &cx, &cy, &ux, &uy, &vx, &vy);
+    double length = arc_length(Ax, Ay, Bx, By, Cx, Cy, 1);
+
+    if (!(std::isfinite(length)&&(length>=0)))
+        length=0;
+
+    double cx, cy, ux, uy, vx, vy;
+    get_quadratic_bounds_oriented(x0, y0, x1, y1, x2, y2,
+                                  path->stroke_width+path->stroke_margin, &cx, &cy, &ux, &uy, &vx, &vy);
 
 	double a = -2 * dot(Ax, Ay, Ax, Ay);
 	double b = -3 * dot(Ax, Ay, Bx, By);
@@ -1501,7 +1684,7 @@ static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
 
 	struct geometry *g = &path->stroke_geoms[1];
 
-	int index = kv_size(g->vertices) / 12;
+    int index = kv_size(g->vertices) / 16;
 
 	for (i = 0; i < 4; ++i) {
 		kv_push_back(g->vertices, px[i]);
@@ -1516,7 +1699,11 @@ static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
 		kv_push_back(g->vertices, Cy);
 		kv_push_back(g->vertices, -b / (3 * a));
 		kv_push_back(g->vertices, path->stroke_width);
-	}
+        kv_push_back(g->vertices, *line_pos);
+        kv_push_back(g->vertices, length);
+        kv_push_back(g->vertices, 0);
+        kv_push_back(g->vertices, 0);
+    }
 
 	kv_push_back(g->indices, index);
 	kv_push_back(g->indices, index + 1);
@@ -1525,14 +1712,36 @@ static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
 	kv_push_back(g->indices, index);
 	kv_push_back(g->indices, index + 2);
 	kv_push_back(g->indices, index + 3);
+
+    *line_pos+=length;
+}
+
+static void add_stroke_quad(struct path *path, double x0, double y0, double x1,
+        double y1, double x2, double y2,int max_sub,float flatness, double *line_pos) {
+	if ((max_sub<=0)||(flatness==0)||(flatnessSq(x0,y0,x2,y2,x1,y1)<flatness)) { //FLATNESS
+        if (!((x0==x1)&&(x2==x1)&&(y0==y1)&&(y2==y1))) //Don't draw null segments
+            add_stroke_quad_int(path,x0,y0,x1,y1,x2,y2,line_pos);
+		return;
+	}
+	float c[6],d[6];
+	c[0]=x0;
+	c[1]=y0;
+	c[2]=x1;
+	c[3]=y1;
+	c[4]=x2;
+	c[5]=y2;
+	subdivide_quad(c,d);
+    add_stroke_quad(path,c[0],c[1],c[2],c[3],c[4],c[5],max_sub-1,flatness,line_pos);
+    add_stroke_quad(path,d[0],d[1],d[2],d[3],d[4],d[5],max_sub-1,flatness,line_pos);
 }
 
 #endif
 
 static void add_stroke_quad_dashed(struct path *path, double x0, double y0,
-		double x1, double y1, double x2, double y2, double *dash_offset) {
+        double x1, double y1, double x2, double y2, double *dash_offset,float flatness, double *line_pos) {
+	int divide=4;
 	if (path->num_dashes == 0) {
-		add_stroke_quad(path, x0, y0, x1, y1, x2, y2);
+        add_stroke_quad(path, x0, y0, x1, y1, x2, y2,divide,flatness, line_pos);
 		return;
 	}
 
@@ -1560,29 +1769,31 @@ static void add_stroke_quad_dashed(struct path *path, double x0, double y0,
 
 			double qout[6];
 			quad_segment(q, t0, t1, qout);
+            double ll=*line_pos+o0;
 			add_stroke_quad(path, qout[0], qout[1], qout[2], qout[3], qout[4],
-					qout[5]);
-		}
+                    qout[5],divide,flatness, &ll);
+        }
 
 		offset += path->dashes[i] + path->dashes[i + 1];
 		i = (i + 2) % path->num_dashes;
 	}
 
+    *line_pos+=length;
 	*dash_offset = fmod(length + *dash_offset, path->dash_length);
 }
 
 static void add_join_miter_revert(struct path *path, float x0, float y0,
-		float x1, float y1, float x2, float y2) {
+        float x1, float y1, float x2, float y2, double line_pos) {
 
 }
 
 static void add_join_miter_truncate(struct path *path, float x0, float y0,
-		float x1, float y1, float x2, float y2) {
+        float x1, float y1, float x2, float y2, double line_pos) {
 
 }
 
 static void add_join_bevel(struct path *path, float x0, float y0, float x1,
-		float y1, float x2, float y2) {
+        float y1, float x2, float y2, double line_pos) {
 	float v0x = x0 - x1; //P1->P0
 	float v0y = y0 - y1;
 	float v1x = x2 - x1; //P1->P2
@@ -1596,8 +1807,6 @@ static void add_join_bevel(struct path *path, float x0, float y0, float x1,
 
 	struct geometry *g = &path->stroke_geoms[0];
 
-	int index = kv_size(g->vertices) / 4;
-
 	float angle = acosf((v0x * v1x + v0y * v1y) / (len0 * len1));
 	float a2 = (M_PI - angle) / 2;
 	float ext = sin(a2) * path->stroke_width;
@@ -1610,49 +1819,14 @@ static void add_join_bevel(struct path *path, float x0, float y0, float x1,
 	float dy = -vx * ext;
 	float ow = path->stroke_width;
 	path->stroke_width = nw;
-	add_stroke_line(path, x1 - dx, y1 - dy, x1 + dx, y1 + dy);
+    line_pos-=ext;
+    add_stroke_line(path, x1 - dx, y1 - dy, x1 + dx, y1 + dy, &line_pos);
 	path->stroke_width = ow;
 
-	/*
-	 float w0 = nw / len0;
-	 float w1 = nw / len1;
-
-	 if (v0x * v1y - v0y * v1x < 0) { //>180°
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, -v0y * w0);
-	 kv_push_back(g->vertices, v0x * w0);
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, 0);
-	 kv_push_back(g->vertices, 0);
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, v1y * w1);
-	 kv_push_back(g->vertices, -v1x * w1);
-	 } else { //<180°
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, -v1y * w1);
-	 kv_push_back(g->vertices, v1x * w1);
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, 0);
-	 kv_push_back(g->vertices, 0);
-	 kv_push_back(g->vertices, x1);
-	 kv_push_back(g->vertices, y1);
-	 kv_push_back(g->vertices, v0y * w0);
-	 kv_push_back(g->vertices, -v0x * w0);
-	 }
-
-	 kv_push_back(g->indices, index);
-	 kv_push_back(g->indices, index + 1);
-	 kv_push_back(g->indices, index + 2);
-	 */
 }
 
 static void add_join_round(struct path *path, float x0, float y0, float x1,
-		float y1, float x2, float y2) {
+        float y1, float x2, float y2, double line_pos) {
 
 }
 
@@ -1677,19 +1851,19 @@ static int check_offset(struct path *path, float of) {
 }
 
 static void add_join(struct path *path, float x0, float y0, float x1, float y1,
-		float x2, float y2) {
+        float x2, float y2, double line_pos) {
 	switch (path->join_style) {
 	case PATHJOIN_MITER_REVERT:
-		add_join_miter_revert(path, x0, y0, x1, y1, x2, y2);
+        add_join_miter_revert(path, x0, y0, x1, y1, x2, y2, line_pos);
 		break;
 	case PATHJOIN_MITER_TRUNCATE:
-		add_join_miter_truncate(path, x0, y0, x1, y1, x2, y2);
+        add_join_miter_truncate(path, x0, y0, x1, y1, x2, y2, line_pos);
 		break;
 	case PATHJOIN_BEVEL:
-		add_join_bevel(path, x0, y0, x1, y1, x2, y2);
+        add_join_bevel(path, x0, y0, x1, y1, x2, y2, line_pos);
 		break;
 	case PATHJOIN_ROUND:
-		add_join_round(path, x0, y0, x1, y1, x2, y2);
+        add_join_round(path, x0, y0, x1, y1, x2, y2, line_pos);
 		break;
 	case PATHJOIN_NONE:
 		break;
@@ -1699,16 +1873,17 @@ static void add_join(struct path *path, float x0, float y0, float x1, float y1,
 typedef kvec_t(float)
 kvec_float_t;
 
-static void corner_start(kvec_float_t *v, float x, float y, float offset) {
+static void corner_start(kvec_float_t *v, float x, float y, float offset, double line_pos) {
 	kv_push_back(*v, x);
 	kv_push_back(*v, y);
-	kv_push_back(*v, offset);
+    kv_push_back(*v, offset);
+    kv_push_back(*v, line_pos);
 }
 
 static void corner_continue(kvec_float_t *v, float x0, float y0, float x1,
-		float y1, float offset) {
-	float x = kv_a(*v, kv_size(*v) - 3);
-	float y = kv_a(*v, kv_size(*v) - 2);
+        float y1, float offset, double line_pos) {
+    float x = kv_a(*v, kv_size(*v) - 4);
+    float y = kv_a(*v, kv_size(*v) - 3);
 
 	// TODO: check equality with epsilon
 	if (x != x0 || x != x1 || x0 != x1 || y != y0 || y != y1 || y0 != y1) {
@@ -1716,16 +1891,17 @@ static void corner_continue(kvec_float_t *v, float x0, float y0, float x1,
 		kv_push_back(*v, y0);
 		kv_push_back(*v, x1);
 		kv_push_back(*v, y1);
-		kv_push_back(*v, offset);
-	}
+        kv_push_back(*v, offset);
+        kv_push_back(*v, line_pos);
+    }
 }
 
 static void corner_end(kvec_float_t *v, float x, float y) {
 	float x0 = kv_a(*v, 0);
 	float y0 = kv_a(*v, 1);
 
-	float x1 = kv_a(*v, kv_size(*v) - 3);
-	float y1 = kv_a(*v, kv_size(*v) - 2);
+    float x1 = kv_a(*v, kv_size(*v) - 4);
+    float y1 = kv_a(*v, kv_size(*v) - 3);
 
 	// TODO: check equality with epsilon
 	if (x != x0 || x != x1 || x0 != x1 || y != y0 || y != y1 || y0 != y1) {
@@ -1734,8 +1910,9 @@ static void corner_end(kvec_float_t *v, float x, float y) {
 	} else {
 		kv_pop_back(*v);
 		kv_pop_back(*v);
-		kv_pop_back(*v);
-	}
+        kv_pop_back(*v);
+        kv_pop_back(*v);
+    }
 }
 
 static void update_bounds(float bounds[4], size_t num_vertices,
@@ -1771,6 +1948,7 @@ static void create_stroke_geometry(struct path *path) {
 	}
 
 	double offset = 0;
+    double line_pos = 0;
 
 	for (i = 0; i < kv_size(*reduced_paths); ++i) {
 		struct reduced_path *p = &kv_a(*reduced_paths, i);
@@ -1788,33 +1966,32 @@ static void create_stroke_geometry(struct path *path) {
 
 		float spx = 0, spy = 0;
 		float cpx = 0, cpy = 0;
-		float pepx = 0, pepy = 0;
 		float ncpx = 0, ncpy = 0;
 		float npepx = 0, npepy = 0;
 
 		for (j = 0; j < num_commands; ++j) {
 			switch (commands[j]) {
 			case PATHCMD_MOVE_TO:
-				corner_start(&corners, c0, c1, offset);
+                corner_start(&corners, c0, c1, offset, line_pos);
 				set(c0, c1, c0, c1);
 				spx = ncpx;
 				spy = ncpy;
 				icoord += 2;
 				break;
 				case PATHCMD_LINE_TO:
-				add_stroke_line_dashed(path, cpx, cpy, c0, c1, &offset);
-				corner_continue(&corners, (cpx + c0) / 2, (cpy + c1) / 2, c0, c1, offset);
+                add_stroke_line_dashed(path, cpx, cpy, c0, c1, &offset, &line_pos);
+                corner_continue(&corners, (cpx + c0) / 2, (cpy + c1) / 2, c0, c1, offset, line_pos);
 				set(c0, c1, c0, c1);
 				icoord += 2;
 				break;
 				case PATHCMD_QUADRATIC_CURVE_TO:
-				add_stroke_quad_dashed(path, cpx, cpy, c0, c1, c2, c3, &offset);
-				corner_continue(&corners, c0, c1, c2, c3, offset);
+                add_stroke_quad_dashed(path, cpx, cpy, c0, c1, c2, c3, &offset,path->stroke_flatness, &line_pos);
+                corner_continue(&corners, c0, c1, c2, c3, offset, line_pos);
 				set(c2, c3, c0, c1);
 				icoord += 4;
 				break;
 				case PATHCMD_CLOSE_PATH:
-				add_stroke_line_dashed(path, cpx, cpy, spx, spy, &offset);
+                add_stroke_line_dashed(path, cpx, cpy, spx, spy, &offset, &line_pos);
 				corner_end(&corners, (cpx + spx) / 2, (cpy + spy) / 2);
 				set(spx, spy, spx, spy);
 				closed = 1;
@@ -1823,33 +2000,32 @@ static void create_stroke_geometry(struct path *path) {
 
 			cpx = ncpx;
 			cpy = ncpy;
-			pepx = npepx;
-			pepy = npepy;
 		}
 
 		size_t ncorners = kv_size(corners);
 		if (!closed) {
-			if (ncorners > 7)
-				ncorners -= 7;
+            if (ncorners > 8)
+                ncorners -= 8;
 			else
 				ncorners = 0;
 		}
-		ncorners /= 5;
+        ncorners /= 6;
 
 		for (j = 0; j < ncorners; j++) {
 			int j0 = j;
 			int j1 = (j + 1) % ncorners;
 
-			float x0 = kv_a(corners, j0 * 5 + 3);
-			float y0 = kv_a(corners, j0 * 5 + 4);
-			float x1 = kv_a(corners, j1 * 5 + 0);
-			float y1 = kv_a(corners, j1 * 5 + 1);
-			float of = kv_a(corners, j1 * 5 + 2);
-			float x2 = kv_a(corners, j1 * 5 + 3);
-			float y2 = kv_a(corners, j1 * 5 + 4);
+            float x0 = kv_a(corners, j0 * 6 + 4);
+            float y0 = kv_a(corners, j0 * 6 + 5);
+            float x1 = kv_a(corners, j1 * 6 + 0);
+            float y1 = kv_a(corners, j1 * 6 + 1);
+            float of = kv_a(corners, j1 * 6 + 2);
+            float oo = kv_a(corners, j1 * 6 + 3);
+            float x2 = kv_a(corners, j1 * 6 + 4);
+            float y2 = kv_a(corners, j1 * 6 + 5);
 
 			if (check_offset(path, of))
-				add_join(path, x0, y0, x1, y1, x2, y2);
+                add_join(path, x0, y0, x1, y1, x2, y2, oo);
 		}
 
 		kv_free(corners);
@@ -1868,11 +2044,12 @@ static void create_stroke_geometry(struct path *path) {
 	path->stroke_bounds[3] = -1e30f;
 
 	update_bounds(path->stroke_bounds, kv_size(path->stroke_geoms[0].vertices),
-			kv_data(path->stroke_geoms[0].vertices), 4);
+			kv_data(path->stroke_geoms[0].vertices), 8);
 	update_bounds(path->stroke_bounds, kv_size(path->stroke_geoms[1].vertices),
-			kv_data(path->stroke_geoms[1].vertices), 12);
+			kv_data(path->stroke_geoms[1].vertices), 16);
 
-	for (i = 0; i < 2; ++i) {
+    RENDER_LOCK();
+    for (i = 0; i < 2; ++i) {
 
 		path->stroke_geoms[i].vertex_buffer->assign(
 				kv_data(path->stroke_geoms[i].vertices),
@@ -1898,6 +2075,7 @@ static void create_stroke_geometry(struct path *path) {
 		kv_free(path->stroke_geoms[i].vertices);
 		kv_free(path->stroke_geoms[i].indices);
 	}
+    RENDER_UNLOCK();
 }
 
 static void add_fill_line(struct path *p, float xc, float yc, float x0,
@@ -2096,7 +2274,6 @@ static void create_fill_geometry(struct path *path) {
 
 		float spx = 0, spy = 0;
 		float cpx = 0, cpy = 0;
-		float pepx = 0, pepy = 0;
 		float ncpx = 0, ncpy = 0;
 		float npepx = 0, npepy = 0;
 
@@ -2132,8 +2309,6 @@ static void create_fill_geometry(struct path *path) {
 
 			cpx = ncpx;
 			cpy = ncpy;
-			pepx = npepx;
-			pepy = npepy;
 		}
 
 		if (closed == 0) {
@@ -2162,7 +2337,8 @@ static void create_fill_geometry(struct path *path) {
 	update_bounds(path->fill_bounds, kv_size(path->fill_geoms[3].vertices),
 			kv_data(path->fill_geoms[3].vertices), 4);
 
-	path->fill_bounds_vbo->resize(8);
+    RENDER_LOCK();
+    path->fill_bounds_vbo->resize(8);
 	(*path->fill_bounds_vbo)[0] = path->fill_bounds[0];
 	(*path->fill_bounds_vbo)[1] = path->fill_bounds[1];
 	(*path->fill_bounds_vbo)[2] = path->fill_bounds[2];
@@ -2199,6 +2375,7 @@ static void create_fill_geometry(struct path *path) {
 	kv_data(m.indices) + kv_size(m.indices));
 	path->fill_vertex_buffer->Update();
 	path->fill_index_buffer->Update();
+    RENDER_UNLOCK();
 
 	free_merger4f(&m);
 
@@ -2283,6 +2460,8 @@ static void init_path_rendering() {
 	command_coords['A'] = 7;
 	command_coords[PATHCMD_RELATIVE_ARC_TO] = 7;
 	command_coords['a'] = 7;
+	command_coords['B'] = 1;
+	command_coords['b'] = 1;
 }
 
 static void cleanup_path_rendering() //TODO Call this
@@ -2299,7 +2478,7 @@ static struct path *get_path(unsigned int path) {
 	return kh_val(paths, iter);
 }
 
-static void stroke_path(unsigned int path, const Matrix4 *xform) {
+static void stroke_path(unsigned int path, const Matrix4 *xform, Sprite *spr) {
 	khiter_t iter = kh_get(path, paths, path);
 	if (iter == kh_end(paths))
 		return;
@@ -2313,17 +2492,19 @@ static void stroke_path(unsigned int path, const Matrix4 *xform) {
 
 	if (p->stroke_geoms[0].count > 0) {
 		VertexBuffer<float> *vb = p->stroke_geoms[0].vertex_buffer;
-		VertexBuffer<unsigned short> *ib = p->stroke_geoms[0].index_buffer;
-		ShaderProgram::pathShaderStrokeLC->setConstant(1,
-				ShaderProgram::CMATRIX, 1, xform->data());
-		ShaderProgram::pathShaderStrokeLC->setConstant(3, ShaderProgram::CFLOAT,
-				1, &p->stroke_feather);
-		ShaderProgram::pathShaderStrokeLC->setData(ShaderProgram::DataVertex,
-				ShaderProgram::DFLOAT, 4, &((*vb)[0]), vb->size() / 4,
-				vb->modified, &vb->bufferCache);
-		ShaderProgram::pathShaderStrokeLC->drawElements(
+        VertexBuffer<unsigned int> *ib = p->stroke_geoms[0].index_buffer;
+		ShaderProgram *shp=spr->getShader(ShaderEngine::STDP_PATHSTROKELINE);
+		shp->setConstant(1,	ShaderProgram::CMATRIX, 1, xform->data());
+		shp->setConstant(3, ShaderProgram::CFLOAT, 1, &p->stroke_feather);
+        shp->setData(0,
+                ShaderProgram::DFLOAT, 4, &((*vb)[0]), vb->size() / 4,
+                vb->modified, &vb->bufferCache,32,0);
+        shp->setData(1,
+                ShaderProgram::DFLOAT, 4, &((*vb)[0]), vb->size() / 4,
+                vb->modified, &vb->bufferCache,32,16);
+        shp->drawElements(
 				ShaderProgram::Triangles, p->stroke_geoms[0].count,
-				ShaderProgram::DUSHORT, &((*ib)[0]), ib->modified,
+                ShaderProgram::DINT, &((*ib)[0]), ib->modified,
 				&ib->bufferCache);
 		vb->modified = false;
 		ib->modified = false;
@@ -2331,7 +2512,7 @@ static void stroke_path(unsigned int path, const Matrix4 *xform) {
 
 	if (p->stroke_geoms[1].count > 0) {
 		VertexBuffer<float> *vb = p->stroke_geoms[1].vertex_buffer;
-		VertexBuffer<unsigned short> *ib = p->stroke_geoms[1].index_buffer;
+        VertexBuffer<unsigned int> *ib = p->stroke_geoms[1].index_buffer;
 
 #if 0
 		float w0x, w0y,w1x,w1y;
@@ -2359,22 +2540,24 @@ static void stroke_path(unsigned int path, const Matrix4 *xform) {
 		ib->modified = false;
 
 #else
-		ShaderProgram::pathShaderStrokeC->setConstant(1, ShaderProgram::CMATRIX,
-				1, xform->data());
-		ShaderProgram::pathShaderStrokeC->setConstant(3, ShaderProgram::CFLOAT,
-				1, &p->stroke_feather);
-		ShaderProgram::pathShaderStrokeC->setData(0, ShaderProgram::DFLOAT, 4,
-				&((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 48,
+		ShaderProgram *shp=spr->getShader(ShaderEngine::STDP_PATHSTROKECURVE);
+		shp->setConstant(1, ShaderProgram::CMATRIX, 1, xform->data());
+		shp->setConstant(3, ShaderProgram::CFLOAT, 1, &p->stroke_feather);
+		shp->setData(0, ShaderProgram::DFLOAT, 4,
+                &((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 64,
 				0);
 		vb->modified = false;
-		ShaderProgram::pathShaderStrokeC->setData(1, ShaderProgram::DFLOAT, 4,
-				&((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 48,
+		shp->setData(1, ShaderProgram::DFLOAT, 4,
+                &((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 64,
 				16);
-		ShaderProgram::pathShaderStrokeC->setData(2, ShaderProgram::DFLOAT, 4,
-				&((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 48,
-				32);
-		ShaderProgram::pathShaderStrokeC->drawElements(ShaderProgram::Triangles,
-				p->stroke_geoms[1].count, ShaderProgram::DUSHORT, &((*ib)[0]),
+        shp->setData(2, ShaderProgram::DFLOAT, 4,
+                &((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 64,
+                32);
+        shp->setData(3, ShaderProgram::DFLOAT, 4,
+                &((*vb)[0]), vb->size() / 4, vb->modified, &vb->bufferCache, 64,
+                48);
+        shp->drawElements(ShaderProgram::Triangles,
+                p->stroke_geoms[1].count, ShaderProgram::DINT, &((*ib)[0]),
 				ib->modified, &ib->bufferCache);
 		ib->modified = false;
 #endif
@@ -2383,7 +2566,7 @@ static void stroke_path(unsigned int path, const Matrix4 *xform) {
 }
 
 static void fill_path(unsigned int path, int fill_mode,
-		ShaderEngine::DepthStencil stencil, const Matrix4 *xform) {
+		ShaderEngine::DepthStencil stencil, const Matrix4 *xform, Sprite *spr) {
 	struct path *p = NULL;
 
 	khiter_t iter = kh_get(path, paths, path);
@@ -2421,14 +2604,12 @@ static void fill_path(unsigned int path, int fill_mode,
 		p->is_fill_dirty = 0;
 	}
 
-	ShaderProgram::pathShaderFillC->setConstant(1, ShaderProgram::CMATRIX, 1,
-			xform->data());
+	ShaderProgram *shp=spr->getShader(ShaderEngine::STDP_PATHFILLCURVE);
+
+	shp->setConstant(1, ShaderProgram::CMATRIX, 1,	xform->data());
 
 	VertexBuffer<vector4f> *vb = p->fill_vertex_buffer;
-	VertexBuffer<unsigned short> *ib = p->fill_index_buffer;
-	ShaderProgram::pathShaderFillC->setData(0, ShaderProgram::DFLOAT, 4,
-			&((*vb)[0]), vb->size(), vb->modified, &vb->bufferCache);
-	vb->modified = false;
+    VertexBuffer<unsigned int> *ib = p->fill_index_buffer;
 	/*
 	 glog_d("Fill path: VB Size:%d",vb->size());
 	 for (int k=0;k<vb->size();k++)
@@ -2439,40 +2620,320 @@ static void fill_path(unsigned int path, int fill_mode,
 	 */
 	if (p->fill_counts[0] > 0) {
 		stencil.sFail = front;
-		if (fill_mode!=PATHFILLMODE_DIRECT)
+		if (fill_mode != PATHFILLMODE_DIRECT)
 			ShaderEngine::Engine->setDepthStencil(stencil);
 		stencil.sClear = false;
 		//glog_d("Fill path: Fill0=%d S=%d",p->fill_counts[0],p->fill_starts[0]);
-		ShaderProgram::pathShaderFillC->drawElements(ShaderProgram::Triangles,
-				ib->size(), ShaderProgram::DUSHORT, &((*ib)[0]), ib->modified,
+        shp->setData(0, ShaderProgram::DFLOAT, 4,
+                                                vb->size() ? &((*vb)[0]) : NULL, vb->size(), vb->modified,
+                                                &vb->bufferCache);
+        vb->modified = false;
+		shp->drawElements(ShaderProgram::Triangles,
+                ib->size(), ShaderProgram::DINT, &((*ib)[0]), ib->modified,
 				&ib->bufferCache, p->fill_starts[0], p->fill_counts[0]);
 		ib->modified = false;
 	}
 
 	if (p->fill_counts[1] > 0) {
 		stencil.sFail = back;
-		if (fill_mode!=PATHFILLMODE_DIRECT)
+		if (fill_mode != PATHFILLMODE_DIRECT)
 			ShaderEngine::Engine->setDepthStencil(stencil);
 		stencil.sClear = false;
 		//glog_d("Fill path: Fill1=%d S=%d",p->fill_counts[1],p->fill_starts[1]);
-		ShaderProgram::pathShaderFillC->drawElements(ShaderProgram::Triangles,
-				ib->size(), ShaderProgram::DUSHORT, &((*ib)[0]), ib->modified,
+        shp->setData(0, ShaderProgram::DFLOAT, 4,
+                                                vb->size() ? &((*vb)[0]) : NULL, vb->size(), vb->modified,
+                                                &vb->bufferCache);
+        vb->modified = false;
+		shp->drawElements(ShaderProgram::Triangles,
+                ib->size(), ShaderProgram::DINT, &((*ib)[0]), ib->modified,
 				&ib->bufferCache, p->fill_starts[1], p->fill_counts[1]);
 		ib->modified = false;
 	}
 	stencil.sClear = false;
 }
 
-int Path2D::buildPath(PrPath *ppath)
-{
+static void get_path_points_line(float sx, float sy, float dx, float dy,
+		float &offset, float interval, int &maxpts,
+		std::vector<Path2D::PathPoint> &pts, float &toffset, bool last) {
+	if (!maxpts)
+		return;
+	float dist = sqrtf((dx - sx)*(dx - sx) + (dy - sy)*(dy - sy));
+	if (!dist)
+		return;
+	if (interval) {
+		if (offset < dist) {
+			float ey = (dy - sy) / dist;
+			float ex = (dx - sx) / dist;
+			float ea = atan2f(ex, -ey);
+			while (offset < dist) {
+				Path2D::PathPoint p;
+				p.x = sx + offset * ex;
+				p.y = sy + offset * ey;
+				p.angle = ea;
+				p.offset = toffset;
+				pts.push_back(p);
+				if (!--maxpts)
+					break;
+				offset += interval;
+				toffset += interval;
+			}
+		}
+	}
+	else {
+		float ey = (dy - sy) / dist;
+		float ex = (dx - sx) / dist;
+		float ea = atan2f(ex, -ey);
+		Path2D::PathPoint p;
+		p.x = sx;
+		p.y = sy;
+		p.angle = ea;
+		p.offset = toffset;
+		pts.push_back(p);
+		toffset += dist;
+		if (last) {
+			p.x = dx;
+			p.y = dy;
+			p.offset = toffset;
+			pts.push_back(p);
+		}
+	}
+	offset -= dist;
+}
+
+static void get_path_points_curve(float sx, float sy, float tx, float ty,
+		float dx, float dy, float &offset, float interval, int &maxpts,
+		std::vector<Path2D::PathPoint> &pts, float flatSq,int maxsub, float &toffset, bool last) {
+	if (!maxpts)
+		return;
+	if ((maxsub<=0)||(lengthSq(sx,sy,dx,dy,tx,ty)<flatSq)) {
+		get_path_points_line(sx,sy,dx,dy,offset,interval,maxpts,pts,toffset,last);
+		return;
+	}
+	float c[6],d[6];
+	c[0]=sx;
+	c[1]=sy;
+	c[2]=tx;
+	c[3]=ty;
+	c[4]=dx;
+	c[5]=dy;
+	subdivide_quad(c,d);
+	get_path_points_curve(c[0],c[1],c[2],c[3],c[4],c[5],offset,interval,maxpts,pts,flatSq,maxsub-1,toffset,false);
+	get_path_points_curve(d[0],d[1],d[2],d[3],d[4],d[5],offset,interval,maxpts,pts,flatSq,maxsub-1,toffset,last);
+}
+
+
+#define c0 coords[icoord]
+#define c1 coords[icoord + 1]
+#define c2 coords[icoord + 2]
+#define c3 coords[icoord + 3]
+
+#define set(x1, y1) ncpx = x1; ncpy = y1;
+
+static void get_path_points(struct path *path, float &offset, float interval,
+		int &maxpts, float flatSq,int maxsub,std::vector<Path2D::PathPoint> &pts) {
+
+	reduced_path_vec *reduced_paths = &path->reduced_paths;
+
+	size_t i, j;
+	float toffset=offset;
+
+	for (i = 0; i < kv_size(*reduced_paths); ++i) {
+		struct reduced_path *p = &kv_a(*reduced_paths, i);
+
+		size_t num_commands = kv_size(p->commands);
+		unsigned char *commands = kv_data(p->commands);
+		float *coords = kv_data(p->coords);
+
+		int icoord = 0;
+
+		float spx = 0, spy = 0;
+		float cpx = 0, cpy = 0;
+		float ncpx = 0, ncpy = 0;
+
+		for (j = 0; j < num_commands; ++j) {
+			bool last=(j==(num_commands-1));
+			switch (commands[j]) {
+			case PATHCMD_MOVE_TO:
+                set(c0, c1);
+				spx = ncpx;
+				spy = ncpy;
+				icoord += 2;
+				break;
+			case PATHCMD_LINE_TO:
+				get_path_points_line(cpx, cpy, c0,c1,offset,interval,maxpts,pts,toffset,last);
+                set(c0, c1);
+				icoord += 2;
+				break;
+				case PATHCMD_QUADRATIC_CURVE_TO:
+				get_path_points_curve(cpx,cpy, c0,c1,c2,c3,offset,interval,maxpts,pts,flatSq,maxsub,toffset,last);
+                set(c2, c3);
+				icoord += 4;
+				break;
+				case PATHCMD_CLOSE_PATH:
+				get_path_points_line(cpx,cpy, spx,spy,offset,interval,maxpts,pts,toffset,last);
+                set(spx, spy);
+				break;
+			}
+
+			cpx = ncpx;
+			cpy = ncpy;
+		}
+	}
+}
+
+static float get_path_offset(struct path *path, float px, float py, float accuracy, float &nextSegment) {
+
+    reduced_path_vec *reduced_paths = &path->reduced_paths;
+
+    size_t i, j;
+    float toffset=0;
+
+    for (i = 0; i < kv_size(*reduced_paths); ++i) {
+        struct reduced_path *p = &kv_a(*reduced_paths, i);
+
+        size_t num_commands = kv_size(p->commands);
+        unsigned char *commands = kv_data(p->commands);
+        float *coords = kv_data(p->coords);
+
+        int icoord = 0;
+
+        float spx = 0, spy = 0;
+        float cpx = 0, cpy = 0;
+        float ncpx = 0, ncpy = 0;
+
+        float dist=0;
+        for (j = 0; j < num_commands; ++j) {
+            switch (commands[j]) {
+            case PATHCMD_MOVE_TO:
+                set(c0, c1);
+                spx = ncpx;
+                spy = ncpy;
+                icoord += 2;
+                break;
+            case PATHCMD_LINE_TO:
+                dist = sqrtf((c0 - cpx)*(c0 - cpx) + (c1 - cpy)*(c1 - cpy));
+                set(c0, c1);
+                icoord += 2;
+                break;
+            case PATHCMD_QUADRATIC_CURVE_TO:
+                dist=quad_length(cpx,cpy,c0,c1,c2,c3);
+                set(c2, c3);
+                icoord += 4;
+                break;
+            case PATHCMD_CLOSE_PATH:
+                dist = sqrtf((spx - cpx)*(spx - cpx) + (spy - cpy)*(spy - cpy));
+                set(spx, spy);
+                break;
+            }
+
+            if (commands[j]!=PATHCMD_MOVE_TO) {
+                float pcheck = sqrtf((px - cpx)*(px - cpx) + (py - cpy)*(py - cpy));
+                if (pcheck<=accuracy)
+                {
+                    nextSegment=dist;
+                    return toffset;
+                }
+            }
+
+            toffset+=dist;
+            cpx = ncpx;
+            cpy = ncpy;
+        }
+    }
+    nextSegment=0;
+    return toffset;
+}
+
+
+static float get_path_segment(struct path *path, unsigned int start,unsigned int end, float &length, float &nextSegment) {
+
+    reduced_path_vec *reduced_paths = &path->reduced_paths;
+
+    size_t i, j;
+    float soffset=0;
+    float eoffset=0;
+    float toffset=0;
+    bool hasEnd=false;
+
+    for (i = 0; i < kv_size(*reduced_paths); ++i) {
+        struct reduced_path *p = &kv_a(*reduced_paths, i);
+
+        size_t num_commands = kv_size(p->commands);
+        unsigned char *commands = kv_data(p->commands);
+        float *coords = kv_data(p->coords);
+        unsigned int *idx = kv_data(p->indices);
+
+        int icoord = 0;
+
+        float spx = 0, spy = 0;
+        float cpx = 0, cpy = 0;
+        float ncpx = 0, ncpy = 0;
+
+        float dist=0;
+        for (j = 0; j < num_commands; ++j) {
+            switch (commands[j]) {
+            case PATHCMD_MOVE_TO:
+                set(c0, c1);
+                spx = ncpx;
+                spy = ncpy;
+                icoord += 2;
+                break;
+            case PATHCMD_LINE_TO:
+                dist = sqrtf((c0 - cpx)*(c0 - cpx) + (c1 - cpy)*(c1 - cpy));
+                set(c0, c1);
+                icoord += 2;
+                break;
+            case PATHCMD_QUADRATIC_CURVE_TO:
+                dist=quad_length(cpx,cpy,c0,c1,c2,c3);
+                set(c2, c3);
+                icoord += 4;
+                break;
+            case PATHCMD_CLOSE_PATH:
+                dist = sqrtf((spx - cpx)*(spx - cpx) + (spy - cpy)*(spy - cpy));
+                set(spx, spy);
+                break;
+            }
+
+            if (idx[j]&&(idx[j]==start))
+                soffset=toffset;
+
+            if (idx[j]&&(idx[j]==end)) {
+                eoffset=toffset;
+                hasEnd=true;
+            }
+
+            if (idx[j]&&hasEnd&&(idx[j]>end)) {
+                length=eoffset-soffset;
+                nextSegment=toffset-eoffset;
+                return soffset;
+            }
+            toffset+=dist;
+
+            cpx = ncpx;
+            cpy = ncpy;
+        }
+    }
+    nextSegment=hasEnd?(toffset-eoffset):0;
+    length=(hasEnd?eoffset:toffset)-soffset;
+    return soffset;
+}
+
+
+#undef c0
+#undef c1
+#undef c2
+#undef c3
+
+#undef set
+
+int Path2D::buildPath(PrPath *ppath) {
 	int path = gen_paths(1);
 	path_commands(path, ppath->numCommands, ppath->commands, ppath->numCoords,
 			ppath->coords);
 	return path;
 }
 
-void Path2D::removePath(int path)
-{
+void Path2D::removePath(int path) {
 	delete_paths(path, 1);
 }
 
@@ -2495,8 +2956,72 @@ Path2D::Path2D(Application* application) :
 	path = gen_paths(1);
 	texturebase_ = NULL;
 	convex_ = false;
-	setFillColor(0xFFFFFF, 1);
+    thickness_ = 1;
+    margin_ = 1;
+    feather_ = 0.25;
+    flatness_ = 0;
+    setFillColor(0xFFFFFF, 1);
 	setLineColor(0x0, 1);
+}
+
+void Path2D::cloneFrom(Path2D *s)
+{
+    Sprite::cloneFrom(s);
+    path = gen_paths(1);
+
+    texturebase_ = s->texturebase_;
+    if (texturebase_)
+        texturebase_->ref();
+    textureMatrix_=s->textureMatrix_;
+
+    minx_ = s->minx_;
+    miny_ = s->miny_;
+    maxx_ = s->maxx_;
+    maxy_ = s->maxy_;
+
+    fillr_ = s->fillr_, fillg_ = s->fillg_, fillb_ = s->fillb_, filla_ = s->filla_;
+    liner_ = s->liner_, lineg_ = s->lineg_, lineb_ = s->lineb_, linea_ = s->linea_;
+    convex_=s->convex_,
+    thickness_ = s->thickness_, margin_ = s->margin_, feather_ = s->feather_, flatness_ = s->flatness_;
+
+    c1_=s->c1_; c2_=s->c2_; c3_=s->c3_; c4_=s->c4_;
+    a1_=s->a1_; a2_=s->a2_; a3_=s->a3_; a4_=s->a4_;
+    colors_.assign(s->colors_.cbegin(),s->colors_.cend());
+    colors_.Update();
+
+    struct path *sp = get_path(s->path);
+    if (sp) {
+        struct path *p = (struct path*) malloc(sizeof(struct path));
+        kh_value(paths, kh_end(paths)) = p;
+        *p=*sp;
+
+
+        for (int i = 0; i < 2; ++i) {
+            p->stroke_geoms[i].vertex_buffer = new VertexBuffer<float>();
+            p->stroke_geoms[i].vertex_buffer->assign(sp->stroke_geoms[i].vertex_buffer->cbegin(),sp->stroke_geoms[i].vertex_buffer->cend());
+            p->stroke_geoms[i].vertex_buffer->Update();
+            p->stroke_geoms[i].index_buffer = new VertexBuffer<unsigned int>();
+            p->stroke_geoms[i].index_buffer->assign(sp->stroke_geoms[i].index_buffer->cbegin(),sp->stroke_geoms[i].index_buffer->cend());
+            p->stroke_geoms[i].index_buffer->Update();
+        }
+
+        p->fill_vertex_buffer = new VertexBuffer<vector4f>();
+        p->fill_vertex_buffer->assign(sp->fill_vertex_buffer->cbegin(),sp->fill_vertex_buffer->cend());
+        p->fill_vertex_buffer->Update();
+        p->fill_index_buffer = new VertexBuffer<unsigned int>();
+        p->fill_index_buffer->assign(sp->fill_index_buffer->cbegin(),sp->fill_index_buffer->cend());
+        p->fill_index_buffer->Update();
+        p->fill_bounds_vbo = new VertexBuffer<float>();
+        p->fill_bounds_vbo->assign(sp->fill_bounds_vbo->cbegin(),sp->fill_bounds_vbo->cend());
+        p->fill_bounds_vbo->Update();
+
+        p->commands = (unsigned char*) malloc(p->num_commands * sizeof(unsigned char));
+        memcpy(p->commands, sp->commands, p->num_commands * sizeof(unsigned char));
+        p->coords = (float *) malloc(p->num_coords * sizeof(float));
+        memcpy(p->coords, sp->coords, p->num_coords * sizeof(float));
+
+        set_path(path);
+    }
 }
 
 Path2D::~Path2D() {
@@ -2504,6 +3029,38 @@ Path2D::~Path2D() {
 		texturebase_->unref();
 	delete_paths(path, 1);
 }
+
+void Path2D::getPathPoints(float offset, float advance,int max, float flatness, int maxsub,std::vector<PathPoint> &points)
+{
+	struct path *p = get_path(path);
+	if (p) {
+		float ro=offset;
+		int rm=max;
+		get_path_points(p,ro,advance,rm,flatness*flatness,maxsub,points);
+	}
+}
+
+float Path2D::getPathOffset(float px, float py, float accuracy, float &nextSegment)
+{
+    struct path *p = get_path(path);
+    if (p) {
+        return get_path_offset(p,px,py,accuracy,nextSegment);
+    }
+    nextSegment=0;
+    return 0;
+}
+
+float Path2D::getSegmentSize(unsigned int start,unsigned int end, float &length, float &nextSegment)
+{
+    struct path *p = get_path(path);
+    if (p) {
+        return get_path_segment(p,start, end, length, nextSegment);
+    }
+    length=0;
+    nextSegment=0;
+    return 0;
+}
+
 
 void Path2D::setFillColor(unsigned int color, float alpha) {
 	int r = (color >> 16) & 0xff;
@@ -2515,7 +3072,7 @@ void Path2D::setFillColor(unsigned int color, float alpha) {
 	fillb_ = b / 255.f;
 	filla_ = alpha;
 
-	getPathBounds(path,filla_ > 0,linea_ > 0,&minx_,&miny_,&maxx_,&maxy_);
+	getPathBounds(path, filla_ > 0, linea_ > 0, &minx_, &miny_, &maxx_, &maxy_);
 }
 
 void Path2D::setLineColor(unsigned int color, float alpha) {
@@ -2528,159 +3085,205 @@ void Path2D::setLineColor(unsigned int color, float alpha) {
 	lineb_ = b / 255.f;
 	linea_ = alpha;
 
-	getPathBounds(path,filla_ > 0,linea_ > 0,&minx_,&miny_,&maxx_,&maxy_);
+	getPathBounds(path, filla_ > 0, linea_ > 0, &minx_, &miny_, &maxx_, &maxy_);
 }
 
-void Path2D::setLineThickness(float thickness, float feather) {
+void Path2D::setLineThickness(float thickness, float feather, float margin, float flatness) {
+    bool changed=false;
+    if (thickness!=thickness_) {
+        thickness_ = thickness;
+        changed=true;
+    }
+    if ((feather >= 0) && (feather <= 1.0) &&(feather_!=feather)) {
+        feather_ = feather;
+        changed=true;
+    }
+    if ((margin>=0)&&(margin_!=margin)) {
+        margin_=margin;
+        changed=true;
+    }
+    if ((flatness>=0)&&(flatness_!=flatness)) {
+        flatness_=flatness;
+        changed=true;
+    }
+
 	struct path *p = get_path(path);
-	if (p) {
-		p->stroke_width = thickness;
-		if ((feather >= 0) && (feather <= 1.0))
-			p->stroke_feather = feather;
-		p->is_stroke_dirty=1;
-		getPathBounds(path,filla_ > 0,linea_ > 0,&minx_,&miny_,&maxx_,&maxy_);
+    if (p&&changed) {
+        p->stroke_width = thickness_;
+        p->stroke_feather = feather_;
+        p->stroke_margin=margin_;
+        p->stroke_flatness=flatness_;
+        p->is_stroke_dirty = 1;
+        getPathBounds(path, filla_ > 0, linea_ > 0, &minx_, &miny_, &maxx_,
+                &maxy_);
 	}
 }
 
 void Path2D::setConvex(bool convex) {
-	convex_ = convex;
+    convex_ = convex;
 }
 
-void Path2D::impressPath(int path,Matrix4 xform,ShaderEngine::DepthStencil stencil) {
+void Path2D::impressPath(int path, Matrix4 xform,
+		ShaderEngine::DepthStencil stencil) {
 	struct path *p = get_path(path);
 	if (!p)
 		return; //No PATH
 
 	stencil.sFunc = ShaderEngine::STENCIL_NEVER;
-	fill_path(path, PATHFILLMODE_COUNT_UP, stencil, &xform);
+	fill_path(path, PATHFILLMODE_COUNT_UP, stencil, &xform, this);
 }
 
-void Path2D::fillBounds(VertexBuffer<float> *vb,float *fill,TextureData *texture,ShaderEngine::DepthStencil stencil,ShaderProgram *shp,const Matrix4 *textureMatrix)
-{
+void Path2D::fillBounds(VertexBuffer<float> *vb, float *fill,
+		TextureData *texture, ShaderEngine::DepthStencil stencil,
+		const Matrix4 *textureMatrix,VertexBuffer<unsigned char> *cb) {
 	glPushColor();
 	glMultColor(fill[0], fill[1], fill[2], fill[3]);
 
-	stencil.sFunc = ShaderEngine::STENCIL_NOTEQUAL;
 	stencil.sFail = ShaderEngine::STENCIL_KEEP;
-	stencil.sRef = 0;
-	stencil.sMask = 0xFF;
 	ShaderEngine::Engine->setDepthStencil(stencil);
-
+	ShaderProgram *shp;
 	VertexBuffer<unsigned short> *ib = quadIndices;
-	if (texture)
-	{
-		float sx=((float)texture->width)/texture->exwidth;
-		float sy=((float)texture->height)/texture->exheight;
-		float texcoords[8]=	{ 0,0,sx,0,sx,sy,0,sy };
+	if (texture) {
+		float sx = ((float) texture->width) / texture->exwidth;
+		float sy = ((float) texture->height) / texture->exheight;
+		float texcoords[8] = { 0, 0, sx, 0, sx, sy, 0, sy };
 		if (textureMatrix)
-			for (int k=0;k<8;k+=2)
-				textureMatrix->transformPoint(texcoords[k], texcoords[k+1], texcoords+k,texcoords+k+1);
-		if (!shp) shp=ShaderProgram::stdTexture;
-        ShaderEngine::Engine->bindTexture(0,texture->id());
-        shp->setData(ShaderProgram::DataTexture,ShaderProgram::DFLOAT,2,texcoords,4,true,NULL);
+			for (int k = 0; k < 8; k += 2)
+				textureMatrix->transformPoint(texcoords[k], texcoords[k + 1],
+						texcoords + k, texcoords + k + 1);
+		shp=getShader(ShaderEngine::STDP_TEXTURE);
+		ShaderEngine::Engine->bindTexture(0, texture->id());
+		shp->setData(ShaderProgram::DataTexture, ShaderProgram::DFLOAT, 2,
+				texcoords, 4, true, NULL);
+	} else {
+	    if (cb&&(!cb->empty()))
+	    {
+			shp=getShader(ShaderEngine::STDP_COLOR);
+	        shp->setData(ShaderProgram::DataColor,ShaderProgram::DUBYTE,4,&((*cb)[0]),cb->size()/4,cb->modified,&cb->bufferCache);
+	        cb->modified=false;
+	    }
+	    else {
+			shp=getShader(ShaderEngine::STDP_BASIC);
+	    }
 	}
-	else
-	{
-		if (!shp) shp=ShaderProgram::stdBasic;
-	}
-	shp->setData(ShaderProgram::DataVertex,
-			ShaderProgram::DFLOAT, 2, &((*vb)[0]), vb->size() / 2,
-			vb->modified, &vb->bufferCache);
-	shp->drawElements(ShaderProgram::TriangleStrip,
-			ib->size(), ShaderProgram::DUSHORT, &((*ib)[0]),
-			ib->modified, &ib->bufferCache);
+
+	shp->setData(ShaderProgram::DataVertex, ShaderProgram::DFLOAT, 2,
+			&((*vb)[0]), vb->size() / 2, vb->modified, &vb->bufferCache);
+	shp->drawElements(ShaderProgram::TriangleStrip, ib->size(),
+			ShaderProgram::DUSHORT, &((*ib)[0]), ib->modified,
+			&ib->bufferCache);
 	vb->modified = false;
 	ib->modified = false;
 
 	glPopColor();
 }
 
-void Path2D::fillPath(int path,Matrix4 xform,float fill[4],TextureData *texture,bool convex,ShaderProgram *shp,const Matrix4 *textureMatrix) {
+void Path2D::fillPath(int path, Matrix4 xform, float fill[4],
+		TextureData *texture, bool convex,
+		const Matrix4 *textureMatrix,VertexBuffer<unsigned char> *cb) {
 	struct path *p = get_path(path);
 	if (!p)
 		return; //No PATH
 	if (fill[3] > 0) {
 		if (p->is_fill_dirty) {
-				//glog_d("Fill path: Generating");
-				create_fill_geometry(p);
-				p->is_fill_dirty = 0;
+			//glog_d("Fill path: Generating");
+			create_fill_geometry(p);
+			p->is_fill_dirty = 0;
 		}
 
-		if ((texture==NULL)&&(convex||(p->fill_counts[0]==0)||(p->fill_counts[1]==0))) {
+		if ((texture == NULL) && ((!cb)||(cb->empty()))
+				&& (convex || (p->fill_counts[0] == 0)
+						|| (p->fill_counts[1] == 0))) {
 			ShaderEngine::DepthStencil stencil;
-			memset(&stencil, sizeof(stencil), 0);
+			memset(&stencil, 0, sizeof(stencil));
 			glPushColor();
 			glMultColor(fill[0], fill[1], fill[2], fill[3]);
-			fill_path(path, PATHFILLMODE_DIRECT, stencil, &xform);
+			fill_path(path, PATHFILLMODE_DIRECT, stencil, &xform,this);
 			glPopColor();
 		} else {
 			ShaderEngine::DepthStencil stencil =
 					ShaderEngine::Engine->pushDepthStencil();
-			ShaderEngine::Engine->pushClip(p->fill_bounds[0],p->fill_bounds[1],
-					p->fill_bounds[2]-p->fill_bounds[0]+1,
-					p->fill_bounds[3]-p->fill_bounds[1]+1);
+			/*
+			ShaderEngine::Engine->pushClip(p->fill_bounds[0], p->fill_bounds[1],
+					p->fill_bounds[2] - p->fill_bounds[0] + 1,
+					p->fill_bounds[3] - p->fill_bounds[1] + 1);
+					*/
+            int exMask=0;
+            if ((stencil.sFunc==ShaderEngine::STENCIL_EQUAL)&&(stencil.sRef==(int)stencil.sMask))
+            {
+                //Already checking for equality with some value in higher bits, including original mask
+                exMask=stencil.sMask;
+            }
 			stencil.sClear = true;
-			impressPath(path,xform,stencil);
+			stencil.sClearValue = 0;
+            stencil.sMask = 0x3F;
+			stencil.sWMask = 0x3F;
+			impressPath(path, xform, stencil);
 			stencil.sClear = false;
-			fillBounds(p->fill_bounds_vbo,fill,texture,stencil,shp,textureMatrix);
-			ShaderEngine::Engine->popClip();
+            stencil.sMask = 0x3F|exMask;
+            stencil.sRef = exMask;
+            stencil.sFunc = exMask?ShaderEngine::STENCIL_LESS:ShaderEngine::STENCIL_NOTEQUAL;
+            fillBounds(p->fill_bounds_vbo, fill, texture, stencil,
+					textureMatrix,cb);
+			//ShaderEngine::Engine->popClip();
 			ShaderEngine::Engine->popDepthStencil();
 		}
 	}
 }
 
-void Path2D::strokePath(int path,Matrix4 xform,float line[4]) {
+void Path2D::strokePath(int path, Matrix4 xform, float line[4]) {
 	struct path *p = get_path(path);
 	if (!p)
 		return; //No PATH
 	if (line[3] > 0) {
 		glPushColor();
 		glMultColor(line[0], line[1], line[2], line[3]);
-		stroke_path(path, &xform);
+		stroke_path(path, &xform, this);
 		glPopColor();
 	}
 }
 
-void Path2D::drawPath(int path,Matrix4 xform,float fill[4],float line[4],TextureData *texture,bool convex,ShaderProgram *shp,const Matrix4 *textureMatrix) {
-	fillPath(path,xform,fill,texture,convex,shp,textureMatrix);
-	strokePath(path,xform,line);
+void Path2D::drawPath(int path, Matrix4 xform, float fill[4], float line[4],
+		TextureData *texture, bool convex,
+		const Matrix4 *textureMatrix,VertexBuffer<unsigned char> *cb) {
+	fillPath(path, xform, fill, texture, convex, textureMatrix,cb);
+	strokePath(path, xform, line);
 }
 
-void Path2D::getPathBounds(int path,bool fill,bool stroke,float *iminx,float *iminy,float *imaxx,float *imaxy)
-{
-	float minx=0;
-	float miny=0;
-	float maxx=0;
-	float maxy=0;
+void Path2D::getPathBounds(int path, bool fill, bool stroke, float *iminx,
+		float *iminy, float *imaxx, float *imaxy) {
+	float minx = 0;
+	float miny = 0;
+	float maxx = 0;
+	float maxy = 0;
 	struct path *p = get_path(path);
-	if ((stroke||fill)&&p)
-	{
+	if ((stroke || fill) && p) {
 		minx = 1e30f;
 		miny = 1e30f;
 		maxx = -1e30f;
 		maxy = -1e30f;
-		if (stroke)
-		{
+		RENDER_LOCK();
+		if (stroke) {
 			if (p->is_stroke_dirty) {
 				create_stroke_geometry(p);
 				p->is_stroke_dirty = 0;
 			}
-			minx=MIN(minx,p->stroke_bounds[0]);
-			miny=MIN(miny,p->stroke_bounds[1]);
-			maxx=MAX(maxx,p->stroke_bounds[2]);
-			maxy=MAX(maxy,p->stroke_bounds[3]);
+			minx = MIN(minx, p->stroke_bounds[0]);
+			miny = MIN(miny, p->stroke_bounds[1]);
+			maxx = MAX(maxx, p->stroke_bounds[2]);
+			maxy = MAX(maxy, p->stroke_bounds[3]);
 		}
-		if (fill)
-		{
+		if (fill) {
 			if (p->is_fill_dirty) {
 				create_fill_geometry(p);
 				p->is_fill_dirty = 0;
 			}
-			minx=MIN(minx,p->fill_bounds[0]);
-			miny=MIN(miny,p->fill_bounds[1]);
-			maxx=MAX(maxx,p->fill_bounds[2]);
-			maxy=MAX(maxy,p->fill_bounds[3]);
+			minx = MIN(minx, p->fill_bounds[0]);
+			miny = MIN(miny, p->fill_bounds[1]);
+			maxx = MAX(maxx, p->fill_bounds[2]);
+			maxy = MAX(maxy, p->fill_bounds[3]);
 		}
+		RENDER_UNLOCK();
 	}
 	if (iminx)
 		*iminx = minx;
@@ -2694,9 +3297,11 @@ void Path2D::getPathBounds(int path,bool fill,bool stroke,float *iminx,float *im
 
 void Path2D::doDraw(const CurrentTransform&, float sx, float sy, float ex,
 		float ey) {
-	float fill[4]={fillr_,fillg_,fillb_,filla_};
-	float line[4]={liner_,lineg_,lineb_,linea_};
-	drawPath(path,Matrix4(),fill,line,texturebase_?(texturebase_->data):NULL,convex_,shader_,&textureMatrix_);
+	float fill[4] = { fillr_, fillg_, fillb_, filla_ };
+	float line[4] = { liner_, lineg_, lineb_, linea_ };
+	drawPath(path, Matrix4(), fill, line,
+			texturebase_ ? (texturebase_->data) : NULL, convex_,
+			&textureMatrix_,&colors_);
 }
 
 void Path2D::extraBounds(float* minx, float* miny, float* maxx,
@@ -2728,13 +3333,102 @@ void Path2D::setTexture(TextureBase *texturebase, const Matrix4* matrix) {
 void Path2D::setPath(int num_commands, const unsigned char *commands,
 		int num_coords, const float *coords) {
 	path_commands(path, num_commands, commands, num_coords, coords);
-	getPathBounds(path,filla_ > 0,linea_ > 0,&minx_,&miny_,&maxx_,&maxy_);
+    struct path *p = get_path(path);
+    if (p) {
+        p->stroke_width = thickness_;
+        p->stroke_feather = feather_;
+        p->stroke_margin=margin_;
+        p->stroke_flatness=flatness_;
+    }
+    getPathBounds(path, filla_ > 0, linea_ > 0, &minx_, &miny_, &maxx_, &maxy_);
 }
 
 void Path2D::setPath(const PrPath *ppath) {
 	path_commands(path, ppath->numCommands, ppath->commands, ppath->numCoords,
 			ppath->coords);
-	getPathBounds(path,filla_ > 0,linea_ > 0,&minx_,&miny_,&maxx_,&maxy_);
+    struct path *p = get_path(path);
+    if (p) {
+        p->stroke_width = thickness_;
+        p->stroke_feather = feather_;
+        p->stroke_margin=margin_;
+        p->stroke_flatness=flatness_;
+    }
+    getPathBounds(path, filla_ > 0, linea_ > 0, &minx_, &miny_, &maxx_, &maxy_);
+}
+
+void Path2D::setGradient(int c1, float a1, int c2, float a2, int c3, float a3, int c4, float a4)
+{
+	c1_ = c1, a1_ = a1, c2_ = c2, a2_ = a2, c3_ = c3, a3_ = a3, c4_ = c4, a4_ = a4;
+    RENDER_LOCK();
+    colors_.resize(16);
+    colors_[0] = ((c1 >> 16) & 0xff) * a1;
+    colors_[1] = ((c1 >> 8) & 0xff) * a1;
+    colors_[2] = (c1 & 0xff) * a1;
+    colors_[3] = 255 * a1;
+    colors_[4] = ((c2 >> 16) & 0xff) * a2;
+    colors_[5] = ((c2 >> 8) & 0xff) * a2;
+    colors_[6] = (c2 & 0xff) * a2;
+    colors_[7] = 255 * a2;
+    colors_[8] = ((c3 >> 16) & 0xff) * a3;
+    colors_[9] = ((c3 >> 8) & 0xff) * a3;
+    colors_[10] = (c3 & 0xff) * a3;
+    colors_[11] = 255 * a3;
+    colors_[12] = ((c4 >> 16) & 0xff) * a4;
+    colors_[13] = ((c4 >> 8) & 0xff) * a4;
+    colors_[14] = (c4 & 0xff) * a4;
+    colors_[15] = 255 * a4;
+    colors_.Update();
+    RENDER_UNLOCK();
+}
+
+int Path2D::getMixedColor(int c1, int c2, float a1,float a2,float a,float &am)
+{
+    int b1 = c1 % 256;
+    int g1 = int(c1/256)%256;
+    int r1 = int(c1/65536)%256;
+    int b2 = c2 % 256;
+    int g2 = int(c2/256)%256;
+    int r2 = int(c2/65536)%256;
+    int r = r1*a+r2*(1-a);
+    int g = g1*a+g2*(1-a);
+    int b = b1*a+b2*(1-a);
+    am= a1*a+a2*(1-a);
+    return int(r)*65536+int(g)*256+int(b);
+}
+
+void Path2D::setGradientWithAngle(int co1, float a1, int co2, float a2, float angle)
+{
+    const float PI =3.141592653589793238463;
+
+    float dirx = cos(angle/180*PI)/2;
+    float diry = sin(angle/180*PI)/2;
+
+    float f1 = 0.5-dirx-diry;
+    float f2 = 0.5+dirx-diry;
+    float f3 = 0.5+dirx+diry;
+    float f4 = 0.5-dirx+diry;
+
+    float fmin = f1 < f2 ? f1 : f2;
+    fmin = fmin < f3 ? fmin : f3;
+    fmin = fmin < f4 ? fmin : f4;
+
+    float fmax = f1 > f2 ? f1 : f2;
+    fmax = fmax > f3 ? fmax : f3;
+    fmax = fmax > f4 ? fmax : f4;
+
+    float fscl = 1/(fmax-fmin);
+    f1 = (f1-fmin)*fscl;
+    f2 = (f2-fmin)*fscl;
+    f3 = (f3-fmin)*fscl;
+    f4 = (f4-fmin)*fscl;
+
+    float ao1,ao2,ao3,ao4;
+    float c1 = getMixedColor(co1,co2,a1,a2,f1,ao1);
+    float c2 = getMixedColor(co1,co2,a1,a2,f2,ao2);
+    float c3 = getMixedColor(co1,co2,a1,a2,f3,ao3);
+    float c4 = getMixedColor(co1,co2,a1,a2,f4,ao4);
+
+    setGradient(c1, ao1, c2, ao2, c3, ao3, c4, ao4);
 }
 
 extern "C" void prFreePath(struct PrPath *svgPath) {

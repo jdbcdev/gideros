@@ -15,8 +15,11 @@
 #include <stack>
 #include <QFileInfo>
 #include <QDir>
+#include <QDirIterator>
 #include <bytebuffer.h>
 #include <QCoreApplication>
+#include <QMap>
+#include <QString>
 
 #include <sys/stat.h>
 #include <time.h>
@@ -52,10 +55,10 @@ Application::Application(QObject *parent) :
     server2_->listen("gdrdeamon2");
 #else
     server_ = new QTcpServer(this);
-    server_->listen(QHostAddress::Any, 15001);
+    server_->listen(QHostAddress::Any, 15011);
 
     server2_ = new QTcpServer(this);
-    server2_->listen(QHostAddress::Any, 15002);
+    server2_->listen(QHostAddress::Any, 15012);
 #endif
     connect(server_, SIGNAL(newConnection()), this, SLOT(newConnection()));
     connect(server2_, SIGNAL(newConnection()), this, SLOT(ignoreConnection()));
@@ -66,6 +69,10 @@ Application::Application(QObject *parent) :
 
     isTransferring_ = false;
     time_.start();
+
+    loadStatus="";
+    loadOnly=false;
+    waitConnectUntil=0;
 }
 
 void Application::connected()
@@ -78,8 +85,7 @@ void Application::disconnected()
 {
     fileQueue_.clear();
     isTransferring_ = false;
-    time_.setHMS(0, 0, 0);
-    time_.start();
+    time_.restart();
 }
 
 void Application::dataReceived(const QByteArray& d)
@@ -186,7 +192,7 @@ void Application::dataReceived(const QByteArray& d)
                 }
             }
 
-            std::vector<std::pair<QString, bool> > topologicalSort = dependencyGraph_.topologicalSort();
+            std::vector<std::pair<QString, bool> > topologicalSort = dependencyGraph_.topologicalSort(QFileInfo(projectFileName_).dir(),localFileMapReverse);
 
             QStringList luaFiles;
             for (std::size_t i = 0; i < topologicalSort.size(); ++i)
@@ -206,7 +212,21 @@ void Application::ackReceived(unsigned int id)
 void Application::timer()
 {
     if (!client_->isConnected() && time_.elapsed() > 30000)
-        QCoreApplication:exit(0);
+        QCoreApplication::exit(0);
+    if (waitConnectUntil>0) {
+        if (client_->isConnected()) {
+            play(playWhenConnected);
+            waitConnectUntil=0;
+            loadStatus="connected";
+        }
+        else {
+            if (QDateTime::currentMSecsSinceEpoch()>waitConnectUntil) {
+                waitConnectUntil=0;
+                loadStatus="noconnect";
+            }
+        }
+    }
+
 
     QDir path(QFileInfo(projectFileName_).path());
 
@@ -221,8 +241,13 @@ void Application::timer()
             {
                 QStringList luafiles = s1.split("|");
                 //outputWidget_->append("Uploading finished.\n");
-                client_->sendProjectProperties(properties_);
-                client_->sendPlay(luafiles);
+                client_->sendProjectProperties(properties_,QFileInfo(projectFileName_).baseName());
+                if (loadOnly)
+                    loadStatus="loaded:"+s1.toUtf8();
+                else {
+                    client_->sendPlay(luafiles);
+                    loadStatus="playing";
+                }
                 isTransferring_ = false;
             }
             else
@@ -278,6 +303,23 @@ void Application::advertisement(const QString& host,unsigned short port,unsigned
 	allPlayersList.push_back(nfull);
 }
 
+void Application::connectAndPlay(QDataStream &instream) {
+    QString fileName;
+    instream >> fileName;
+
+    if (!instream.atEnd()) {
+        QString ip,port;
+        instream >> ip;
+        instream >> port;
+
+        playWhenConnected=fileName;
+        waitConnectUntil=QDateTime::currentMSecsSinceEpoch()+3000; //Allow up to 3 secs
+        client_->connectToHost(ip, port.toInt());
+    }
+    else
+        play(fileName);
+}
+
 void Application::newConnection()
 {
 #if USE_LOCAL_SOCKETS
@@ -293,7 +335,7 @@ void Application::newConnection()
     {
         in.append(socket->readAll());
 
-        if (in.size() >= sizeof(qint32))
+        if (in.size() >= (qsizetype)sizeof(qint32))
         {
             qint32 size = *(qint32*)in.data();
             if (in.size() >= size)
@@ -312,10 +354,8 @@ void Application::newConnection()
 
     if (command == "play")
     {
-        QString fileName;
-        instream >> fileName;
-
-        play(fileName);
+        loadStatus="connecting";
+        connectAndPlay(instream);
     }
     else if (command == "stop")
     {
@@ -323,14 +363,19 @@ void Application::newConnection()
     }
     else if (command == "setip")
     {
-        QString ip;
+        QString ip,port;
         instream >> ip;
+        instream >> port;
 
-        client_->connectToHost(ip, 15000);
+        client_->connectToHost(ip, port.toInt());
     }
     else if (command == "isconnected")
     {
         outstream << QString(client_->isConnected() ? "1" : "0");
+    }
+    else if (command == "loadstatus")
+    {
+        outstream << loadStatus;
     }
     else if (command == "getlog")
     {
@@ -358,6 +403,13 @@ void Application::newConnection()
     {
         QCoreApplication::exit(0);
     }
+    else if (command == "load")
+    {
+        loadOnly=true;
+        loadStatus="loading";
+        connectAndPlay(instream);
+        outstream << QString("started");
+    }
 
     socket->write(out);
     while (socket->bytesToWrite() && socket->waitForBytesWritten())
@@ -371,8 +423,7 @@ void Application::newConnection()
     socket->disconnectFromHost();
 #endif
 
-    time_.setHMS(0, 0, 0);
-    time_.start();
+    time_.restart();
 }
 
 void Application::play(const QString &fileName)
@@ -408,48 +459,64 @@ void Application::play(const QString &fileName)
         properties_.clear();
 
         QDomElement properties = root.firstChildElement("properties");
-
-        // graphics options
-        if (!properties.attribute("scaleMode").isEmpty())
-            properties_.scaleMode = properties.attribute("scaleMode").toInt();
-        if (!properties.attribute("logicalWidth").isEmpty())
-            properties_.logicalWidth = properties.attribute("logicalWidth").toInt();
-        if (!properties.attribute("logicalHeight").isEmpty())
-            properties_.logicalHeight = properties.attribute("logicalHeight").toInt();
-        QDomElement imageScales = properties.firstChildElement("imageScales");
-        for(QDomNode n = imageScales.firstChild(); !n.isNull(); n = n.nextSibling())
-        {
-            QDomElement scale = n.toElement();
-            if(!scale.isNull())
-                properties_.imageScales.push_back(std::make_pair(scale.attribute("suffix"), scale.attribute("scale").toDouble()));
-        }
-        if (!properties.attribute("orientation").isEmpty())
-            properties_.orientation = properties.attribute("orientation").toInt();
-        if (!properties.attribute("fps").isEmpty())
-            properties_.fps = properties.attribute("fps").toInt();
-
-        // iOS options
-        if (!properties.attribute("retinaDisplay").isEmpty())
-            properties_.retinaDisplay = properties.attribute("retinaDisplay").toInt();
-        if (!properties.attribute("autorotation").isEmpty())
-            properties_.autorotation = properties.attribute("autorotation").toInt();
-
-        // export options
-        if (!properties.attribute("architecture").isEmpty())
-            properties_.architecture = properties.attribute("architecture").toInt();
-        if (!properties.attribute("exportMode").isEmpty())
-            properties_.exportMode = properties.attribute("exportMode").toInt();
-        if (!properties.attribute("iosDevice").isEmpty())
-            properties_.iosDevice = properties.attribute("iosDevice").toInt();
-        if (!properties.attribute("packageName").isEmpty())
-            properties_.packageName = properties.attribute("packageName");
+        properties_.loadXml(properties);
     }
 
+    QMap<QString,bool> locked;
     // populate file list and dependency graph
     {
         fileList_.clear();
         dependencyGraph_.clear();
         std::vector<std::pair<QString, QString> > dependencies_;
+
+    	//Add lua plugins
+        const char* lua_plugins_path = "_LuaPlugins_/";
+    	QMap<QString, QString> plugins;
+    	QMap<QString, QString> allPlugins=ProjectProperties::availablePlugins();
+        bool hasLuaPlugin = false;
+        for (QSet<ProjectProperties::Plugin>::const_iterator it=properties_.plugins.begin(); it!=properties_.plugins.end(); it++)
+    	{
+    		ProjectProperties::Plugin p=*it;
+    		if (p.enabled)
+    		{
+    			QString ppath=allPlugins[p.name];
+    			if (!ppath.isEmpty())
+    			{
+    	    		QFileInfo path(ppath);
+    	    		QDir pf=path.dir();
+    	    		if (pf.cd("luaplugin"))
+    	    		{
+                        QDir luaplugin_dir = pf.path();
+                        int root_length = luaplugin_dir.path().length();
+
+                        // collect all lua files in luaplugin and any subdirectory of luaplugin
+                        QDirIterator dir_iter(pf.path(), QStringList() << "*.lua", QDir::Files, QDirIterator::Subdirectories);
+                        while (dir_iter.hasNext()) {
+                            hasLuaPlugin = true;
+                            QDir file = dir_iter.next();
+                            QString filename = file.path().mid(file.path().lastIndexOf("/") + 1);
+                            // 'subtract' luaplugin root path from this path
+                            QString rel_path_and_filename = file.path().mid(root_length + 1, file.path().length());
+                            QString just_rel_path = rel_path_and_filename.mid(0, rel_path_and_filename.lastIndexOf("/") + 1);
+
+                            fileList_.push_back(std::make_pair(lua_plugins_path + rel_path_and_filename, file.path()));
+                            locked[lua_plugins_path + rel_path_and_filename]=true;
+                            dependencyGraph_.addCode(file.path(), true);
+                        }
+    	    		}
+    			}
+    		}
+    	}
+        /* TODO handle HTML5 player
+        if ((ctx.deviceFamily == e_Html5)&&properties_.html5_fbinstant) {
+			QFileInfo f=QFileInfo("Tools/FBInstant.lua");
+            fileList_.push_back(std::make_pair((lua_plugins_path + static_cast<QString>("FBInstant.lua")),
+                                               f.absoluteFilePath()));
+            locked[lua_plugins_path + static_cast<QString>("FBInstant.lua")]=true;
+			dependencyGraph_.addCode(f.absoluteFilePath(),true);
+            hasLuaPlugin = true;
+ 	    } */
+
 
         std::stack<QDomNode> stack;
         stack.push(doc.documentElement());
@@ -468,19 +535,25 @@ void Application::play(const QString &fileName)
                 continue;
             }
 
+            if (e.hasAttribute("excludeFromExport") && e.attribute("excludeFromExport").toInt())
+                continue;
             QString type = e.tagName();
 
             if (type == "file")
             {
-                QString fileName = e.hasAttribute("source") ? e.attribute("source") : e.attribute("file");
+				QString fileName = e.hasAttribute("name")? e.attribute("name"):(e.hasAttribute("source") ? e.attribute("source") : e.attribute("file"));
                 QString name = QFileInfo(fileName).fileName();
+                bool lock=e.hasAttribute("source");
 
                 QString n;
                 for (std::size_t i = 0; i < dir.size(); ++i)
                     n += dir[i] + "/";
                 n += name;
 
+                if (locked[n])
+                      continue;
                 fileList_.push_back(std::make_pair(n, fileName));
+                locked[n]=lock;
 
                 if (QFileInfo(fileName).suffix().toLower() == "lua")
                 {

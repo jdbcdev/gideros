@@ -4,6 +4,7 @@
 #include "luaapplication.h"
 #include <luautil.h>
 #include <stdlib.h>
+#include "ogl.h"
 
 ShaderBinder::ShaderBinder(lua_State* L)
 {
@@ -14,6 +15,8 @@ ShaderBinder::ShaderBinder(lua_State* L)
 	        {"isValid", isValid},
 	    	{"getEngineVersion",getEngineVersion},
 	    	{"getShaderLanguage",getShaderLanguage},
+			{"enableVBO",enableVBO},
+			{"getProperties",getProperties},
         {NULL, NULL},
 	};
 
@@ -65,8 +68,18 @@ ShaderBinder::ShaderBinder(lua_State* L)
 	lua_setfield(L, -2, "SYS_TEXTUREINFO");
 	lua_pushinteger(L, ShaderProgram::SysConst_ParticleSize);
 	lua_setfield(L, -2, "SYS_PARTICLESIZE");
+	lua_pushinteger(L, ShaderProgram::SysConst_ViewMatrix);
+	lua_setfield(L, -2, "SYS_VIEW");
 	lua_pushinteger(L, ShaderProgram::SysConst_Timer);
 	lua_setfield(L, -2, "SYS_TIMER");
+	lua_pushinteger(L, ShaderProgram::SysConst_ProjectionMatrix);
+	lua_setfield(L, -2, "SYS_PROJECTION");
+	lua_pushinteger(L, ShaderProgram::SysConst_ViewProjectionMatrix);
+	lua_setfield(L, -2, "SYS_VP");
+    lua_pushinteger(L, ShaderProgram::SysConst_Bounds);
+    lua_setfield(L, -2, "SYS_BOUNDS");
+    lua_pushinteger(L, ShaderProgram::SysConst_RenderTargetScale);
+    lua_setfield(L, -2, "SYS_RTSCALE");
 
 	lua_pushinteger(L, ShaderProgram::Flag_None);
 	lua_setfield(L, -2, "FLAG_NONE");
@@ -74,6 +87,25 @@ ShaderBinder::ShaderBinder(lua_State* L)
 	lua_setfield(L, -2, "FLAG_NO_DEFAULT_HEADER");
 	lua_pushinteger(L, ShaderProgram::Flag_FromCode);
 	lua_setfield(L, -2, "FLAG_FROM_CODE");
+
+#define PCONSTANT(name)	lua_pushinteger(L, ShaderEngine::STDP_##name); lua_setfield(L, -2, "SHADER_PROGRAM_"#name);
+#define VCONSTANT(name)	lua_pushinteger(L, ShaderEngine::STDPV_##name); lua_setfield(L, -2, "SHADER_VARIANT_"#name);
+	PCONSTANT(UNSPECIFIED);
+	PCONSTANT(BASIC);
+	PCONSTANT(COLOR);
+	PCONSTANT(TEXTURE);
+	PCONSTANT(TEXTURECOLOR);
+	PCONSTANT(TEXTUREALPHA);
+	PCONSTANT(TEXTUREALPHACOLOR);
+	PCONSTANT(PARTICLE);
+	PCONSTANT(PARTICLES);
+	PCONSTANT(PATHFILLCURVE);
+	PCONSTANT(PATHSTROKECURVE);
+	PCONSTANT(PATHSTROKELINE);
+	VCONSTANT(TEXTURED);
+	VCONSTANT(3D);
+#undef PCONSTANT
+#undef VCONSTANT
 
 	lua_pop(L, 1);
 
@@ -94,7 +126,7 @@ int ShaderBinder::create(lua_State* L)
 	std::vector<ShaderProgram::ConstantDesc> constants;
 	std::vector<ShaderProgram::DataDesc> datas;
 
-    int n = luaL_getn(L, 4);  /* get size of table */
+    int n = lua_objlen(L, 4);  /* get size of table */
     for (int i=1; i<=n; i++) {
     	ShaderProgram::ConstantDesc cst={"",ShaderProgram::CINT,1,ShaderProgram::SysConst_None,false,0,NULL};
         lua_rawgeti(L, 4, i);  /* push t[i] */
@@ -113,7 +145,7 @@ int ShaderBinder::create(lua_State* L)
     	constants.push_back(cst);
       }
 
-    n = luaL_getn(L, 5);  /* get size of table */
+    n = lua_objlen(L, 5);  /* get size of table */
     for (int i=1; i<=n; i++) {
     	ShaderProgram::DataDesc cst={"",ShaderProgram::DFLOAT,0,0,0};
         lua_rawgeti(L, 5, i);  /* push t[i] */
@@ -128,7 +160,11 @@ int ShaderBinder::create(lua_State* L)
         cst.slot=luaL_optinteger(L,-1,0);
         lua_getfield(L,-5,"offset");
         cst.offset=luaL_optinteger(L,-1,0);
-        lua_pop(L,6);
+        lua_getfield(L,-6,"instances");
+        cst.instances=luaL_optinteger(L,-1,0);
+        lua_getfield(L,-7,"stride");
+        cst.stride=luaL_optinteger(L,-1,0);
+        lua_pop(L,8);
     	datas.push_back(cst);
       }
 
@@ -137,7 +173,10 @@ int ShaderBinder::create(lua_State* L)
 	ShaderProgram::DataDesc dlast={"",ShaderProgram::DFLOAT,0,0,0};
 	constants.push_back(clast);
 	datas.push_back(dlast);
-    ShaderProgram *shader=ShaderEngine::Engine->createShaderProgram(vs,ps,flags,&(constants[0]),&(datas[0]));
+    ShaderProgram *shader;
+    RENDER_DO([&]{
+    	shader=ShaderEngine::Engine->createShaderProgram(vs,ps,flags,&(constants[0]),&(datas[0]));
+    });
     if (!shader->isValid())
     {
     	lua_pushstring(L,shader->compilationLog());
@@ -147,11 +186,13 @@ int ShaderBinder::create(lua_State* L)
 	return 1;
 }
 
-int ShaderBinder::destruct(lua_State* L)
+int ShaderBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	ShaderProgram* shd = static_cast<ShaderProgram*>(ptr);
-	shd->Release();
+    RENDER_DO([&]{
+        shd->Release();
+    });
 
 	return 0;
 }
@@ -168,6 +209,21 @@ int ShaderBinder::getShaderLanguage(lua_State* L)
 	StackChecker checker(L, "ShaderBinder::getShaderLanguage", 1);
 	lua_pushstring(L,ShaderEngine::Engine->getShaderLanguage());
 	return 1;
+}
+
+int ShaderBinder::enableVBO(lua_State* L)
+{
+	StackChecker checker(L, "ShaderBinder::enableVBO", 0);
+	int freeze,unfreeze;
+	if (lua_isnumber(L,1))
+	{
+		freeze=lua_tonumber(L,1);
+		unfreeze=luaL_optnumber(L,2,freeze);
+	}
+	else
+		unfreeze=freeze=(lua_toboolean(L,1))?1:0;
+	ShaderEngine::Engine->setVBOThreshold(freeze, unfreeze);
+	return 0;
 }
 
 int ShaderBinder::setConstant(lua_State* L)
@@ -225,7 +281,9 @@ int ShaderBinder::setConstant(lua_State* L)
 			for (int k=0;k<cm;k++)
 				m[k]=luaL_checkinteger(L,5+k);
 		}
-		shd->setConstant(idx,type,mult,m);
+        RENDER_DO([&]{
+            shd->setConstant(idx,type,mult,m);
+        });
 		free(m);
 		break;
 	}
@@ -250,7 +308,9 @@ int ShaderBinder::setConstant(lua_State* L)
 			for (int k=0;k<cm;k++)
 				m[k]=luaL_checknumber(L,5+k);
 		}
-		shd->setConstant(idx,type,mult,m);
+        RENDER_DO([&]{
+            shd->setConstant(idx,type,mult,m);
+        });
 		free(m);
 		break;
 	}
@@ -272,4 +332,20 @@ int ShaderBinder::isValid(lua_State* L)
 	lua_pushstring(L,shd->compilationLog());
 
 	return 2;
+}
+
+int ShaderBinder::getProperties(lua_State* L)
+{
+	StackChecker checker(L, "ShaderBinder::getProperties", 1);
+	std::map<std::string,std::string> props;
+	ShaderEngine::Engine->getProperties(props);
+	lua_newtable(L);
+	for (std::map<std::string,std::string>::iterator it=props.begin();it!=props.end();it++)
+	{
+		lua_pushstring(L,it->first.c_str());
+		lua_pushstring(L,it->second.c_str());
+		lua_rawset(L,-3);
+	}
+
+	return 1;
 }

@@ -14,6 +14,9 @@
 #include <QImage>
 #include <projectproperties.h>
 #include <dependencygraph.h>
+extern "C" {
+#include "lua.h"
+}
 
 enum DeviceFamily
 {
@@ -26,7 +29,9 @@ enum DeviceFamily
   e_GApp,
   e_Win32,
   e_Html5,
-  e_Xml
+  e_Xml,
+  e_LinuxDesktop,
+  e_Linux,
 };
 
 struct ExportContext
@@ -40,6 +45,7 @@ struct ExportContext
 	QString basews;
 	QString templatename;
 	QString templatenamews;
+	QString appName;
 	QDir outputDir;
         QDir exportDir;
     QList<QStringList> wildcards;
@@ -57,6 +63,10 @@ struct ExportContext
     std::vector<QString> folderList;
     std::vector<std::pair<QString, QString> > fileQueue;
     std::vector<std::pair<QString, bool> > topologicalSort;
+    std::set<QString> noEncryption;
+    std::set<QString> noEncryptionExt;
+    std::set<QString> noPackage;
+    std::set<QString> noPackageAbs;
     QStringList allfiles;
     QStringList allfiles_abs;
     QStringList assetfiles;
@@ -68,6 +78,11 @@ struct ExportContext
     QImage *tvicon;
     QImage *splash_h_image;
     QImage *splash_v_image;
+    //XML
+	QMap<QString,QString> props; //global properties
+	bool exportError;
+    // LUA
+    lua_State *L;
 };
 
 

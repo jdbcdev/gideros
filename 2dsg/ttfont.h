@@ -3,6 +3,7 @@
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_STROKER_H
 
 #include <fontbase.h>
 #include <dib.h>
@@ -14,7 +15,7 @@
 class TTFont : public FontBase
 {
 public:
-    TTFont(Application *application, const char *filename, float size, bool smoothing, GStatus *status);
+    TTFont(Application *application, std::vector<FontSpec> filenames, float size, float smoothing, float outline, GStatus *status);
     virtual ~TTFont();
 
 	virtual Type getType() const
@@ -24,36 +25,45 @@ public:
 
     void getBounds(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy);
 
-    Dib renderFont(const wchar32_t *text, float letterSpacing, int *pminx, int *pminy, int *pmaxx, int *pmaxy);
+    Dib renderFont(const char *text, TextLayoutParameters *layout, int *pminx, int *pminy, int *pmaxx, int *pmaxy,unsigned int color, bool &isRGB,TextLayout &l);
 
-    virtual void getBounds(const char *text, float letterSpacing, float *minx, float *miny, float *maxx, float *maxy);
-    virtual float getAdvanceX(const char *text, float letterSpacing, int size = -1);
+    virtual void getBounds(const char *text, float letterSpacing, float *minx, float *miny, float *maxx, float *maxy, std::string name="");
+    virtual float getAdvanceX(const char *text, float letterSpacing, int size = -1, std::string name="");
+    virtual float getCharIndexAtOffset(const char *text, float offset, float letterSpacing, int size = -1, std::string name="");
     virtual float getAscender();
+    virtual float getDescender();
     virtual float getLineHeight();
+    virtual bool shapeChunk(struct ChunkLayout &part,std::vector<wchar32_t> &wtext);
+    virtual void chunkMetrics(struct ChunkLayout &part, FontBase::TextLayoutParameters *params);
 
-    bool getSmoothing() const
+    float getSmoothing() const
     {
         return smoothing_;
     }
-    void *getFace() const
-    {
-    	return face_;
-    }
+    FT_Face getFace(int chr, FT_UInt &glpyhIndex);
 private:
-    void constructor(const char *filename, float size, bool smoothing);
-    int kerning(FT_UInt left, FT_UInt right) const;
+    void constructor(std::vector<FontSpec> filenames, float size, float smoothing, float outline);
+    int kerning(FT_Face face, FT_UInt left, FT_UInt right) const;
 
 private:
-	FT_Face face_;
+    struct FontFace
+    {
+        FT_Face face;
+        FT_StreamRec stream;
+        float sizeMult;
+    };
+    std::vector<FontFace> fontFaces_;
 	int ascender_;
+	int descender_;
 	int height_;
-	FT_StreamRec stream_;
-    bool smoothing_;
+    float smoothing_;
     float currentLogicalScaleX_,currentLogicalScaleY_;
     float defaultSize_;
+    float outlineSize_;
     void checkLogicalScale();
     struct GlyphData
     {
+    	FT_Face			face;
     	FT_UInt 		glyph;
     	int				advX;
     	int 			top;
@@ -64,6 +74,7 @@ private:
     	int             pitch;
     };
     std::map<wchar32_t,GlyphData> glyphCache_;
+    FT_Stroker stroker;
 };
 
 #endif

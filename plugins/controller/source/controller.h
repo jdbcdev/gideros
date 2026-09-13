@@ -21,6 +21,8 @@ public:
 
     const char* getControllerName(int playerId);
 
+    void getControllerInfo(int playerId,int *vid,int *pid);
+
     void vibrate(int player, long ms);
 
     int* getPlayers(int* size);
@@ -93,15 +95,9 @@ typedef struct ghid_TriggerEvent
 typedef struct ghid_DeviceEvent
 {
 	int playerId;
-} ghid_DeviceEvent;
-
-typedef struct ghid_Player
-{
-    int playerId;
     unsigned short vendor_id;
     unsigned short product_id;
-    std::string product;
-} ghid_Player;
+} ghid_DeviceEvent;
 
 enum
 {
@@ -132,6 +128,9 @@ static const int BUTTON_R2 = 105;
 static const int BUTTON_R3 = 107;
 static const int BUTTON_X = 99;
 static const int BUTTON_Y = 100;
+static const int BUTTON_CENTER = 304;
+static const int BUTTON_SELECT = 305;
+static const int BUTTON_START = 306;
 
 static const int LEFT_STICK_X = 0;
 static const int LEFT_STICK_Y = 1;
@@ -152,6 +151,7 @@ void ghid_cleanup();
 int ghid_isAnyAvailable();
 int ghid_getPlayerCount();
 const char* ghid_getControllerName(int player);
+void ghid_getControllerInfo(int player,int *vid,int *pid);
 void ghid_vibrate(int player, long ms);
 int* ghid_getPlayers(int* size);
 

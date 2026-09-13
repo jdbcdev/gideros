@@ -2,6 +2,8 @@
 #define MESHBINDER_H
 
 #include "binder.h"
+#include <unordered_map>
+#include "Matrices.h"
 
 class MeshBinder
 {
@@ -10,7 +12,7 @@ public:
 
 private:
     static int create(lua_State *L);
-    static int destruct(lua_State *L);
+    static int destruct(void *p);
 
     static int setVertex(lua_State *L);
     static int setIndex(lua_State *L);
@@ -27,6 +29,7 @@ private:
     static int setColorArray(lua_State *L);
     static int setTextureCoordinateArray(lua_State *L);
     static int setGenericArray(lua_State *L);
+    static int setMatrixArray(lua_State *L);
 
     static int resizeVertexArray(lua_State *L);
     static int resizeIndexArray(lua_State *L);
@@ -52,6 +55,14 @@ private:
     static int clearTexture(lua_State *L);
     static int setTextureSlot(lua_State *L);
     static int setPrimitiveType(lua_State *L);
+    static int setInstanceCount(lua_State *L);
+    static int setCullMode(lua_State *L);
+    static int updateBones(lua_State *L);
+
+private:
+    static std::unordered_map<uintptr_t,Matrix4> boneCache;
+    static size_t token_bone;
+    static size_t token_poseIMat;
 };
 
 

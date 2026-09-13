@@ -1,43 +1,99 @@
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/Makefile.def
 
-QT=$(QTBASEDIR)/$(QTVER)/$(QT_ARCH)
-PATH:=$(QT)/bin:$(QTBASEDIR)/Tools/$(QT_TOOLSARCH)/bin:$(PATH):
-JAR=$(JAVA_HOME)/bin/jar
-ANT=export JAVA_HOME=$(JAVA_HOME); export ANDROID_HOME=$(ANDROID_HOME); $(JAVA_HOME)/bin/java -classpath "$(ANT_HOME)\\lib\\ant-launcher.jar" "-Dant.home=$(ANT_HOME)" org.apache.tools.ant.launch.Launcher
+QT?=$(QTBASEDIR)/$(QTVER)/$(QT_ARCH)
+LUA_ENGINE?=luau
+export LUA_ENGINE
+ifeq ($(LUA_ENGINE),luau)
+LUAC=$(BUILDTOOLS)/luauc --binary -O2 -g2 $(1) >$(2)
+LUA_INCLUDE=luau/VM/include
+LUA_INCLUDE_CORE=luau/VM/src luau/Common/include
+else
+LUAC=$(BUILDTOOLS)/luac -o $(2) $(1)
+LUA_INCLUDE=lua/src
+LUA_INCLUDE_CORE=lua/src
+endif
+export LUA_INCLUDE
+export LUA_INCLUDE_CORE
+
+#Used in plugin bundle recipes
+CURRENT_GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
 #DEFS
-PLUGINS_DEFAULT=bitop lsqlite3 luasocket lfs json googlebilling iad gamekit storekit microphone
-PLUGINS_ALL=bitop lsqlite3 luasocket lpeg lfs json microphone gmedia
-PLUGINS_WIN=$(PLUGINS_ALL) clipper struct controller
-PLUGINS_ANDROID=$(PLUGINS_ALL) ads clipper controller countly Facebook flurry gaming giftiz googlebilling \
+PLUGINS_DEFAULT=bitop lsqlite3 luasocket lfs json iad gamekit liquidfun reactphysics3d fastnoise cute_c2
+PLUGINS_ALL=lsqlite3 luasocket lfs json bump ogg liquidfun gsfxr spine harfbuzz reactphysics3d fastnoise imgui cute_c2 clipper struct
+ifneq ($(LUA_ENGINE),luau)
+PLUGINS_ALL+=bitop
+endif
+PLUGINS_MOST=$(PLUGINS_ALL) microphone lpeg
+
+PLUGINS_QT=$(PLUGINS_MOST) gmedia controller camera luamidi
+PLUGINS_QTWINONLY=spout steam
+PLUGINS_QTMACONLY=steam
+PLUGINS_QTLINUXONLY=
+PLUGINS_WIN32=$(PLUGINS_MOST) controller spout luamidi
+PLUGINS_ANDROID=$(PLUGINS_MOST) gmedia ads controller countly gaming giftiz googlebilling \
 				googlelicensing googleplay iab native notification storedetector \
-				struct
+				camera tts megacool map share storereview
+PLUGINS_HTML5=$(PLUGINS_ALL) controller ads Facebook
+PLUGINS_LINUX=$(PLUGINS_MOST) luamidi
+
+ifneq ($(LUA_ENGINE),luau)
+PLUGINS_QT+=threads
+PLUGINS_ANDROID+=threads
+PLUGINS_WIN32+=threads
+PLUGINS_HTML5+=
+PLUGINS_LINUX+=
+endif
+
+#Precompiled plugins only below
+PLUGINS_IOS=luasocket camera ogg liquidfun gsfxr microphone spine harfbuzz reactphysics3d imgui cute_c2
+PLUGINS_ATV=luasocket ogg liquidfun gsfxr microphone spine harfbuzz reactphysics3d imgui cute_c2
+PLUGINS_MAC=luasocket ogg liquidfun gsfxr microphone spine harfbuzz reactphysics3d imgui cute_c2
+PLUGINS_WINRT=luasocket ogg liquidfun gsfxr microphone harfbuzz reactphysics3d imgui cute_c2
+
+ADDONS=GSFXREditor Player TAME SceneBuilder
+
 ROOT=.
 SDK=$(ROOT)/Sdk
 GIDEROS_VERSION:=$(shell grep GIDEROS_VERSION $(ROOT)/libgideros/gideros.h | grep define | sed 's/^[^"]*"\([^"]*\)"/\1/')
 
 #TOOLS
+TARGET_PLF=qtapp
+BUILDTOOLS=$(ROOT)/Build.Tools
+ifeq ($(OS),Windows_NT)
+PATH:=$(QT)/bin:$(QTBASEDIR)/Tools/$(QT_TOOLSARCH)/bin:$(PATH):
 QMAKE=qmake
-
 CC=$(QTBASEDIR)/Tools/$(QT_TOOLSARCH)/bin/gcc
 CXX=$(QTBASEDIR)/Tools/$(QT_TOOLSARCH)/bin/g++
-
-ifeq ($(OS),Windows_NT)
 RELEASE=$(ROOT)/Build.Win
-all: qtapp.install android.install winrt.install #win32.install 
-
-clean: qtapp.clean android.clean win32.clean winrt.clean
-	rm -rf $(RELEASE)
+TARGET_PLF+=android winrt html5 win32
+else
+QMAKE?=$(QT)/bin/qmake
+UNAME_S := $(shell uname -s)
+CC=gcc
+CXX=g++
+ifeq ($(UNAME_S),Linux)
+RELEASE=$(ROOT)/Build.Linux
+TARGET_PLF+=linux
 else
 RELEASE=$(ROOT)/Build.Mac
-all: qtapp.install ios.install
-
-clean: qtapp.clean ios.clean
-	rm -rf $(RELEASE)
+TARGET_PLF+=ios
+endif
 endif
 
+all: versioning qscintilla qlexilla $(addsuffix .install,$(TARGET_PLF) $(TARGET_EXT))
+
+clean: $(addsuffix .clean,$(TARGET_PLF) $(TARGET_EXT))
+	rm -rf $(RELEASE)
+
+versioning: tools
+	A=`git rev-parse HEAD`; if grep -Fq $$A $(ROOT)/libgideros/gid*.h; then echo "VERSION OK"; else echo "#define GIDEROS_GIT_HASH \"$$A\"" >$(ROOT)/libgideros/gideros_build.h; fi
+	$(call LUAC,$(addprefix luabinding/,property.lua texturepack.lua compatibility.lua),luabinding/luabindings.luac)
+	$(BUILDTOOLS)/bin2c luabinding/luabindings.luac >luabinding/luabindings.luac.c
+
 #SDK includes
-vpath %.h libgideros:libgvfs:libgid/include:lua/src:libgid/external/openal-soft-1.13/include/AL
+vpath %.h libgideros:libgvfs:libgid/include:$(LUA_INCLUDE):libgid/external/openal-soft/include/AL
+vpath %.hpp libgideros:libgvfs:libgid/include:$(LUA_INCLUDE):libgid/external/openal-soft/include/AL
 $(SDK)/include/%: %
 	cp $^ $(SDK)/include
 
@@ -47,19 +103,60 @@ $(SDK)/include/AL/%: %
 SDK_INCS=$(addsuffix .h,gideros gplugin gproxy greferenced gexport) \
 			$(addsuffix .h,gfile gpath gstdio) \
 			$(addsuffix .h,gglobal glog gapplication gevent) \
-			$(addsuffix .h,lua luaconf lualib lauxlib) \
+			$(addsuffix .h,lua luaconf lualib lauxlib) lua.hpp \
 			$(addprefix AL/,$(addsuffix .h,al alc alext efx efx-creative))
 
 sdk.headers.dir:
 	mkdir -p $(SDK)/include/AL
 
 sdk.headers: sdk.headers.dir $(addprefix $(SDK)/include/,$(SDK_INCS))
+	mkdir -p $(SDK)/include/gideros
+	cp 2dsg/*.h 2dsg/gfxbackends/*.h luabinding/*.h libgid/include/*.h $(SDK)/include/gideros
+	cp libgideros/*.h emscripten/cJSON.h $(SDK)/include/gideros
 
 %.plugin.install:
 	@mkdir -p $(RELEASE)/All\ Plugins/$(notdir $*)
 	@for f in $(ROOT)/plugins/$*/*.gplugin; do if [ -f "$$f" ]; then cp $$f $(RELEASE)/All\ Plugins/$(notdir $*); fi; done
 
+prep.repo:
+	if [ ! -d $(ROOT)/plugins/spine/spine-runtimes/spine-c ]; then \
+		git submodule add https://github.com/gideros/spine-runtimes.git  plugins/spine/spine-runtimes; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD plugins/spine/spine-runtimes; \
+	fi
+	if [ ! -d $(ROOT)/plugins/harfbuzz/harfbuzz ]; then \
+		git submodule add https://github.com/gideros/harfbuzz.git  plugins/harfbuzz/harfbuzz; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD plugins/harfbuzz/harfbuzz; \
+	fi
+	if [ ! -d $(ROOT)/plugins/reactphysics3d/reactphysics3d ]; then \
+		git submodule add https://github.com/gideros/reactphysics3d.git  plugins/reactphysics3d/reactphysics3d; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD plugins/reactphysics3d/reactphysics3d; \
+	fi
+	if [ ! -d $(ROOT)/luau ]; then \
+		git submodule add https://github.com/gideros/luau.git  luau; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD luau; \
+	fi
+	if [ ! -d $(ROOT)/scintilla ]; then \
+		git submodule add https://github.com/gideros/scintilla.git  scintilla; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD scintilla; \
+	fi
+	if [ ! -d $(ROOT)/lexilla ]; then \
+		git submodule add https://github.com/gideros/lexilla.git  lexilla; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD lexilla; \
+	fi
+	if [ ! -d $(ROOT)/libgid/external/openal-soft ]; then \
+		cd libgid/external; git submodule add https://github.com/gideros/openal-soft.git  openal-soft; \
+		git reset HEAD .gitmodules; \
+		git reset HEAD libgid/external/openal-soft; \
+	fi
+	git submodule update --recursive	
 
+PLUGIN_PREREQUISITE=
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidGeneric.mk
 ifeq ($(OS),Windows_NT)
 MINGWMAKE=$(MAKE)
@@ -69,9 +166,16 @@ include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidAndroid.mk
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidWinRT.mk
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidPkg.mk
 else
+ifeq ($(UNAME_S),Linux)
+include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidQtLinux.mk
+include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidLinux.mk
+else
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidQtMac.mk
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidiOS.mk
+#include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidMac.mk
 endif
+endif
+include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/GidHtml5.mk
 
-
+%.plugin: $(PLUGIN_PREREQUISITE)
 		

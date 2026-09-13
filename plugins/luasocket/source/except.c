@@ -55,8 +55,8 @@ static int do_nothing(lua_State *L) {
 
 static int global_newtry(lua_State *L) {
     lua_settop(L, 1);
-    if (lua_isnil(L, 1)) lua_pushcfunction(L, do_nothing);
-    lua_pushcclosure(L, finalize, 1);
+    if (lua_isnil(L, 1)) lua_pushcnfunction(L, do_nothing,"do_nothing");
+    lua_pushcnclosure(L, finalize, 1, "finalize");
     return 1;
 }
 
@@ -84,7 +84,7 @@ static int protected_(lua_State *L) {
 }
 
 static int global_protect(lua_State *L) {
-    lua_pushcclosure(L, protected_, 1);
+    lua_pushcnclosure(L, protected_, 1, "protected_");
     return 1;
 }
 

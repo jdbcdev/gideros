@@ -24,13 +24,17 @@
 #include <glog.h>
 #include <bytebuffer.h>
 #include "constants.cpp"
+#include "tabletapplication.h"
 
 static void loadPlugins(){
-	QDir dir = QDir::currentPath();
+	QDir dir = QDir(QCoreApplication::applicationDirPath());
 
     #if defined(Q_OS_MAC)
-        dir.cd("Plugins");
+        dir.cd("../Plugins"); //One dir up from xxx.app/Contents/MacOS
         QStringList files = dir.entryList(QStringList() << "*.dylib");
+    #elif defined(Q_OS_LINUX)
+        dir.cd("Plugins");
+        QStringList files = dir.entryList(QStringList() << "*.so");
     #else
         dir.cd("Plugins");
         QStringList files = dir.entryList(QStringList() << "*.dll");
@@ -45,9 +49,13 @@ static void loadPlugins(){
 	}
 }
 
+std::vector<std::string> PATH_CommandLine;
 int main(int argc, char *argv[]){
+    for (int i=0;i<argc;i++)
+        PATH_CommandLine.push_back(std::string(argv[i]));
     QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
-    QApplication a(argc, argv);
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+    TabletApplication a(argc, argv);
 
     QDir dir = QCoreApplication::applicationDirPath();
 
@@ -56,6 +64,8 @@ int main(int argc, char *argv[]){
     #endif
 
     QFile file(dir.absolutePath()+"/assets/data.bin");
+    int vsync=0;
+    int fps=60;
     if(file.exists()){
         file.open(QIODevice::ReadOnly);
         QByteArray ba = file.readAll();
@@ -68,6 +78,8 @@ int main(int argc, char *argv[]){
         buffer >> ORGANIZATION_NAME;
         buffer >> ORGANIZATION_DOMAIN;
         buffer >> DESK_APPLICATION_NAME;
+        buffer >> vsync;
+        buffer >> fps;
         QCoreApplication::setOrganizationName(QString::fromStdString(ORGANIZATION_NAME));
         QCoreApplication::setOrganizationDomain(QString::fromStdString(ORGANIZATION_DOMAIN));
         QCoreApplication::setApplicationName(QString::fromStdString(DESK_APPLICATION_NAME));
@@ -78,6 +90,13 @@ int main(int argc, char *argv[]){
         QCoreApplication::setApplicationName(Constants::DESK_APPLICATION_NAME);
     }
 
+    GLCanvas::EnableVSYNC=vsync;
+    QSurfaceFormat formatGL;
+	formatGL.setSwapInterval(vsync?(60/fps):0);
+	formatGL.setStencilBufferSize(8);
+	formatGL.setDepthBufferSize(16);
+	formatGL.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+	QSurfaceFormat::setDefaultFormat(formatGL);
 
 	QDir::setCurrent(dir.absolutePath());
 

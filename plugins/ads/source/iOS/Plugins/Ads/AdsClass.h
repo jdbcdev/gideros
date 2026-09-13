@@ -13,6 +13,7 @@
 
 +(void)init;
 +(void)cleanup;
++ (BOOL) hasProvider:(NSString*)adprovider;
 
 +(UIViewController*)getRootViewController;
 
@@ -30,6 +31,7 @@
 +(int)getY:(NSString*)adprovider;
 +(int)getWidth:(NSString*)adprovider;
 +(int)getHeight:(NSString*)adprovider;
++(BOOL)checkConsent:(NSString*)adprovider reset:(BOOL)reset forUnderAge:(BOOL) underAge;
 +(BOOL)hasConnection;
 +(BOOL)isPortrait;
 +(void)adReceived:(Class)adprovider forType:(NSString*)type;
@@ -38,5 +40,8 @@
 +(void)adActionEnd:(Class)adprovider forType:(NSString*)type;
 +(void)adDismissed:(Class)adprovider forType:(NSString*)type;
 +(void)adDisplayed:(Class)adprovider forType:(NSString*)type;
++(void)adRewarded:(Class)adprovider forType:(NSString*)type withAmount:(int)amount;
 +(void)adError:(Class)adprovider with:(NSString*)error;
++(void)adsReady:(Class)adprovider state:(BOOL)state;
++(void)adConsent:(Class)adprovider with:(NSString*)error andCode:(int) errorcode;
 @end

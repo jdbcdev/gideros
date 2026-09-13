@@ -56,9 +56,17 @@ const char* GHID::getControllerName(int playerId)
 {
     std::map<int, GController*>::iterator it = players.find(playerId);
     if (it != players.end()) {
-        it->second->getName();
+        return it->second->getName();
     }
     return "";
+}
+
+void GHID::getControllerInfo(int playerId,int *vid,int *pid)
+{
+    std::map<int, GController*>::iterator it = players.find(playerId);
+    if (it != players.end()) {
+        return it->second->getInfo(vid,pid);
+    }
 }
 
 void GHID::vibrate(int player, long ms)
@@ -159,6 +167,8 @@ void GHID::onConnected(struct Gamepad_device * device)
     players.insert(std::pair<int, GController*>(playerId,c));
     ghid_DeviceEvent *event = (ghid_DeviceEvent*)malloc(sizeof(ghid_DeviceEvent));
     event->playerId = playerId;
+    event->product_id = device->productID;
+    event->vendor_id = device->vendorID;
 
     gevent_EnqueueEvent(gid_, callback_s, GHID_CONNECTED_EVENT, event, 1, this);
 }
@@ -173,6 +183,8 @@ void GHID::onDisconnected(struct Gamepad_device * device)
     }
     ghid_DeviceEvent *event = (ghid_DeviceEvent*)malloc(sizeof(ghid_DeviceEvent));
     event->playerId = playerId;
+    event->product_id = device->productID;
+    event->vendor_id = device->vendorID;
 
     gevent_EnqueueEvent(gid_, callback_s, GHID_DISCONNECTED_EVENT, event, 1, this);
 }
@@ -267,6 +279,11 @@ int ghid_getPlayerCount()
 const char* ghid_getControllerName(int player)
 {
 	return s_ghid->getControllerName(player);
+}
+
+void ghid_getControllerInfo(int player,int *vid,int *pid)
+{
+	return s_ghid->getControllerInfo(player,vid,pid);
 }
 
 void ghid_vibrate(int player, long ms)

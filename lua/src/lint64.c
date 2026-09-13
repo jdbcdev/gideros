@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <math.h>
 
 #define Int		long long
 #define FMT		"%lld"
@@ -43,6 +44,16 @@ static int pushInt(lua_State *L, Int z)
  luaL_getmetatable(L,MYTYPE);
  lua_setmetatable(L,-2);
  return 1;
+}
+
+int lua_pushint64(lua_State *L, Int z)
+{
+	return pushInt(L,z);
+}
+
+Int luaL_checkint64(lua_State *L, int n)
+{
+	return Pget(L,n);
 }
 
 static int Lpow(lua_State *L)			/** __pow(z,n) */
@@ -98,7 +109,7 @@ static int Lnind(lua_State *L)  /** _newindex(z, x) */
  Int i=Z(2);
  Int v=Z(3);
  Int *p =(Int*) lua_touserdata(L, 1);
- *p = (z ^ (-v ^ z) & (1 << i));
+ *p = (z ^ ((-v ^ z) & (1 << i)));
  return 0;
 }
 
@@ -185,7 +196,7 @@ LUALIB_API int luaopen_int64(lua_State *L)
  lua_createtable(L, 0, 1);  /* table to be type metatable for numbers */
  lua_pushvalue(L, -1);      /* copy table */
  lua_settypemt(L, LUA_TNUMBER);   /* set table as type metatable for numbers */
- lua_pushcfunction(L, Lnew);
+ lua_pushcnfunction(L, Lnew, "int64_new");
  lua_setfield(L, -2, "__len");  /* metatable.__len = function */
  lua_pop(L, 1);
 

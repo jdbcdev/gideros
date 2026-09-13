@@ -18,8 +18,11 @@ Path2DBinder::Path2DBinder(lua_State* L)
 		{"setFontPath", setFontPath},
 		{"setTexture", setTexture},
 		{"setLineThickness", setLineThickness },
-		{"setConvex", setConvex },
-		{NULL, NULL},
+        {"setConvex", setConvex },
+        {"getPathPoints", getPathPoints },
+        {"getPathOffset", getPathOffset },
+        {"getSegmentSize", getSegmentSize },
+        {NULL, NULL},
 	};
 
 	binder.createClass("Path2D", "Sprite", create, destruct, functionList);
@@ -58,9 +61,9 @@ int Path2DBinder::create(lua_State* L)
 	return 1;
 }
 
-int Path2DBinder::destruct(lua_State* L)
+int Path2DBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	Path2D* shape = static_cast<Path2D*>(ptr);
 	shape->unref();
 
@@ -82,10 +85,55 @@ int Path2DBinder::setFillColor(lua_State* L)
 {
 	Binder binder(L);
 	Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D", 1));
-	
-	unsigned int color = luaL_optinteger(L, 2, 0);
-	lua_Number alpha = luaL_optnumber(L, 3, 1.0);
-	shape->setFillColor(color, alpha);
+#define COLVEC(var,idx) float var[4]; luaL_checkcolorf(L,idx,var);
+#define COLARG(var) (((int)(var[0]*0xFF0000))&0xFF0000)|(((int)(var[1]*0xFF00))&0xFF00)|((int)((var[2]*0xFF))&0xFF),var[3]
+    if (lua_iscolor(L,2)) { //Vector colors
+        if (lua_gettop(L) == 5) {
+            COLVEC(c1,2);
+            COLVEC(c2,3);
+            COLVEC(c3,4);
+            COLVEC(c4,5);
+            shape->setGradient(COLARG(c1),COLARG(c2),COLARG(c3),COLARG(c4));
+        }
+        else if (lua_gettop(L) == 3) {
+            COLVEC(c1,2);
+            COLVEC(c2,3);
+            shape->setGradient(COLARG(c1),COLARG(c2),COLARG(c1),COLARG(c2));
+        }
+        else if (lua_gettop(L) == 4) {
+            COLVEC(c1,2);
+            COLVEC(c2,3);
+            shape->setGradientWithAngle(COLARG(c1),COLARG(c2),
+            luaL_checknumber(L, 4));
+        }
+        else {
+            COLVEC(color,2);
+            shape->setFillColor(COLARG(color));
+            shape->clearGradient();
+        }
+#undef COLVEC
+#undef COLARG
+    }
+    else if (lua_gettop(L) == 9) shape->setGradient(
+                luaL_checknumber(L, 2), luaL_checknumber(L, 3),
+                luaL_checknumber(L, 4), luaL_checknumber(L, 5),
+                luaL_checknumber(L, 6), luaL_checknumber(L, 7),
+                luaL_checknumber(L, 8), luaL_checknumber(L, 9));
+    else if (lua_gettop(L) == 5) shape->setGradient(
+                luaL_checknumber(L, 2), luaL_checknumber(L, 3),
+                luaL_checknumber(L, 2), luaL_checknumber(L, 3),
+                luaL_checknumber(L, 4), luaL_checknumber(L, 5),
+                luaL_checknumber(L, 4), luaL_checknumber(L, 5));
+    else if (lua_gettop(L) == 6) shape->setGradientWithAngle(
+                luaL_checknumber(L, 2), luaL_checknumber(L, 3),
+                luaL_checknumber(L, 4), luaL_checknumber(L, 5),
+                luaL_checknumber(L, 6));
+    else {
+		unsigned int color = luaL_optinteger(L, 2, 0);
+		lua_Number alpha = luaL_optnumber(L, 3, 1.0);
+		shape->setFillColor(color, alpha);
+		shape->clearGradient();
+    }
 
 	return 0;
 }
@@ -97,10 +145,17 @@ int Path2DBinder::setLineColor(lua_State* L)
 	Binder binder(L);
 	Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D"));
 
-	unsigned int color = luaL_optinteger(L, 2, 0);
-	lua_Number alpha = luaL_optnumber(L, 3, 1.0);
+    float cvec[4];
+    if (lua_tocolorf(L,2,cvec,0)) {
+        unsigned int col = ((((int)(cvec[0]*255))&0xFF)<<16)|((((int)(cvec[1]*255))&0xFF)<<8)|((((int)(cvec[2]*255))&0xFF)<<0);
+        shape->setLineColor(col, cvec[3]);
+    }
+    else {
+        unsigned int color = luaL_optinteger(L, 2, 0);
+        lua_Number alpha = luaL_optnumber(L, 3, 1.0);
 
-	shape->setLineColor(color, alpha);
+        shape->setLineColor(color, alpha);
+    }
 
 	return 0;
 }
@@ -127,12 +182,66 @@ int Path2DBinder::setLineThickness(lua_State* L)
 	Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D"));
 
 	double thickness = luaL_checknumber(L, 2);
-	double feather = luaL_optnumber(L, 3, -1);
+    double feather = luaL_optnumber(L, 3, -1);
+    double margin = luaL_optnumber(L, 4, -1);
+    double flatness = luaL_optnumber(L, 5, -1);
 
-	shape->setLineThickness(thickness,feather);
+	shape->setLineThickness(thickness,feather,margin,flatness);
 
 	return 0;
 }
+
+int Path2DBinder::getPathPoints(lua_State* L)
+{
+	Binder binder(L);
+	Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D", 1));
+
+	std::vector<Path2D::PathPoint> points;
+
+    shape->getPathPoints(luaL_optnumber(L, 3, 0),luaL_optnumber(L,2,0),luaL_optinteger(L, 4, 1000),
+			luaL_optnumber(L, 5, 1),luaL_optinteger(L, 6, 10),points);
+
+	lua_createtable(L,points.size(),0);
+    for (size_t i=0;i<points.size();i++) {
+		lua_createtable(L,0,3);
+		lua_pushnumber(L,points[i].x); lua_setfield(L,-2,"x");
+		lua_pushnumber(L,points[i].y); lua_setfield(L,-2,"y");
+		lua_pushnumber(L,points[i].offset); lua_setfield(L,-2,"offset");
+        lua_pushnumber(L,(180.0*points[i].angle)/3.141592654); lua_setfield(L,-2,"angle");
+		lua_rawseti(L,-2,i+1);
+	}
+
+	return 1;
+}
+
+int Path2DBinder::getPathOffset(lua_State* L)
+{
+    Binder binder(L);
+    Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D", 1));
+
+    float next=0;
+    float offset=shape->getPathOffset(luaL_checknumber(L, 2),luaL_checknumber(L,3),luaL_optnumber(L, 4, 0.001),next);
+    lua_pushnumber(L,offset);
+    lua_pushnumber(L,next);
+
+    return 2;
+}
+
+int Path2DBinder::getSegmentSize(lua_State* L)
+{
+    Binder binder(L);
+    Path2D* shape = static_cast<Path2D*>(binder.getInstance("Path2D", 1));
+
+    float next=0;
+    float length=0;
+    float offset=shape->getSegmentSize(luaL_optunsigned(L, 2,0),luaL_optunsigned(L,3,0),length,next);
+    lua_pushnumber(L,offset);
+    lua_pushnumber(L,length);
+    lua_pushnumber(L,next);
+
+    return 3;
+}
+
 
 int Path2DBinder::setPath(lua_State* L)
 {
@@ -161,7 +270,7 @@ int Path2DBinder::setPath(lua_State* L)
             coords[i] = luaL_checknumber(L, i + 3);
     }
 
-    shape->setPath(strlen(commands),(const unsigned char *)commands,coords.size(),&(coords[0]));
+    shape->setPath(strlen(commands),(const unsigned char *)commands,coords.size(),coords.data());
 
 	return 0;
 }
@@ -204,9 +313,9 @@ int Path2DBinder::setFontPath(lua_State* L)
 	}
 	int ch= luaL_checkinteger(L,3);
     TTFont *tf=static_cast<TTFont*>(font);
-    FT_Face face=(FT_Face)tf->getFace();
+    FT_UInt glyphIndex;
+    FT_Face face=tf->getFace(ch,glyphIndex);
 
-    FT_UInt glyphIndex = FT_Get_Char_Index(face, ch);
     if ((glyphIndex != 0)&&(!FT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT)))
     {
         if (face->glyph->format == FT_GLYPH_FORMAT_OUTLINE)

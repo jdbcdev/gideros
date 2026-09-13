@@ -17,4 +17,57 @@
         </replacelist>
     </template>
  </target>
+ <target name="iOS">
+   <mkdir>[[[project.name]]]/Plugins/luasocket</mkdir>
+   <template name="sources" path="[[[sys.pluginDir]]]/source"  dest="[[[project.name]]]/Plugins/luasocket" include="*.cpp" exclude="emscripten;win32;jni;iOS;Android"/>
+   <template name="bin" path="[[[sys.pluginDir]]]/bin/iOS"  dest="[[[project.name]]]/Plugins" include="*.ios.a" />
+   <mkdir>AppleTV/Plugins/luasocket</mkdir>
+   <template name="sources" path="[[[sys.pluginDir]]]/source"  dest="AppleTV/Plugins/luasocket" include="*.cpp" exclude="emscripten;win32;jni;iOS;Android"/>
+   <template name="bin" path="[[[sys.pluginDir]]]/bin/iOS"  dest="AppleTV/Plugins" include="*.atv.a" />
+   <mkdir>Mac/Plugins/luasocket</mkdir>
+   <template name="sources" path="[[[sys.pluginDir]]]/source"  dest="Mac/Plugins/luasocket" include="*.cpp" exclude="emscripten;win32;jni;iOS;Android"/>
+   <template name="bin" path="[[[sys.pluginDir]]]/bin/iOS"  dest="Mac/Plugins" include="*.mac.a" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+iOSProject.addGroup("luasocket","Plugins/luasocket","GroupLuasocket_ios","GroupPlugins_ios")
+iOSProject.addGroup("luasocket","luasocket","GroupLuasocket_atv","GroupPlugins_atv")
+iOSProject.addGroup("luasocket","luasocket","GroupLuasocket_mac","GroupPlugins_mac")
+iOSProject.addSources({ "luasocket_stub.cpp"  }, "GroupLuasocket", "ios")
+iOSProject.addSources({ "luasocket_stub.cpp"  }, "GroupLuasocket", "atv")
+iOSProject.addSources({ "luasocket_stub.cpp"  }, "GroupLuasocket", "mac")
+iOSProject.addSources({ "Plugins/libluasocket.ios.a"  }, "GroupPlugins", "ios")
+iOSProject.addSources({ "libluasocket.atv.a"  }, "GroupPlugins", "atv")
+iOSProject.addSources({ "libluasocket.mac.a"  }, "GroupPlugins", "mac")
+iOSProject.commit()
+	]]></lua>
+ </target>
+ <target name="Html5">
+ 	<lua>require("Tools/export_html5").export("luasocket")</lua>
+ </target>
+ <target name="WinRT">
+    <template name="sources" path="[[[sys.pluginDir]]]/bin/WinRT" />
+    <template name="binaries" path="[[[sys.pluginDir]]]/source"  dest="giderosgame/giderosgame.Shared/Plugins" include="luasocket_stub.cpp" exclude="emscripten;win32;jni;iOS;Android"/>
+    <template name="project" path="">
+        <replacelist wildcards="giderosgame.Shared.vcxitems">
+        <append>
+            <orig><![CDATA[<!--GIDEROS-PLUGIN-FILES-->]]></orig>
+            <by><![CDATA[
+    <ClCompile Include="$(MSBuildThisFileDirectory)Plugins\luasocket_stub.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>      
+    </ClCompile>]]></by>
+        </append>
+        <append>
+            <orig><![CDATA[<!--GIDEROS-LINK-SHARED-->]]></orig>
+            <by><![CDATA[
+      <AdditionalDependencies>%(AdditionalDependencies);luasocket.$(GidProjectType).lib</AdditionalDependencies>]]></by>
+        </append> 
+        </replacelist>
+    </template>
+ </target>
+ <target name="Win32">
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/win32" dest="plugins"/>
+ </target>
+ <target name="Linux">
+    <template name="binaries" path="[[[sys.pluginDir]]]/bin/linux" dest="plugins"/>
+ </target>
 </plugin>

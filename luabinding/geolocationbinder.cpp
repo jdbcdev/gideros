@@ -15,10 +15,11 @@ static Event::Type LOCATION_UPDATE("locationUpdate");
 static Event::Type HEADING_UPDATE("headingUpdate");
 static Event::Type ERROR("error");
 
+static lua_State *L = NULL;
 class GGGeolocation : public EventDispatcher
 {
 public:
-    GGGeolocation(lua_State *L) : L(L)
+    GGGeolocation(lua_State */*L*/)
     {
         isUpdatingLocation_ = false;
         isUpdatingHeading_ = false;
@@ -135,6 +136,20 @@ private:
             lua_setfield(L, -2, "longitude");
             lua_pushnumber(L, event2->altitude);
             lua_setfield(L, -2, "altitude");
+            if (event2->speed<0)
+            	lua_pushnil(L);
+            else
+            	lua_pushnumber(L, event2->speed);
+            lua_setfield(L, -2, "speed");
+            if (event2->course<0)
+            	lua_pushnil(L);
+            else
+            	lua_pushnumber(L, event2->course);
+            lua_setfield(L, -2, "course");
+            lua_pushnumber(L, event2->accuracy);
+            lua_setfield(L, -2, "accuracy");
+            lua_pushinteger(L, event2->type);
+            lua_setfield(L, -2, "source");
         }
         else if (type == GGEOLOCATION_HEADING_UPDATE_EVENT)
         {
@@ -146,6 +161,12 @@ private:
             lua_setfield(L, -2, "magneticHeading");
             lua_pushnumber(L, event2->trueHeading);
             lua_setfield(L, -2, "trueHeading");
+            lua_pushnumber(L, event2->magneticX);
+            lua_setfield(L, -2, "magneticX");
+            lua_pushnumber(L, event2->magneticY);
+            lua_setfield(L, -2, "magneticY");
+            lua_pushnumber(L, event2->magneticZ);
+            lua_setfield(L, -2, "magneticZ");
         }
         else if (type == GGEOLOCATION_ERROR_EVENT)
         {
@@ -157,7 +178,6 @@ private:
         lua_pop(L, 2);
     }
 
-    lua_State *L;
     bool isUpdatingLocation_;
     bool isUpdatingHeading_;
     g_id callbackid_;
@@ -165,6 +185,7 @@ private:
 
 GeolocationBinder::GeolocationBinder(lua_State *L)
 {
+	::L=L;
     Binder binder(L);
 
     static const luaL_Reg functionList[] = {
@@ -234,9 +255,9 @@ int GeolocationBinder::create(lua_State* L)
     return 1;
 }
 
-int GeolocationBinder::destruct(lua_State* L)
+int GeolocationBinder::destruct(void *p)
 {
-    void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
     GGGeolocation *geolocation = static_cast<GGGeolocation*>(ptr);
     geolocation->unref();
 

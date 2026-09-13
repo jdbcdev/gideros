@@ -16,10 +16,11 @@ static char key = ' ';
 #define EMAIL "email"
 #define URL "url"
 
+static lua_State *L = NULL;
 class GGTextInputDialog : public EventDispatcher
 {
 public:
-    GGTextInputDialog(lua_State *L,
+    GGTextInputDialog(lua_State */*L*/,
                       const char *title,
                       const char *message,
                       const char *text,
@@ -27,7 +28,6 @@ public:
                       const char *button1,
                       const char *button2)
     {
-        this->L = L;
         gid_ = gui_createTextInputDialog(title, message, text, cancelButton, button1, button2, callback_s, this);
     }
 
@@ -87,7 +87,7 @@ private:
         static_cast<GGTextInputDialog*>(udata)->callback(type, event);
     }
 
-    void callback(int type, void *event)
+    void callback(int /*type*/, void *event)
     {
         luaL_rawgetptr(L, LUA_REGISTRYINDEX, &key); // push TextInputDialogs table
         luaL_rawgetptr(L, -1, this);                // push TextInputDialog object
@@ -132,11 +132,11 @@ private:
 
 private:
     g_id gid_;
-    lua_State *L;
 };
 
 TextInputDialogBinder::TextInputDialogBinder(lua_State* L)
 {
+	::L=L;
     Binder binder(L);
 
     static const luaL_Reg functionList[] = {
@@ -188,9 +188,9 @@ int TextInputDialogBinder::create(lua_State *L)
     return 1;
 }
 
-int TextInputDialogBinder::destruct(lua_State *L)
+int TextInputDialogBinder::destruct(void *p)
 {
-    void *ptr = *(void**)lua_touserdata(L, 1);
+    void *ptr = GIDEROS_DTOR_UDATA(p);
     GGTextInputDialog *textInputDialog = static_cast<GGTextInputDialog*>(ptr);
     textInputDialog->unref();
 
@@ -279,7 +279,7 @@ int TextInputDialogBinder::setInputType(lua_State *L)
     else
     {
         GStatus status(2008, "inputType"); // Error #2008: Parameter '%s' must be one of the accepted values.
-        return luaL_error(L, status.errorString());
+        luaL_error(L, "%s", status.errorString());
     }
 
     textInputDialog->setInputType(inputType);

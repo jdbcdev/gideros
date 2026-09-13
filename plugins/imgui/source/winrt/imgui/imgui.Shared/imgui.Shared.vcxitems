@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <ItemsProjectGuid>{44725aea-718f-4a96-903d-58d4eb02b614}</ItemsProjectGuid>
+    <ItemsRootNamespace>imgui</ItemsRootNamespace>
+    <ItemsProjectName>imgui.Shared</ItemsProjectName>
+    <CodeSharingProject>248F659F-DAC5-46E8-AC09-60EC9FC95053</CodeSharingProject>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectCapability Include="SourceItemsFromImports" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_bindings.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui_demo.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui_draw.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui_widgets.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui_tables.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_user.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\..\Common\TextEditor.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imconfig.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imgui_internal.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imstb_rectpack.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imstb_textedit.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_src\imstb_truetype.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\imgui_user.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\..\Common\TextEditor.h" />
+  </ItemGroup>
+</Project>

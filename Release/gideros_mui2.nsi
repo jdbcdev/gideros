@@ -2,7 +2,23 @@
 ;Include Modern UI
 
   !include "MUI2.nsh"
+  !include "FileAssociation.nsh"
+  !include x64.nsh
 
+SetCompressor lzma
+Function .onInit
+        ${If} ${RunningX64}
+        ${DisableX64FSRedirection}
+        ${else}
+        MessageBox MB_OK "Sorry this application runs only on x64 machines"
+        Abort
+        ${EndIf}
+FunctionEnd
+
+!macro CreateInternetShortcut FILEPATH URL
+WriteINIStr "${FILEPATH}" "InternetShortcut" "URL" "${URL}"
+!macroend
+  
 ;--------------------------------
 ;General
 
@@ -11,7 +27,7 @@
   OutFile "gideros.exe"
 
   ;Default installation folder
-  InstallDir $PROGRAMFILES\Gideros
+  InstallDir $PROGRAMFILES64\Gideros
   
   ;Get installation folder from registry if available
   InstallDirRegKey HKCU "Software\Gideros" ""
@@ -56,6 +72,10 @@ Section "Remove previous install"
   RMDir /r "$INSTDIR\Tools"
   Delete "$INSTDIR\*.dll"
   Delete "$INSTDIR\*.exe"
+  ${unregisterExtension} ".gproj" "Gideros project"
+  ${unregisterExtension} ".tpproj" "Gideros texture packer project" 
+  ${unregisterExtension} ".GApp" "Gideros application" 
+  
 SectionEnd
 
 ;--------------------------------
@@ -75,6 +95,11 @@ Section "Gideros (required)"
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
+  ${registerExtension} "$INSTDIR\GiderosStudio.exe" ".gproj" "Gideros project" 
+  ${registerExtension} "$INSTDIR\GiderosTexturePacker.exe" ".tpproj" "Gideros texture packer project" 
+  ${registerExtension} "$INSTDIR\GiderosPlayer.exe" ".GApp" "Gideros application" 
+   
+  
 SectionEnd
 
 ; Optional section (can be disabled by the user)
@@ -85,10 +110,11 @@ Section "Start Menu Shortcuts"
   CreateShortCut "$SMPROGRAMS\Gideros\Gideros Player.lnk" "$INSTDIR\GiderosPlayer.exe" "" "$INSTDIR\GiderosPlayer.exe" 0
   CreateShortCut "$SMPROGRAMS\Gideros\Gideros Font Creator.lnk" "$INSTDIR\GiderosFontCreator.exe" "" "$INSTDIR\GiderosFontCreator.exe" 0
   CreateShortCut "$SMPROGRAMS\Gideros\Gideros Texture Packer.lnk" "$INSTDIR\GiderosTexturePacker.exe" "" "$INSTDIR\GiderosTexturePacker.exe" 0
-  CreateShortCut "$SMPROGRAMS\Gideros\Gideros License Manager.lnk" "$INSTDIR\GiderosLicenseManager.exe" "" "$INSTDIR\GiderosLicenseManager.exe" 0
+  ;CreateShortCut "$SMPROGRAMS\Gideros\Gideros License Manager.lnk" "$INSTDIR\GiderosLicenseManager.exe" "" "$INSTDIR\GiderosLicenseManager.exe" 0
   CreateShortCut "$SMPROGRAMS\Gideros\Examples.lnk" "$INSTDIR\Examples" "" "$INSTDIR\Examples" 0
-  CreateShortCut "$SMPROGRAMS\Gideros\Reference Manual.lnk" "$INSTDIR\Documentation\reference_manual.html" "" "$INSTDIR\Documentation\reference_manual.html" 0
-  CreateShortCut "$SMPROGRAMS\Gideros\Getting Started.lnk" "$INSTDIR\Documentation\getting_started.html" "" "$INSTDIR\Documentation\getting_started.html" 0
+  !insertmacro CreateInternetShortcut "$SMPROGRAMS\Gideros\Documentation.url" "https://wiki.giderosmobile.com"
+  ;CreateShortCut  "$INSTDIR\Documentation\reference_manual.html" "" "$INSTDIR\Documentation\reference_manual.html" 0
+  ;CreateShortCut "$SMPROGRAMS\Gideros\Getting Started.lnk" "$INSTDIR\Documentation\getting_started.html" "" "$INSTDIR\Documentation\getting_started.html" 0
   CreateShortCut "$SMPROGRAMS\Gideros\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\uninstall.exe" 0
   
 SectionEnd
@@ -123,5 +149,8 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\Gideros"
 
   DeleteRegKey HKCU "Software\Gideros"
+  
+  ${unregisterExtension} ".gproj" "Gideros project"
+  ${unregisterExtension} ".tpproj" "Gideros texture packer project" 
 
 SectionEnd

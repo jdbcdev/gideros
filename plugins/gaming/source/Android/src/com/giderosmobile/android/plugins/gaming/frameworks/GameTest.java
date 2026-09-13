@@ -55,6 +55,12 @@ public class GameTest implements GameInterface {
 	}
 
 	@Override
+	public boolean loggedin() {
+		Log.d("GameTest", "logged in");
+		return false;
+	}
+
+	@Override
 	public void onActivityResult(int request, int response, Intent data) {
 		Log.d("GameTest", "onActivityResult: " + request + "; " + response);
 	}
@@ -69,6 +75,12 @@ public class GameTest implements GameInterface {
 		Log.d("GameTest", "reportScore: " + id + ", " + score + ",  " + immediate);
 		Game.reportScoreComplete(this, id, score);
 		Game.reportScoreError(this, id, score, "Score Error");
+	}
+
+	@Override
+	public void getPlayerInfo() {
+		Log.d("GameTest", "getPlayerInfo");
+		Game.playerInfoError(this, Game.FEATURE_NOT_SUPPORTED);
 	}
 
 	@Override
@@ -130,6 +142,24 @@ public class GameTest implements GameInterface {
 	}
 
 	@Override
+	public void loadPlayerScores(String id, int span, int collection, int maxResults) {
+		Log.d("GameTest", "loadScores: " + id + ", " + span + ", " + collection + ", " + maxResults);
+		String leaderboardName = "Leaderbroad";
+		SparseArray<Bundle> lscores = new SparseArray<Bundle>();
+		int size = 3;
+		for(int i = 0; i < size; i++){
+			Bundle map = new Bundle();
+			map.putString("rank", ""+(i+1));
+			map.putString("score", (100-(i*10))+"");
+			map.putString("name", "Test user " +(i+1));
+			map.putString("playerId", i+"");
+			map.putInt("timestamp", (1000*i));
+			lscores.put(i, map);
+		}
+		Game.loadScoresComplete(this, id, leaderboardName, lscores);
+	}
+
+	@Override
 	public void loadState(int key) {
 		Log.d("GameTest", "load state: " + key);
 		Game.stateLoaded(this, key, "state1".getBytes(), 1);
@@ -151,5 +181,65 @@ public class GameTest implements GameInterface {
 	public void deleteState(int key) {
 		Log.d("GameTest", "delete state: " + key);
 		Game.stateDeleted(this, key);
+	}
+
+	@Override
+	public void autoMatch(int minPlayers, int maxPlayers) {
+
+	}
+
+	@Override
+	public void invitePlayers(int minPlayers, int maxPlayers) {
+
+	}
+
+	@Override
+	public void joinRoom(String id) {
+
+	}
+
+	@Override
+	public void showInvitations() {
+
+	}
+
+	@Override
+	public void showWaitingRoom(int minPlayers) {
+
+	}
+
+	@Override
+	public void sendTo(String id, byte[] message, int isReliable) {
+
+	}
+
+	@Override
+	public void sendToAll(byte[] message, int isReliable) {
+
+	}
+
+	@Override
+	public String getCurrentPlayer() {
+		return null;
+	}
+
+	@Override
+	public String getCurrentPlayerId() {
+		return null;
+	}
+
+	@Override
+	public String getCurrentPlayerPicture(int highRes) {
+		return null;
+	}
+
+	@Override
+	public void getCurrentPlayerScore(String leaderboardId, int span, int leaderboardCollection) {
+
+	}
+
+	@Override
+	public Object getAllPlayers() {
+		return null;
 	}
 }

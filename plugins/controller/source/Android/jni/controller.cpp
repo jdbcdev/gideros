@@ -8,12 +8,13 @@ JavaVM *g_getJavaVM();
 JNIEnv *g_getJNIEnv();
 }
 
-static const char* getString(JNIEnv *env, jstring jstr)
+static std::string strResult;
+static const char *getString(JNIEnv *env, jstring jstr)
 {
 	const char *str = env->GetStringUTFChars(jstr, NULL);
-	std::string result = str;
+	strResult= str;
 	env->ReleaseStringUTFChars(jstr, str);
-	return result.c_str();
+	return strResult.c_str();
 }
 
 class GHID
@@ -312,6 +313,14 @@ void ghid_removeCallback(gevent_Callback callback, void *udata)
 void ghid_removeCallbackWithGid(g_id gid)
 {
 	s_ghid->removeCallbackWithGid(gid);
+}
+
+void ghid_setDeadZone(float dz)
+{
+	JNIEnv *env = g_getJNIEnv();
+	jclass localClass = env->FindClass("com/giderosmobile/android/plugins/controller/GController");
+	env->CallStaticVoidMethod(localClass, env->GetStaticMethodID(localClass, "setDeadZone", "(F)V"), (jfloat)dz);
+	env->DeleteLocalRef(localClass);
 }
 
 }

@@ -12,16 +12,11 @@
 #include "giderosapi.h"
 
 
-@interface ViewController ()
-@property (nonatomic, retain) EAGLContext *context;
-@property (nonatomic, assign) CADisplayLink *displayLink;
-@end
-
 @implementation ViewController
 
 NSMutableArray *tableData;
 
-@synthesize animating, context, displayLink, glView, tableView;
+@synthesize animating, displayLink, glView, tableView;
 
 - (id)init
 {
@@ -50,31 +45,11 @@ NSMutableArray *tableData;
 
 - (void)viewDidLoad
 {
-    EAGLContext *aContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
-    
-    if (!aContext)
-        NSLog(@"Failed to create ES context");
-    else if (![EAGLContext setCurrentContext:aContext])
-        NSLog(@"Failed to set ES context current");
-    
-    self.context = aContext;
-    [aContext release];
-    
-    [(EAGLView *)self.glView setContext:context];
-    [(EAGLView *)self.glView setFramebuffer];
+    [self.glView setup];
 }
 
 - (void)dealloc
 {
-    // Tear down context.
-    if ([EAGLContext currentContext] == context)
-        [EAGLContext setCurrentContext:nil];
-    
-    [context release];
-    
-    [tableData release];
-    
-    [super dealloc];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -95,10 +70,7 @@ NSMutableArray *tableData;
 {
     [super viewDidUnload];
     
-    // Tear down context.
-    if ([EAGLContext currentContext] == context)
-        [EAGLContext setCurrentContext:nil];
-    self.context = nil;
+    [self.glView tearDown];
 }
 
 - (NSInteger)animationFrameInterval
@@ -149,7 +121,8 @@ NSMutableArray *tableData;
 
 - (void)drawFrame
 {
-    gdr_drawFrame();
+   gdr_drawFrame(resized);
+   resized=FALSE;
 }
 
 - (void)didReceiveMemoryWarning
@@ -184,8 +157,6 @@ NSMutableArray *tableData;
     labelView.font=[labelView.font fontWithSize:25];
     [headerView addSubview:labelView];
     self.tableView.tableHeaderView = headerView;
-    [labelView release];
-    [headerView release];
     [self.tableView reloadData];
     [self.view addSubview:self.tableView];
     [self.tableView setHidden:true];

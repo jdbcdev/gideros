@@ -1,6 +1,8 @@
 <plugin
  name="Facebook"
  description="Facebook connector">
+  <property name="fbAppId" type="string" title="Facebook App ID" default="" />
+  <property name="fbAppName" type="string" title="Facebook App Name as in Facebook developer Dashboard" default="" />
  
   <target name="AndroidStudio,APK">
     <template name="sources" path="[[[sys.pluginDir]]]/bin/Android/src" dest="app/src/main/java" exclude="frameworks"/>
@@ -25,10 +27,46 @@
 					<orig>//TAG-DEPENDENCIES//</orig>								
 					<by>
   // Android SDK
-  compile 'com.facebook.android:facebook-android-sdk:3.+'
+  implementation 'com.facebook.android:facebook-android-sdk:3.+'
   					</by>
 				</append>
 	       	</replacelist>	
     </template>
+ </target>
+ <target name="iOS">
+   <template name="binaries" path="[[[sys.pluginDir]]]/source/iOS/Plugins/" dest="[[[project.name]]]/Plugins/" />
+	<download source="http://apps.giderosmobile.com/ext/ios/FacebookSDK.framework-3.24.4.zip" dest="[[[sys.cacheDir]]]/FacebookSDK.framework.zip" />
+<!-- <download source="http://apps.giderosmobile.com/ext/ios/FacebookSDKs-iOS-4.28.0.zip" dest="[[[sys.cacheDir]]]/FacebookSDK.framework.zip" /> -->
+    	<unzip source="[[[sys.cacheDir]]]/FacebookSDK.framework.zip" dest="[[[project.name]]]/Plugins/Facebook" />
+	<lua><![CDATA[
+local iOSProject=require("Tools/export_ios")
+local urls=iOSProject.InfoPlist.LSApplicationQueriesSchemes or { }
+iOSProject.InfoPlist.LSApplicationQueriesSchemes=urls
+table.insert(urls,"fbapi")
+table.insert(urls,"fb-messenger-share-api")
+table.insert(urls,"fbauth2")
+table.insert(urls,"fbshareextension")
+iOSProject.InfoPlist.CFBundleURLTypes=iOSProject.InfoPlist.CFBundleURLTypes or {}
+table.insert(iOSProject.InfoPlist.CFBundleURLTypes,{ CFBundleURLSchemes={ "fb"..Export.getProperty("plugin.fbAppId") } })
+
+iOSProject.InfoPlist.FacebookAppID=Export.getProperty("plugin.fbAppId")
+iOSProject.InfoPlist.FacebookDisplayName=Export.getProperty("plugin.fbAppName")
+				
+iOSProject.addGroup("Facebook","Plugins/Facebook","GroupFacebook_ios","GroupPlugins_ios")
+iOSProject.addGroup("Facebook","Plugins/Facebook","GroupFacebook_atv","GroupPlugins_atv")
+iOSProject.addSources({ "GFBook.h", "GFBook.mm", "gfacebook.h", "gfacebook.mm", "facebookbinder.cpp", "FacebookSDK.framework" }, "GroupFacebook", "ios")
+--iOSProject.addSources({ "GFBook.h", "GFBook.mm", "gfacebook.h", "gfacebook.mm", "facebookbinder.cpp", "FBSDKCoreKit.framework", "FBSDKLoginKit.framework", "FBSDKShareKit.framework" }, "GroupFacebook", "ios")
+iOSProject.addFrameworkPath(Export.getProperty("project.name").."/Plugins/Facebook")
+iOSProject.commit()
+	]]></lua>
+ </target>
+ <target name="Html5">
+	<if condition="[[[not:[[[project.html5_fbinstant]]]]]]">
+	 	<lua>
+	 	local h=require("Tools/export_html5")
+	 	h.export("Facebook")
+ 		h.exportJS("FacebookBase")
+	 	</lua>
+    </if>
  </target>
 </plugin>

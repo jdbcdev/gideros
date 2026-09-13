@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <gpath.h>
+#include <map>
 
 namespace {
 
@@ -44,12 +45,12 @@ struct GWavHandle
 #ifdef PLATFORM_BIG_ENDIAN
 static inline uint16_t to_le16(uint16_t num)
 {
-    return SWAP_16(num);
+    return (uint16_t) SWAP_16(num);
 }
 
 static inline uint32_t to_le32(uint32_t num)
 {
-    return SWAP_32(num);
+    return (uint32_t) SWAP_32(num);
 }
 #else
 static inline uint16_t to_le16(uint16_t num)
@@ -65,10 +66,13 @@ static inline uint32_t to_le32(uint32_t num)
 
 }
 
+static std::map<g_id, GWavHandle *> ctxmap;
+
 extern "C" {
 
-g_id gsoundencoder_WavCreate(const char *fileName, int numChannels, int sampleRate, int bitsPerSample)
+g_id gsoundencoder_WavCreate(const char *fileName, int numChannels, int sampleRate, int bitsPerSample, float quality)
 {
+	G_UNUSED(quality);
     FILE *fos = fopen(gpath_transform(fileName), "wb");
     if (fos == NULL)
         return 0;
@@ -114,12 +118,15 @@ g_id gsoundencoder_WavCreate(const char *fileName, int numChannels, int sampleRa
     handle->dataSize = 0;
     handle->bytesPerSample = ((bitsPerSample + 7) / 8) * numChannels;
 
-    return (g_id)handle;
+	g_id gid = g_NextId();
+	ctxmap[gid] = handle;
+
+    return gid;
 }
 
 void gsoundencoder_WavClose(g_id id)
 {
-    GWavHandle *handle = (GWavHandle*)id;
+    GWavHandle *handle = ctxmap[id];
 
     if (handle->dataSize == 0)
     {
@@ -137,27 +144,28 @@ void gsoundencoder_WavClose(g_id id)
 
     {
         fseek(handle->fos, 4, SEEK_SET);
-        uint32_t chunkSize = to_le32(4 + (8 + sizeof(GFmtChunk)) + (8 + handle->dataSize));
+        uint32_t chunkSize = to_le32((uint32_t)(4 + (8 + sizeof(GFmtChunk)) + (8 + handle->dataSize)));
         fwrite(&chunkSize, sizeof(chunkSize), 1, handle->fos);
     }
 
     {
         fseek(handle->fos, sizeof(GWaveHeader) + sizeof(GFmtChunk) + 12, SEEK_SET);
-        uint32_t chunkSize = to_le32(handle->dataSize);
+        uint32_t chunkSize = to_le32((uint32_t)handle->dataSize);
         fwrite(&chunkSize, sizeof(chunkSize), 1, handle->fos);
     }
 
     fclose(handle->fos);
+	ctxmap.erase(id);
 
     delete handle;
 }
 
-void gsoundencoder_WavWrite(g_id id, size_t sampleCount, void *data)
+size_t gsoundencoder_WavWrite(g_id id, size_t size, void *data)
 {
-    GWavHandle *handle = (GWavHandle*)id;
-    size_t size = sampleCount * handle->bytesPerSample;
+    GWavHandle *handle = ctxmap[id];
     fwrite(data, size, 1, handle->fos);
     handle->dataSize += size;
+    return size;
 }
 
 }

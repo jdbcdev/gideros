@@ -1,0 +1,5 @@
+<plugin
+ name="SceneManager"
+ description="An easy way to manage scenes.">
+ <target name="APK,iOS,Html5,WinRT,Windows,MacOSX,Win32" />
+</plugin>

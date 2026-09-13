@@ -11,6 +11,8 @@
 
 #include "giderosapi.h"
 
+//GIDEROS-TAG-IOS:APP-DELEGATE-DECL//
+
 #ifndef NSFoundationVersionNumber_iOS_7_1
 # define NSFoundationVersionNumber_iOS_7_1 1047.25
 #endif
@@ -19,6 +21,46 @@
 
 @synthesize window;
 @synthesize viewController;
+
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions  API_AVAILABLE(ios(13.0)){
+    if (@available(iOS 13,*)) {
+        //[self.window setWindowScene:(UIWindowScene *) scene];
+        AppDelegate *mainDelegate=(AppDelegate *) [UIApplication sharedApplication].delegate;
+        viewController=mainDelegate.viewController;
+        
+        UIWindowScene *ws=((UIWindowScene *)scene);
+        if (@available(iOS 16,*)) {
+            [ws addObserver:viewController forKeyPath:@"effectiveGeometry" options:NSKeyValueObservingOptionNew context:nil];//observing the key in this class
+        }
+        self.window = [[UIWindow alloc] initWithWindowScene:ws];
+        [self.window setRootViewController:self.viewController];
+        [self.window makeKeyAndVisible];
+    }
+}
+
+- (void) sceneDidDisconnect:(UIScene *) scene
+API_AVAILABLE(ios(13.0)){
+}
+
+- (void) sceneDidBecomeActive:(UIScene *) scene
+API_AVAILABLE(ios(13.0)){
+    [self applicationDidBecomeActive:[UIApplication sharedApplication]];
+}
+
+- (void) sceneWillResignActive:(UIScene *) scene
+API_AVAILABLE(ios(13.0)){
+    [self applicationWillResignActive:[UIApplication sharedApplication]];
+}
+
+- (void) sceneWillEnterForeground:(UIScene *) scene
+API_AVAILABLE(ios(13.0)){
+    [self applicationWillEnterForeground:[UIApplication sharedApplication]];
+}
+
+- (void) sceneDidEnterBackground:(UIScene *) scene
+API_AVAILABLE(ios(13.0)){
+    [self applicationDidEnterBackground:[UIApplication sharedApplication]];
+}
 
 - (BOOL)isNotRotatedBySystem{
     BOOL OSIsBelowIOS8 = [[[UIDevice currentDevice] systemVersion] floatValue] < 8.0;
@@ -30,10 +72,7 @@
 {
 	CGRect bounds = [[UIScreen mainScreen] bounds];
 	
-    self.window = [[[UIWindow alloc] initWithFrame:bounds] autorelease];
-	
-    self.viewController = [[[ViewController alloc] init] autorelease];	
-    self.viewController.wantsFullScreenLayout = YES;
+    self.viewController = [[ViewController alloc] init];
 
 	[self.viewController view];
 
@@ -70,18 +109,25 @@
     
     gdr_initialize(self.viewController.glView, width, height, isPlayer);
 
-    if ([[[UIDevice currentDevice] systemVersion] compare:@"6.0" options:NSNumericSearch] != NSOrderedAscending)
-    {
-        [self.window setRootViewController:self.viewController];
+    if (@available(iOS 13,*)) {
+        self.window = [[UIWindow alloc] initWithFrame:bounds];
     }
-    else
-    {
-        [self.window addSubview:self.viewController.view];
-    }
+    else {
+	    if ([[[UIDevice currentDevice] systemVersion] compare:@"6.0" options:NSNumericSearch] != NSOrderedAscending)
+    	{
+        	[self.window setRootViewController:self.viewController];
+	    }
+	    else
+    	{
+        	[self.window addSubview:self.viewController.view];
+	    }
 
-    [self.window makeKeyAndVisible];
+    	[self.window makeKeyAndVisible];
+    }
 
     gdr_drawFirstFrame();
+
+    //GIDEROS-TAG-IOS:APP-LAUNCHED//
 
     return YES;
 }
@@ -129,12 +175,25 @@
     gdr_foreground();
 }
 
+#ifdef GIDEROS_TAG_APNS
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo {
+    //GIDEROS-TAG-IOS:NOTIFICATION-RX//
+}
+
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo
+fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
+    UIBackgroundFetchResult result=UIBackgroundFetchResultNewData;
+    //GIDEROS-TAG-IOS:NOTIFICATION-RX-CH//
+    completionHandler(result);
+}
+
+- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(nonnull NSData *)deviceToken {
+    //GIDEROS-TAG-IOS:NOTIFICATION-TOKEN//
+}
+#endif
+
 - (void)dealloc
 {
-    [viewController release];
-    [window release];
-    
-    [super dealloc];
 }
 
 @end

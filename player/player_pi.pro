@@ -43,7 +43,6 @@ INCLUDEPATH += \
     ../libgideros \
     ../libpystring \
     "../external/glu" \
-    ../external/liquidfun-1.0.0/liquidfun/Box2D \
     "../external/minizip-1.1/source" \
     ../libraries/themes \
     ../libraries/constants \
@@ -54,14 +53,6 @@ SOURCES += \
     Sources/errordialog.cpp \
     Sources/glcanvas.cpp \
     Sources/settingsdialog.cpp \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Rope/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/*.cpp) \
     $$files(../luabinding/*.cpp)	../luabinding/tlsf.c \
     $$files(../libnetwork/*.cpp) \
     ../libgid/src/aes.c \
@@ -102,41 +93,36 @@ DEFINES += USE_FILE32API
 
 LIBS += -lpthread
 
-#INCLUDEPATH += ../external/Box2D_v2.3.0/Box2D
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Common/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Collision/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Collision/Shapes/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Dynamics/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Dynamics/Contacts/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Dynamics/Joints/*.cpp)
-#SOURCES += $$files(../external/Box2D_v2.3.0/Box2D/Box2D/Rope/*.cpp)
-
 
 # modified from http://source-android.frandroid.com/external/freetype/Android.mk
 # also ftmodule.h should be configured like http://source-android.frandroid.com/external/freetype/include/freetype/config/ftmodule.h
+#FREETYPE_VER=2.4.12
+FREETYPE_VER=2.7.1
+
 DEFINES += FT2_BUILD_LIBRARY
 DEFINES += DARWIN_NO_CARBON
 
 INCLUDEPATH += ../libgid/include
-INCLUDEPATH += ../libgid/external/freetype-2.4.12/include
-INCLUDEPATH += ../libgid/external/freetype-2.4.12/src
+INCLUDEPATH += ../libgid/external/freetype-$${FREETYPE_VER}/include
+INCLUDEPATH += ../libgid/external/freetype-$${FREETYPE_VER}/src
 
 SOURCES += \
-    ../libgid/external/freetype-2.4.12/src/base/ftbbox.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftbitmap.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftglyph.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftlcdfil.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftstroke.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftxf86.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftbase.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftsystem.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftinit.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftgasp.c \
-    ../libgid/external/freetype-2.4.12/src/raster/raster.c \
-    ../libgid/external/freetype-2.4.12/src/sfnt/sfnt.c \
-    ../libgid/external/freetype-2.4.12/src/smooth/smooth.c \
-    ../libgid/external/freetype-2.4.12/src/autofit/autofit.c \
-    ../libgid/external/freetype-2.4.12/src/truetype/truetype.c \
-    ../libgid/external/freetype-2.4.12/src/cff/cff.c \
-    ../libgid/external/freetype-2.4.12/src/psnames/psnames.c \
-    ../libgid/external/freetype-2.4.12/src/pshinter/pshinter.c
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbbox.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbitmap.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftglyph.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftlcdfil.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftstroke.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbase.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftsystem.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftinit.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftgasp.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/raster/raster.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/sfnt/sfnt.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/smooth/smooth.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/autofit/autofit.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/truetype/truetype.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/cff/cff.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/gzip/ftgzip.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/psnames/psnames.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/pshinter/pshinter.c
+#2.4.12    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftxf86.c

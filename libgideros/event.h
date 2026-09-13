@@ -1,5 +1,5 @@
-#ifndef EVENT_H
-#define EVENT_H
+#ifndef GID_EVENT_H
+#define GID_EVENT_H
 
 #include "stringid.h"
 #include "eventtype.h"
@@ -99,5 +99,38 @@ private:
 	static int s_uniqueid_;
 	int uniqueid_;
 };
+
+class GIDEROS_API OpenUrlEvent : public Event
+{
+public:
+	typedef EventType<OpenUrlEvent> Type;
+	OpenUrlEvent(const Type& type,const char *url) : Event(type.type()),	url_(url) {	}
+	virtual ~OpenUrlEvent() {}
+	const char *url() { return url_.c_str(); }
+	virtual void apply(EventVisitor* v);
+	static Type OPEN_URL;
+private:
+	std::string url_;
+};
+
+class GIDEROS_API TextInputEvent : public Event
+{
+public:
+	typedef EventType<TextInputEvent> Type;
+	TextInputEvent(const Type& type,const char *text,const char *context, int selStart,int selEnd) : Event(type.type()),	text_(text),context_(context),selStart_(selStart),selEnd_(selEnd) {	}
+	virtual ~TextInputEvent() {}
+	const char *text() { return text_.c_str(); }
+	const char *context() { return context_.c_str(); }
+	int selStart() { return selStart_; }
+	int selEnd() { return selEnd_; }
+	virtual void apply(EventVisitor* v);
+	static Type TEXT_INPUT;
+private:
+	std::string text_;
+	std::string context_;
+	int selStart_;
+	int selEnd_;
+};
+
 
 #endif

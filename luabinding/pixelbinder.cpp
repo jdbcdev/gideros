@@ -3,6 +3,7 @@
 #include "bitmapdata.h"
 #include "stackchecker.h"
 #include "luaapplication.h"
+#include "spritebinder.h"
 #include <luautil.h>
 
 PixelBinder::PixelBinder(lua_State* L)
@@ -12,6 +13,8 @@ PixelBinder::PixelBinder(lua_State* L)
 	static const luaL_Reg functionList[] = {
 		{"setWidth", setWidth},
 		{"setHeight", setHeight},
+		{"getAnchorPoint", getAnchorPoint},
+		{"setAnchorPoint", setAnchorPoint},
         {"setDimensions", setDimensions},
         {"getDimensions", getDimensions},
         {"setColor", setColor},
@@ -23,6 +26,9 @@ PixelBinder::PixelBinder(lua_State* L)
         {"getTexturePosition", getTexturePosition},
         {"setTextureScale", setTextureScale},
         {"getTextureScale", getTextureScale},
+		{"setNinePatch", setNinePatch},
+        {"updateStyle", updateStyle},
+        {"__parseGhosts", __parseGhosts},
         {NULL, NULL},
 	};
 
@@ -40,32 +46,26 @@ int PixelBinder::create(lua_State* L)
 
     Pixel* bitmap = new Pixel(application->getApplication());
 
-    if (binder.isInstanceOf("TextureRegion", 1)) {
-        BitmapData *bitmapData = static_cast<BitmapData*>(binder.getInstance("TextureRegion", 1));
-
-        bitmap->setTexture(bitmapData->texture(), 0, NULL);
-        bitmap->setColor(1, 1, 1, 1);
-
-        int x, y, w, h, dx1, dy1, dx2, dy2;
-        bitmapData->getRegion(&x, &y, &w, &h, &dx1, &dy1, &dx2, &dy2);
-        bitmap->setTexturePosition(x, y);
-        bitmap->setDimensions(w, h);
-
-        binder.pushInstance("Pixel", bitmap);
-        return 1;
-    }
-
-    if (lua_type(L, 3) == LUA_TTABLE) {
+     if (lua_type(L, 3) == LUA_TTABLE) {
          bitmap->setStretching(true);
+         int tw,th;
 
-        TextureBase *textureBase = NULL;
-        textureBase=static_cast<TextureBase*>(binder.getInstance("TextureBase", 3));
-
-        bitmap->setTexture(textureBase, 0, NULL);
+         if (binder.isInstanceOf("TextureRegion", 3)) {
+            BitmapData *bitmapData = static_cast<BitmapData*>(binder.getInstance("TextureRegion", 3));
+ 			bitmap->setTextureRegion(bitmapData, 0);
+ 	    	bitmapData->getRegion(NULL,NULL,&tw,&th, NULL,NULL,NULL,NULL);
+         }
+         else {
+			TextureBase *textureBase = NULL;
+            textureBase=static_cast<TextureBase*>(binder.getInstance("TextureBase", 3));
+			bitmap->setTexture(textureBase, 0, NULL);
+			tw=textureBase->data->width;
+			th=textureBase->data->height;
+        }
         bitmap->setColor(1, 1, 1, 1);
 
-        lua_Number w = luaL_optnumber(L, 1, textureBase->data->width);
-        lua_Number h = luaL_optnumber(L, 2, textureBase->data->height);
+        lua_Number w = luaL_optnumber(L, 1, tw);
+        lua_Number h = luaL_optnumber(L, 2, th);
         bitmap->setDimensions(w, h);
 
         binder.pushInstance("Pixel", bitmap);
@@ -73,14 +73,24 @@ int PixelBinder::create(lua_State* L)
     }
 
     if (lua_type(L, 1) == LUA_TTABLE) {
-        TextureBase *textureBase = NULL;
-        textureBase=static_cast<TextureBase*>(binder.getInstance("TextureBase", 1));
+        int tw,th;
 
-        bitmap->setTexture(textureBase, 0, NULL);
+        if (binder.isInstanceOf("TextureRegion", 1)) {
+           BitmapData *bitmapData = static_cast<BitmapData*>(binder.getInstance("TextureRegion", 1));
+			bitmap->setTextureRegion(bitmapData, 0);
+	    	bitmapData->getRegion(NULL,NULL,&tw,&th, NULL,NULL,NULL,NULL);
+        }
+        else {
+			TextureBase *textureBase = NULL;
+			textureBase=static_cast<TextureBase*>(binder.getInstance("TextureBase", 1));
+			bitmap->setTexture(textureBase, 0, NULL);
+			tw=textureBase->data->width;
+			th=textureBase->data->height;
+       }
         bitmap->setColor(1, 1, 1, 1);
 
-        lua_Number w = luaL_optnumber(L, 2, textureBase->data->width);
-        lua_Number h = luaL_optnumber(L, 3, textureBase->data->height);
+        lua_Number w = luaL_optnumber(L, 2, tw);
+        lua_Number h = luaL_optnumber(L, 3, th);
         bitmap->setDimensions(w, h);
 
         lua_Number sx = luaL_optnumber(L, 4, 1.0);
@@ -95,24 +105,32 @@ int PixelBinder::create(lua_State* L)
         return 1;
     }
 
-    unsigned int color = luaL_optinteger(L, 1, 0xffffff);
-	lua_Number alpha = luaL_optnumber(L, 2, 1.0);
-	int r = (color >> 16) & 0xff;
-	int g = (color >> 8) & 0xff;
-	int b = color & 0xff;
-	bitmap->setColor(r/255.f,g/255.f,b/255.f,alpha);
+    int postCol=3;
+    float cvec[4];
+    if (lua_tocolorf(L,1,cvec,0)) {
+        postCol=2;
+        bitmap->setColor(cvec[0],cvec[1],cvec[2],cvec[3]);
+    }
+    else {
+        unsigned int color = luaL_optinteger(L, 1, 0xffffff);
+        lua_Number alpha = luaL_optnumber(L, 2, 1.0);
+        int r = (color >> 16) & 0xff;
+        int g = (color >> 8) & 0xff;
+        int b = color & 0xff;
+        bitmap->setColor(r/255.f,g/255.f,b/255.f,alpha);
+    }
 
-    lua_Number w = luaL_optnumber(L, 3, 1.0);
-    lua_Number h = luaL_optnumber(L, 4, w);
+    lua_Number w = luaL_optnumber(L, postCol, 1.0);
+    lua_Number h = luaL_optnumber(L, postCol+1, w);
 	bitmap->setDimensions(w,h);
 
 	binder.pushInstance("Pixel", bitmap);
 	return 1;
 }
 
-int PixelBinder::destruct(lua_State* L)
+int PixelBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
 	Pixel* bitmap = static_cast<Pixel*>(ptr);
 	bitmap->unref();
 
@@ -141,6 +159,82 @@ int PixelBinder::setHeight(lua_State* L)
 	lua_Number h = luaL_checknumber(L, 2);
 
 	bitmap->setHeight(h);
+
+	return 0;
+}
+
+int PixelBinder::setAnchorPoint(lua_State* L)
+{
+	StackChecker checker(L, "PixelBinder::setAnchorPoint", 0);
+
+	Binder binder(L);
+
+	Pixel* bitmap = static_cast<Pixel*>(binder.getInstance("Pixel", 1));
+
+	lua_Number x = luaL_checknumber(L, 2);
+	lua_Number y = luaL_checknumber(L, 3);
+
+	bitmap->setAnchorPoint(x, y);
+
+	return 0;
+}
+
+int PixelBinder::getAnchorPoint(lua_State* L)
+{
+	StackChecker checker(L, "PixelBinder::getAnchorPoint", 2);
+
+	Binder binder(L);
+
+	Pixel* bitmap = static_cast<Pixel*>(binder.getInstance("Pixel", 1));
+
+	float x, y;
+	bitmap->getAnchorPoint(&x, &y);
+
+	lua_pushnumber(L, x);
+	lua_pushnumber(L, y);
+
+	return 2;
+}
+
+int PixelBinder::setNinePatch(lua_State *L) {
+	Binder binder(L);
+	int argc=lua_gettop(L);
+
+	Pixel* bitmap = static_cast<Pixel*>(binder.getInstance("Pixel", 1));
+	if ((argc==1)||(argc==2)) {
+		if (lua_isboolean(L,2)) {
+			bitmap->setStretching(lua_toboolean(L,2));
+			bitmap->setNinePatch(0,0,0,0,0,0,0,0);
+		}
+		else {
+			lua_Number i = luaL_optnumber(L, 2,-1);
+			bitmap->setStretching(i==0);
+			if (i>=0)
+				bitmap->setNinePatch(i,i,i,i,i,i,i,i);
+		}
+	} else if (argc==3) {
+		lua_Number iv = luaL_checknumber(L, 2);
+		lua_Number it = luaL_checknumber(L, 3);
+		bitmap->setNinePatch(iv,iv,iv,iv,it,it,it,it);
+	}
+	else if (argc<=5) {
+		lua_Number l = luaL_checknumber(L, 2);
+		lua_Number r = luaL_checknumber(L, 3);
+		lua_Number t = luaL_checknumber(L, 4);
+		lua_Number b = luaL_checknumber(L, 5);
+		bitmap->setNinePatch(l,r,t,b,l,r,t,b);
+	}
+	else {
+		lua_Number vl = luaL_checknumber(L, 2);
+		lua_Number vr = luaL_checknumber(L, 3);
+		lua_Number vt = luaL_checknumber(L, 4);
+		lua_Number vb = luaL_checknumber(L, 5);
+		lua_Number tl = luaL_checknumber(L, 6);
+		lua_Number tr = luaL_checknumber(L, 7);
+		lua_Number tt = luaL_checknumber(L, 8);
+		lua_Number tb = luaL_checknumber(L, 9);
+		bitmap->setNinePatch(vl,vr,vt,vb,tl,tr,tt,tb);
+	}
 
 	return 0;
 }
@@ -182,18 +276,12 @@ int PixelBinder::setTexture(lua_State *L)
 
     if (binder.isInstanceOf("TextureRegion", 2)) {
         BitmapData *bitmapData = static_cast<BitmapData*>(binder.getInstance("TextureRegion", 2));
-        TextureBase *textureBase = bitmapData->texture();
-        bitmap->setStretching(false);
-        bitmap->setTexture(textureBase, 0, NULL);
-        int x, y, w, h, dx1, dy1, dx2, dy2;
-        bitmapData->getRegion(&x, &y, &w, &h, &dx1, &dy1, &dx2, &dy2);
-        bitmap->setTexturePosition(x, y);
-        bitmap->setDimensions(w, h);
+        bitmap->setTextureRegion(bitmapData, luaL_optinteger(L,3,0));
         return 0;
     }
 
     TextureBase *textureBase = NULL;
-    if (!lua_isnone(L, 2))
+    if (!lua_isnoneornil(L, 2))
     	textureBase=static_cast<TextureBase*>(binder.getInstance("TextureBase", 2));
     int slot=luaL_optinteger(L,3,0);
 	Transform* matrix = NULL;
@@ -219,10 +307,43 @@ int PixelBinder::setTextureMatrix(lua_State *L)
 int PixelBinder::setColor(lua_State* L)
 {
 	Binder binder(L);
-
+#define COLVEC(var,idx) float var[4]; LuaApplication::resolveColor(L,1,idx,var,bitmap->styCache_##var);
+#define COLARG(var) (((int)(var[0]*0xFF0000))&0xFF0000)|(((int)(var[1]*0xFF00))&0xFF00)|((int)((var[2]*0xFF))&0xFF),var[3]
 	Pixel* bitmap = static_cast<Pixel*>(binder.getInstance("Pixel", 1));
-
-    if (lua_gettop(L) == 9) bitmap->setGradient(
+    bitmap->styCache_color.clear();
+    bitmap->styCache_c1.clear();
+    bitmap->styCache_c2.clear();
+    bitmap->styCache_c3.clear();
+    bitmap->styCache_c4.clear();
+    int ctype=lua_type(L,2);
+    if ((ctype==LUA_TVECTOR)||(ctype==LUA_TCOLOR)||(ctype==LUA_TSTRING)||(ctype==LUA_TUSERDATA)) { //Vector or resolvables colors
+		if (lua_gettop(L) == 5) {
+			COLVEC(c1,2);
+			COLVEC(c2,3);
+			COLVEC(c3,4);
+			COLVEC(c4,5);
+			bitmap->setGradient(COLARG(c1),COLARG(c2),COLARG(c3),COLARG(c4));
+		}
+	    else if (lua_gettop(L) == 3) {
+			COLVEC(c1,2);
+			COLVEC(c2,3);
+	    	bitmap->setGradient(COLARG(c1),COLARG(c2),COLARG(c1),COLARG(c2));
+	    }
+	    else if (lua_gettop(L) == 4) {
+			COLVEC(c1,2);
+			COLVEC(c2,3);
+	    	bitmap->setGradientWithAngle(COLARG(c1),COLARG(c2),
+	                luaL_checknumber(L, 4));
+	    }
+	    else {
+			COLVEC(color,2);
+	        bitmap->setColor(color[0],color[1],color[2],color[3]);
+	        bitmap->clearGradient();
+	    }
+#undef COLVEC
+#undef COLARG
+	}
+	else if (lua_gettop(L) == 9) bitmap->setGradient(
                 luaL_checknumber(L, 2), luaL_checknumber(L, 3),
                 luaL_checknumber(L, 4), luaL_checknumber(L, 5),
                 luaL_checknumber(L, 6), luaL_checknumber(L, 7),
@@ -334,4 +455,48 @@ int PixelBinder::getTextureScale(lua_State* L)
     lua_pushnumber(L, sy);
 
     return 2;
+}
+
+#define HASCOL(var) (!bitmap->styCache_##var.empty())
+#define COLVEC(var) float var[4]; LuaApplication::resolveColor(L,1,0,var,bitmap->styCache_##var);
+int PixelBinder::updateStyle(lua_State* L)
+{
+    StackChecker checker(L, "PixelBinder::updateStyle", 0);
+    Binder binder(L);
+    Pixel* bitmap = static_cast<Pixel*>(binder.getInstance("Pixel", 1));
+    SpriteBinder::updateStyle(L);
+
+//TODO Handle gradient
+    if (HASCOL(color)) {
+        COLVEC(color);
+        bitmap->setColor(color[0],color[1],color[2],color[3]);
+    }
+    return 0;
+}
+#undef HASCOL
+#undef COLVEC
+
+int PixelBinder::__parseGhosts(lua_State* L)
+{
+    Binder binder(L);
+    Pixel* model = static_cast<Pixel*>(binder.getInstanceOfType("Pixel", GREFERENCED_TYPEMAP_PIXEL, 2));
+    GhostPixel *ghost=new GhostPixel(model);
+    //Color
+    lua_rawgettoken(L,1,SpriteBinder::tokenGhostColor);
+    if (lua_isnoneornil(L,-1))
+        ghost->hasColor=false;
+    else {
+        ghost->hasColor=true;
+        std::string ccache;
+        float cc[4];
+        LuaApplication::resolveColor(L,2,-1,cc,ccache);
+        ghost->color[0]=cc[0]*255;
+        ghost->color[1]=cc[1]*255;
+        ghost->color[2]=cc[2]*255;
+        ghost->color[3]=cc[3]*255;
+    }
+    lua_pop(L,1);
+    SpriteBinder::__parseGhost(ghost,L);
+    lua_pushlightuserdata(L,ghost);
+    return 1;
 }

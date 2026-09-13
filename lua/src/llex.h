@@ -26,10 +26,13 @@ enum RESERVED {
   TK_AND = FIRST_RESERVED, TK_BREAK,
   TK_DO, TK_ELSE, TK_ELSEIF, TK_END, TK_FALSE, TK_FOR, TK_FUNCTION,
   TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR, TK_REPEAT,
-  TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
+  TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_INCLUDE, TK_WHILE,
   /* other terminal symbols */
-  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE,
+  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, 
   TK_LSHFT, TK_RSHFT, TK_INTDIV,
+  TK_MAX, TK_MIN,
+  TK_DEG, TK_RAD,
+  TK_ADD_EQ, TK_SUB_EQ, TK_MUL_EQ, TK_DIV_EQ, TK_MOD_EQ, TK_POW_EQ,
   TK_NUMBER, TK_NAME, TK_STRING, TK_EOS
 };
 
@@ -69,6 +72,7 @@ typedef struct LexState {
   int mpos; /* current character position of macro string */
   int mlen; /* macro string length */
   int mswt; /* number of switches between source and macro */
+  const char *const *tokens; /* current (localized) token names */
 } LexState;
 
 

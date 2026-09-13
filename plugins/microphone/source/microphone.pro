@@ -1,9 +1,9 @@
-QT -= core gui
+QT += widgets
 
 TARGET = microphone
 TEMPLATE = lib
 
-INCLUDEPATH += ../../../Sdk/include
+INCLUDEPATH += ../../../Sdk/include ../../../Sdk/include/gideros
 
 SOURCES += \
     gmicrophone-openal.cpp \
@@ -20,7 +20,7 @@ LIBS += -lpthread
 
 win32 {
 DEFINES += OPENAL_SUBDIR_AL
-LIBS += -L"../../../Sdk/lib/desktop" -lOpenAL32
+LIBS += -L"../../../Sdk/lib/desktop" -lopenal
 }
 
 macx {
@@ -33,4 +33,8 @@ QMAKE_POST_LINK += install_name_tool -change liblua.1.dylib "@executable_path/..
 QMAKE_POST_LINK += install_name_tool -change libgid.1.dylib "@executable_path/../Frameworks/libgid.1.dylib" $(TARGET);
 QMAKE_POST_LINK += install_name_tool -change libgideros.1.dylib "@executable_path/../Frameworks/libgideros.1.dylib" $(TARGET);
 QMAKE_POST_LINK += install_name_tool -change libgvfs.1.dylib "@executable_path/../Frameworks/libgvfs.1.dylib" $(TARGET);
+}
+
+unix:!macx {
+DEFINES += OPENAL_SUBDIR_AL
 }

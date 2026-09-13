@@ -5,6 +5,7 @@
 #-------------------------------------------------
 
 QT       += core gui xml
+CONFIG   += silent
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -23,6 +24,7 @@ TARGET = "GiderosTexturePacker"
 
 unix:!macx {
 TARGET = "GiderosTexturePacker"
+QMAKE_LFLAGS += '-Wl,-rpath,\'\$$ORIGIN\''
 }
 
 win32 {

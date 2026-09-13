@@ -8,19 +8,11 @@
 
 #import <Foundation/Foundation.h>
 #import "AdsProtocol.h"
-#import "ALSdk.h"
-#import "ALAdService.h"
-#import "ALAd.h"
-#import "ALInterstitialAd.h"
-#import "ALIncentivizedInterstitialAd.h"
-#import "ALAdView.h"
-#import "ALAdLoadDelegate.h"
-#import "ALAdDisplayDelegate.h"
-#import "ALAdRewardDelegate.h"
+#import <AppLovinSDK/AppLovinSDK.h>
 #import "AdsManager.h"
 
 @interface AdsApplovin : NSObject <AdsProtocol>
-@property(nonatomic, assign) ALAdView *view_;
+@property(nonatomic, retain) ALAdView *view_;
 @property(nonatomic, retain) NSString *appKey;
 @property(nonatomic, retain) NSString *curType;
 @property (nonatomic, retain) AdsManager *mngr;

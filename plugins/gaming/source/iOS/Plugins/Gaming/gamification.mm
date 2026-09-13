@@ -1,6 +1,32 @@
 #include "gamification.h"
 #import "GameClass.h"
 
+static void *gevent_CreateEventStruct4(size_t structSize,
+                                       size_t offset1, const char *value1,
+                                       size_t offset2, const char *value2,
+                                       size_t offset3, const char *value3,
+                                       size_t offset4, const char *value4)
+{
+    size_t size1 = value1 ? (strlen(value1) + 1) : 0;
+    size_t size2 = value2 ? (strlen(value2) + 1) : 0;
+    size_t size3 = value3 ? (strlen(value3) + 1) : 0;
+    size_t size4 = value4 ? (strlen(value4) + 1) : 0;
+    
+    void *result = malloc(structSize + size1 + size2 + size3 + size4);
+    
+    char **field1 = (char**)((char*)result + offset1);
+    char **field2 = (char**)((char*)result + offset2);
+    char **field3 = (char**)((char*)result + offset3);
+    char **field4 = (char**)((char*)result + offset4);
+    
+    *field1 = value1 ? strcpy((char*)result + structSize,                 			value1) : NULL;
+    *field2 = value2 ? strcpy((char*)result + structSize + size1,         			value2) : NULL;
+    *field3 = value3 ? strcpy((char*)result + structSize + size1 + size2, 			value3) : NULL;
+    *field4 = value3 ? strcpy((char*)result + structSize + size1 + size2 + size3, 	value4) : NULL;
+    
+    return result;
+}
+
 class GGame
 {
 public:
@@ -50,6 +76,11 @@ public:
 	void showAchievements(const char *game)
 	{
 		[GameClass showAchievements:[NSString stringWithUTF8String:game]];
+	}
+
+	void getPlayerInfo(const char *game)
+	{
+		[GameClass getPlayerInfo:[NSString stringWithUTF8String:game]];
 	}
 	
 	void showLeaderboard(const char *game, const char *Id)
@@ -118,7 +149,7 @@ public:
 		if(score)
 		{
             while (!score->rank.empty()){
-                Score gscores = {score->rank, score->score, score->name, score->playerId, score->timestamp};
+                Score gscores = {score->rank, score->score, score->name, score->playerId, score->pic, score->timestamp};
                 scores.push_back(gscores);
                 ++score;
             }
@@ -143,13 +174,55 @@ public:
 		gevent_EnqueueEvent(gid_, callback_s, GAME_LOGIN_ERROR_EVENT, event, 1, this);
 	}
 	
-	void onReportAchievementComplete(const char *caller, const char *value){
-		
+	void onPlayerInfoComplete(const char *caller, const char *id, const char *name, const char *pic){
+		game_Player *event = (game_Player*)gevent_CreateEventStruct4(
+			sizeof(game_Player),
+			offsetof(game_Player, caller), caller,
+			offsetof(game_Player, playerId), id,
+			offsetof(game_Player, name), name,
+			offsetof(game_Player, pic), pic);
+	
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PLAYER_INFORMATION_COMPLETE_EVENT, event, 1, this);
+	}
+	
+	void onPlayerInfoError(const char *caller, const char *value){
 		game_Report *event = (game_Report*)gevent_CreateEventStruct2(
 			sizeof(game_Report),
 			offsetof(game_Report, caller), caller,
 			offsetof(game_Report, value), value);
 		
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PLAYER_INFORMATION_ERROR_EVENT, event, 1, this);
+	}
+	
+	void onPlayerScoreComplete(const char *caller, const char *value, int rank, long score, int timestamp){
+		game_PlayerScore *event = (game_PlayerScore*)gevent_CreateEventStruct2(
+			sizeof(game_PlayerScore),
+			offsetof(game_PlayerScore, caller), caller,
+			offsetof(game_PlayerScore, id), value);
+		
+		event->rank = (int)rank;
+		event->score = (long)score;
+		event->timestamp = (int)timestamp;
+		
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PLAYER_SCORE_COMPLETE_EVENT, event, 1, this);
+	}
+	
+	void onPlayerScoreError(const char *caller, const char *value, const char *error){
+		game_LoadError *event = (game_LoadError*)gevent_CreateEventStruct3(
+			sizeof(game_LoadError),
+			offsetof(game_LoadError, caller), caller,
+			offsetof(game_LoadError, value), value,
+			offsetof(game_LoadError, error), error);
+	
+		gevent_EnqueueEvent(gid_, callback_s, GAME_PLAYER_SCORE_ERROR_EVENT, event, 1, this);
+	}
+	
+	void onReportAchievementComplete(const char *caller, const char *value){
+		game_Report *event = (game_Report*)gevent_CreateEventStruct2(
+			sizeof(game_Report),
+			offsetof(game_Report, caller), caller,
+			offsetof(game_Report, value), value);
+	
 		gevent_EnqueueEvent(gid_, callback_s, GAME_REPORT_ACHIEVEMENT_COMPLETE_EVENT, event, 1, this);
 	}
 	
@@ -213,14 +286,15 @@ public:
 		// and copy the data into it
 		char *ptr = (char*)event + sizeof(game_Achievements);
 		
-		event->caller = ptr;
-		strcpy(ptr, caller.c_str());
-		ptr += caller.size() + 1;
-		
 		event->count = count;
 		event->achievements = (game_Achievement*)ptr;
 		
 		ptr += achievements.size() * sizeof(game_Achievement);
+		
+		event->caller = ptr;
+		strcpy(ptr, caller.c_str());
+		ptr += caller.size() + 1;
+		
 		 
 		for (std::size_t i = 0; i < count; ++i)
 		{	
@@ -284,6 +358,11 @@ public:
 		// and copy the data into it
 		char *ptr = (char*)event + sizeof(game_Leaderboard);
 		
+		event->count = count;
+		event->scores = (game_Score*)ptr;
+		
+		ptr += scores.size() * sizeof(game_Score);
+		
 		event->caller = ptr;
 		strcpy(ptr, caller.c_str());
 		ptr += caller.size() + 1;
@@ -295,12 +374,7 @@ public:
 		event->name = ptr;
 		strcpy(ptr, name.c_str());
 		ptr += name.size() + 1;
-		
-		event->count = count;
-		event->scores = (game_Score*)ptr;
-		
-		ptr += scores.size() * sizeof(game_Score);
-		
+				
 		for (std::size_t i = 0; i < count; ++i)
 		{	
 			event->scores[i].rank = ptr;
@@ -507,6 +581,14 @@ void game_showAchievements(const char *game)
 	}
 }
 
+void game_getPlayerInfo(const char *game)
+{
+	if(s_game)
+	{
+		s_game->getPlayerInfo(game);
+	}
+}
+
 void game_showLeaderboard(const char *game, const char *id)
 {
 	if(s_game)
@@ -515,7 +597,7 @@ void game_showLeaderboard(const char *game, const char *id)
 	}
 }
 
-void game_reportAchievement(const char *game, const char *id, int steps, int immediate)
+void game_reportAchievement(const char *game, const char *id, double steps, int immediate)
 {
 	if(s_game)
 	{
@@ -579,6 +661,31 @@ void game_onLoginError(const char *caller, const char *value){
     if(s_game)
         s_game->onLoginError(caller, value);
 }
+
+void game_onPlayerInfoComplete(const char *caller,const char *id, const char *name,const char *pic)
+{
+    if(s_game)
+    	s_game->onPlayerInfoComplete(caller,id,name,pic);
+}
+
+void game_onPlayerInfoError(const char *caller, const char *error)
+{
+    if(s_game)
+    	s_game->onPlayerInfoError(caller,error);
+}
+
+void game_onPlayerScoreComplete(const char *caller, const char *id, int rank, long score, int timestamp)
+{
+    if(s_game)
+    	s_game->onPlayerScoreComplete(caller,id, rank, score, timestamp);
+}
+
+void game_onPlayerScoreError(const char *caller, const char *id, const char *error)
+{
+    if(s_game)
+    	s_game->onPlayerScoreError(caller,id,error);
+}
+
 void game_onReportAchievementComplete(const char *caller, const char *value){
     if(s_game)
         s_game->onReportAchievementComplete(caller, value);

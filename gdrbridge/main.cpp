@@ -21,7 +21,7 @@ static bool sendData(const QByteArray &out, QByteArray *in)
     socket.connectToServer("gdrdeamon");
 #else
     QTcpSocket socket;
-    socket.connectToHost("127.0.0.1", 15001);
+    socket.connectToHost("127.0.0.1", 15011);
 #endif
     if (!socket.waitForConnected(1000))
         return false;
@@ -42,8 +42,9 @@ static void usage()
 {
     fprintf(stderr, "Gideros Player Bridge v1.02\n\n");
     fprintf(stderr, "usage:\n");
-    fprintf(stderr, "gdrbridge setip 127.0.0.1\n");
+    fprintf(stderr, "gdrbridge setip 127.0.0.1 [port]\n");
     fprintf(stderr, "gdrbridge play mygame.gproj\n");
+    fprintf(stderr, "gdrbridge load mygame.gproj\n");
     fprintf(stderr, "gdrbridge stop\n");
     fprintf(stderr, "gdrbridge isconnected\n");
     fprintf(stderr, "gdrbridge getlog\n");
@@ -69,7 +70,7 @@ static bool isDeamonRunning()
     socket.connectToServer("gdrdeamon2");
 #else
     QTcpSocket socket;
-    socket.connectToHost("127.0.0.1", 15002);
+    socket.connectToHost("127.0.0.1", 15012);
 #endif
     return socket.waitForConnected(1000);
 }
@@ -79,7 +80,7 @@ static bool startDeamon(const QString &applicationDirPath)
     if (isDeamonRunning())
         return true;
 
-    fprintf(stderr, "* daemon not running. starting it now on port 15001 *\n");
+    fprintf(stderr, "* daemon not running. starting it now on port 15011 *\n");
 #if defined(Q_OS_WIN)
     QString program = QDir(applicationDirPath).absoluteFilePath("gdrdeamon.exe");
 #else
@@ -127,7 +128,7 @@ int main(int argc, char *argv[])
     QByteArray out, in;
     QDataStream outstream(&out, QIODevice::WriteOnly);
 
-    if (arguments[1] == "play")
+    if ((arguments[1] == "play") || (arguments[1] == "load"))
     {
         if (arguments.size() <= 2)
         {
@@ -135,11 +136,21 @@ int main(int argc, char *argv[])
             return EXIT_FAILURE;
         }
 
-        outstream << QString("play") << QDir::current().absoluteFilePath(arguments[2]);
+        outstream << arguments[1] << QDir::current().absoluteFilePath(arguments[2]);
+        if (arguments.size() >= 4) {
+            QString port="15000";
+            if (arguments.size() >= 5)
+                port= arguments[4];
+            outstream << arguments[3] << port;
+        }
     }
     else if (arguments[1] == "stop")
     {
         outstream << QString("stop");
+    }
+    else if (arguments[1] == "loadstatus")
+    {
+        outstream << QString("loadstatus");
     }
     else if (arguments[1] == "setip")
     {
@@ -148,8 +159,11 @@ int main(int argc, char *argv[])
             usage();
             return EXIT_FAILURE;
         }
+        QString port="15000";
+        if (arguments.size() >= 4)
+            port= arguments[3];
 
-        outstream << QString("setip") << arguments[2];
+        outstream << QString("setip") << arguments[2] << port;
     }
     else if (arguments[1] == "isconnected")
     {

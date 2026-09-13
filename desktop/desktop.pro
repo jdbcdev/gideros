@@ -1,4 +1,29 @@
-QT += core gui opengl network multimedia
+QT += core gui opengl network multimedia widgets
+CONFIG   += silent qt
+
+equals(QT_MAJOR_VERSION, 6){
+   QT += openglwidgets
+   win32 {
+       #This is ugly, but needed for wintab mode
+       INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtGui/$$[QT_VERSION]
+       INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtGui/$$[QT_VERSION]/QtGui
+       INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtCore/$$[QT_VERSION]
+       INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtCore/$$[QT_VERSION]/QtCore
+   }
+}
+
+LUA_ENGINE=$$(LUA_ENGINE)
+isEmpty(LUA_ENGINE): LUA_ENGINE=luau
+equals(LUA_ENGINE,luau): LUA_INCLUDE=../luau/VM/include ../luau/VM/src ../luau/Common/include
+equals(LUA_ENGINE,lua): LUA_INCLUDE=../lua/src
+
+INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtZlib
+
+CONFIG(debug, debug|release){
+    _CONFIG_ = debug
+} else {
+    _CONFIG_ = release
+}
 
 win32{
     RC_FILE = other_files/desktop.rc
@@ -6,13 +31,13 @@ win32{
     TARGET = WindowsDesktopTemplate
 
     LIBS += -lopengl32 \
-        -L"../libgid/external/zlib-1.2.8/build/mingw48_32" -lzlibx \
-        -L"../libgid/external/glew-1.10.0/lib/mingw48_32" -lglew32 \
-        -L"../libgid/release" -lgid \
-        -L"../libgvfs/release" -lgvfs \
-        -L"../lua/release" -llua \
-        -L"../libgideros/release" -lgideros \
-        -L"../libpystring/release" -lpystring \
+#        -L"../libgid/external/zlib-1.2.8/build/mingw48_32" -lzlibx \
+#        -L"../libgid/external/glew-1.10.0/lib/mingw48_32" -lglew32 \
+        -L"../libgid/$$_CONFIG_" -lgid \
+        -L"../libgvfs/$$_CONFIG_" -lgvfs \
+        -L"../$$LUA_ENGINE/$$_CONFIG_" -llua \
+        -L"../libgideros/$$_CONFIG_" -lgideros \
+        -L"../libpystring/$$_CONFIG_" -lpystring \
         -lws2_32 \
         -liphlpapi
 }
@@ -29,17 +54,38 @@ macx {
         -framework IOKit\
         -L"../libgid" -lgid \
         -L"../libgvfs" -lgvfs \
-        -L"../lua" -llua \
+        -L"../$$LUA_ENGINE" -llua \
         -L"../libgideros" -lgideros \
         -L"../libpystring" -lpystring \
-        -L"../libgid/external/zlib-1.2.8/build/clang_64" -lzlibx \
-        -L"../libgid/external/glew-1.10.0/lib/clang_64" -lGLEW
+	-lz \
+#        -L"../libgid/external/zlib-1.2.8/build/clang_64" -lzlibx \
+#        -L"../libgid/external/glew-1.10.0/lib/clang_64" -lGLEW
 
     QMAKE_LFLAGS += -pagezero_size 10000 -image_base 100000000
     QMAKE_CFLAGS_RELEASE = $$QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO
     QMAKE_CXXFLAGS_RELEASE = $$QMAKE_CXXFLAGS_RELEASE_WITH_DEBUGINFO
     QMAKE_OBJECTIVE_CFLAGS_RELEASE =  $$QMAKE_OBJECTIVE_CFLAGS_RELEASE_WITH_DEBUGINFO
     QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
+}
+
+unix:!macx {
+    TARGET = "LinuxDesktopTemplate"
+
+    DEFINES += STRICT_LINUX
+    LIBS += \
+#        -L"../libgid/external/zlib-1.2.8/build/gcc484_64" -lzlibx\
+#        -L"../libgid/external/glew-1.10.0/lib/gcc484_64" -lGLEW\
+#        -lwsock32 \
+#        -liphlpapi \
+	-lz \
+        ../libgid/libgid.so \
+        ../libgvfs/libgvfs.so \
+        ../$$LUA_ENGINE/liblua.so \
+        ../libgideros/libgideros.so \
+        ../libpystring/libpystring.so
+    LIBS += "../libgid/external/openal-soft-1.13/build/gcc484_64/libopenal.so"
+    QMAKE_CXXFLAGS += -std=gnu++17
+    QMAKE_LFLAGS += '-Wl,-rpath,\'\$$ORIGIN\''
 }
 
 LIBS += -lpthread
@@ -50,8 +96,8 @@ INCLUDEPATH += \
     headers \
     sources \
     forms \
-    ../libgid/external/zlib-1.2.8 \
-    ../libgid/external/glew-1.10.0/include \
+#    ../libgid/external/zlib-1.2.8 \
+#    ../libgid/external/glew-1.10.0/include \
     ../2dsg \
     ../2dsg/gfxbackends \
     ../2dsg/gfxbackends/gl2 \
@@ -59,38 +105,28 @@ INCLUDEPATH += \
     ../libsound \
     ../libnetwork \
     ../luabinding \
-    ../lua/src \
+    $$LUA_INCLUDE \
     ../libpvrt \
     ../libgvfs \
     ../libgid/include \
     ../libgid/include/qt \
-    ../libgid/external/freetype-2.4.12/include \
-    ../libgid/external/freetype-2.4.12/src \
     ../libgideros \
     ../libpystring \
     ../external/glu \
-    ../external/liquidfun-1.0.0/liquidfun/Box2D \
     ../external/minizip-1.1/source \
     ../libraries/themes \
     ../libraries/constants \
-    ../player/sources \
-    ../player/headers \
-    ../player/forms
+    ../player/Sources \
+    ../player/Headers \
+    ../player/Forms
 
 SOURCES += \
+    ../player/Sources/tabletapplication.cpp \
     sources/main.cpp \
     sources/mainwindow.cpp \
-    ../player/sources/glcanvas.cpp \
-    ../player/sources/errordialog.cpp \
-#    ../player/sources/settingsdialog.cpp \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Common/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Collision/Shapes/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Contacts/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Dynamics/Joints/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Rope/*.cpp) \
-    $$files(../external/liquidfun-1.0.0/liquidfun/Box2D/Box2D/Particle/*.cpp) \
+    ../player/Sources/glcanvas.cpp \
+    ../player/Sources/errordialog.cpp \
+#    ../player/Sources/settingsdialog.cpp \
     $$files(../luabinding/*.cpp)	../luabinding/tlsf.c \
     $$files(../libnetwork/*.cpp) \
     $$files(../2dsg/*.cpp) \
@@ -112,15 +148,16 @@ SOURCES += \
 
 FORMS += \
     forms/mainwindow.ui \
-    ../player/forms/errordialog.ui \
-    ../player/forms/settingsdialog.ui \
+    ../player/Forms/errordialog.ui \
+    ../player/Forms/settingsdialog.ui \
 
 HEADERS += \
+    ../player/Headers/tabletapplication.h \
     headers/mainwindow.h \
-    ../player/headers/applicationwrapper.h \
-    ../player/headers/glcanvas.h \
-    ../player/headers/errordialog.h \
-#    ../player/headers/settingsdialog.h \
+    ../player/Headers/applicationwrapper.h \
+    ../player/Headers/glcanvas.h \
+    ../player/Headers/errordialog.h \
+#    ../player/Headers/settingsdialog.h \
     $$files(../libsound/*.h) \
     $$files(../2dsg/*.h) \
     $$files(../luabinding/*.h) \
@@ -128,27 +165,35 @@ HEADERS += \
     ../2dsg/gfxbackends/gl2/gl2Shaders.h \
     ../2dsg/gfxbackends/Shaders.h
 
+#FREETYPE_VER=2.4.12
+FREETYPE_VER=2.7.1
+
 DEFINES += \
     USE_FILE32API \
     FT2_BUILD_LIBRARY \
     DARWIN_NO_CARBON
 
+INCLUDEPATH += ../libgid/include
+INCLUDEPATH += ../libgid/external/freetype-$${FREETYPE_VER}/include
+INCLUDEPATH += ../libgid/external/freetype-$${FREETYPE_VER}/src
+
 SOURCES += \
-    ../libgid/external/freetype-2.4.12/src/base/ftbbox.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftbitmap.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftglyph.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftlcdfil.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftstroke.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftxf86.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftbase.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftsystem.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftinit.c \
-    ../libgid/external/freetype-2.4.12/src/base/ftgasp.c \
-    ../libgid/external/freetype-2.4.12/src/raster/raster.c \
-    ../libgid/external/freetype-2.4.12/src/sfnt/sfnt.c \
-    ../libgid/external/freetype-2.4.12/src/smooth/smooth.c \
-    ../libgid/external/freetype-2.4.12/src/autofit/autofit.c \
-    ../libgid/external/freetype-2.4.12/src/truetype/truetype.c \
-    ../libgid/external/freetype-2.4.12/src/cff/cff.c \
-    ../libgid/external/freetype-2.4.12/src/psnames/psnames.c \
-    ../libgid/external/freetype-2.4.12/src/pshinter/pshinter.c
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbbox.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbitmap.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftglyph.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftlcdfil.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftstroke.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftbase.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftsystem.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftinit.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftgasp.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/raster/raster.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/sfnt/sfnt.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/smooth/smooth.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/autofit/autofit.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/truetype/truetype.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/cff/cff.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/gzip/ftgzip.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/psnames/psnames.c \
+    ../libgid/external/freetype-$${FREETYPE_VER}/src/pshinter/pshinter.c
+#2.4.12    ../libgid/external/freetype-$${FREETYPE_VER}/src/base/ftxf86.c

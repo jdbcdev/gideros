@@ -6,7 +6,7 @@
 #define GIMAGE_PNG 1
 #define GIMAGE_JPG 2
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__QT__)
 #define strcasecmp stricmp
 #endif
 
@@ -20,7 +20,7 @@ static int getTypeFromPath(const char *pathname)
     if (strcasecmp(dot + 1, "png") == 0)
         return GIMAGE_PNG;
 
-    if (strcasecmp(dot + 1, "jpg") == 0 || strcasecmp(dot + 1, "jpegg") == 0)
+    if (strcasecmp(dot + 1, "jpg") == 0 || strcasecmp(dot + 1, "jpeg") == 0)
         return GIMAGE_JPG;
 
     return GIMAGE_UNKNOWN;
@@ -50,6 +50,10 @@ int gimage_parseImage(const char *pathname, int *width, int *height, int *comp)
         case GIMAGE_PNG:
             return gimage_parsePng(pathname, width, height, comp);
         case GIMAGE_JPG:
+            return gimage_parseJpg(pathname, width, height, comp);
+        case GIMAGE_UNKNOWN:
+        	if (gimage_parsePng(pathname, width, height, comp)==GIMAGE_NO_ERROR)
+        		return GIMAGE_NO_ERROR;
             return gimage_parseJpg(pathname, width, height, comp);
     }
 
@@ -88,6 +92,10 @@ int gimage_loadImage(const char *pathname, void *buf)
             return gimage_loadPng(pathname, buf);
         case GIMAGE_JPG:
             return gimage_loadJpg(pathname, buf);
+        case GIMAGE_UNKNOWN:
+        	if (gimage_loadPng(pathname, buf)==GIMAGE_NO_ERROR)
+        		return GIMAGE_NO_ERROR;
+        	return gimage_loadJpg(pathname, buf);
     }
 
     return GIMAGE_UNRECOGNIZED_FORMAT;

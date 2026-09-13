@@ -8,40 +8,82 @@
 
 #include <stack>
 
-void Stage::mouseDown(int x, int y, int button, float sx, float sy, float tx, float ty)
+void Stage::mouseDown(int x, int y, int button, int modifiers, int type, float sx, float sy, float tx, float ty)
 {
     MouseEvent event(MouseEvent::MOUSE_DOWN, x, y, sx, sy, tx, ty);
     event.button = button;
-    dispatchToSpritesWithListeners(&event);
+    event.modifiers = modifiers;
+    event.mouseType = type;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
 }
 
-void Stage::mouseUp(int x, int y, int button, float sx, float sy, float tx, float ty)
+void Stage::mouseUp(int x, int y, int button, int modifiers, int type, float sx, float sy, float tx, float ty)
 {
     MouseEvent event(MouseEvent::MOUSE_UP, x, y, sx, sy, tx, ty);
     event.button = button;
-    dispatchToSpritesWithListeners(&event);
+    event.modifiers = modifiers;
+    event.mouseType = type;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
 }
 
-void Stage::mouseMove(int x, int y, int button, float sx, float sy, float tx, float ty)
+void Stage::mouseMove(int x, int y, int button, int modifiers, int type, float sx, float sy, float tx, float ty)
 {
     MouseEvent event(MouseEvent::MOUSE_MOVE, x, y, sx, sy, tx, ty);
     event.button = button;
-    dispatchToSpritesWithListeners(&event);
+    event.modifiers = modifiers;
+    event.mouseType = type;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
 }
 
-void Stage::mouseHover(int x, int y, int button, float sx, float sy, float tx, float ty)
+void Stage::mouseHover(int x, int y, int button, int modifiers, int type, float sx, float sy, float tx, float ty)
 {
     MouseEvent event(MouseEvent::MOUSE_HOVER, x, y, sx, sy, tx, ty);
     event.button = button;
-    dispatchToSpritesWithListeners(&event);
+    event.modifiers = modifiers;
+    event.mouseType = type;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
 }
 
-void Stage::mouseWheel(int x, int y, float sx, float sy, float tx, float ty, int wheel)
+void Stage::mouseWheel(int x, int y, int modifiers, float sx, float sy, float tx, float ty, int wheel)
 {
     MouseEvent event(MouseEvent::MOUSE_WHEEL, x, y, sx, sy, tx, ty);
     event.wheel=wheel;
-    dispatchToSpritesWithListeners(&event);
+    event.modifiers = modifiers;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
 }
+
+void Stage::mouseEnter(int x, int y, int buttons, int modifiers, float sx, float sy, float tx, float ty)
+{
+    MouseEvent event(MouseEvent::MOUSE_ENTER, x, y, sx, sy, tx, ty);
+    event.button = buttons;
+    event.modifiers = modifiers;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
+}
+
+void Stage::mouseLeave(int x, int y, int modifiers, float sx, float sy, float tx, float ty)
+{
+    MouseEvent event(MouseEvent::MOUSE_LEAVE, x, y, sx, sy, tx, ty);
+    event.modifiers = modifiers;
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_MOUSE);
+}
+
+template<class T> class faststack {
+    std::stack<T *> s;
+public:
+    T* pop()
+    {
+        if (s.empty()) return nullptr;
+        T *r=s.top();
+        s.pop();
+        return r;
+    }
+    void push(T* v) { s.push(v); };
+    void push_all(T** vals, size_t count)
+    {
+        while ((count--) > 0)
+            s.push(*(vals++));
+    }
+};
 
 void Stage::enterFrame(int deltaFrameCount, double lastFrameRenderTime)
 {
@@ -101,46 +143,59 @@ void Stage::enterFrame(int deltaFrameCount, double lastFrameRenderTime)
     application_->deleteAutounrefPool(pool);
 }
 
+void Stage::validateLayout() {
+    if (needLayout&&(!doingLayout)) {
+        doingLayout=true;
+        computeLayout(this);
+        doingLayout=false;
+    }
+}
+
+void Stage::validateEffects() {
+    if (true)
+        updateAllEffects();
+}
+
 void Stage::touchesBegin(ginput_TouchEvent *event, float sx, float sy, float tx, float ty)
 {
     TouchEvent event2(TouchEvent::TOUCHES_BEGIN, event, sx, sy, tx, ty);
-    dispatchToSpritesWithListeners(&event2);
+    dispatchToSpritesWithListeners(&event2,SPRITE_EVENTMASK_TOUCH);
 }
 
 void Stage::touchesMove(ginput_TouchEvent *event, float sx, float sy, float tx, float ty)
 {
     TouchEvent event2(TouchEvent::TOUCHES_MOVE, event, sx, sy, tx, ty);
-    dispatchToSpritesWithListeners(&event2);
+    dispatchToSpritesWithListeners(&event2,SPRITE_EVENTMASK_TOUCH);
 }
 
 void Stage::touchesEnd(ginput_TouchEvent *event, float sx, float sy, float tx, float ty)
 {
     TouchEvent event2(TouchEvent::TOUCHES_END, event, sx, sy, tx, ty);
-    dispatchToSpritesWithListeners(&event2);
+    dispatchToSpritesWithListeners(&event2,SPRITE_EVENTMASK_TOUCH);
 }
 
 void Stage::touchesCancel(ginput_TouchEvent *event, float sx, float sy, float tx, float ty)
 {
     TouchEvent event2(TouchEvent::TOUCHES_CANCEL, event, sx, sy, tx, ty);
-    dispatchToSpritesWithListeners(&event2);
+    dispatchToSpritesWithListeners(&event2,SPRITE_EVENTMASK_TOUCH);
 }
 
-void Stage::keyDown(int keyCode, int realCode)
+void Stage::keyDown(int keyCode, int realCode, int modifiers)
 {
-    KeyboardEvent event(KeyboardEvent::KEY_DOWN, keyCode, realCode,"");
-    dispatchToSpritesWithListeners(&event);
+    KeyboardEvent event(KeyboardEvent::KEY_DOWN, keyCode, realCode,"",modifiers);
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_KEY);
 }
 
-void Stage::keyUp(int keyCode, int realCode)
+void Stage::keyUp(int keyCode, int realCode, int modifiers)
 {
-    KeyboardEvent event(KeyboardEvent::KEY_UP, keyCode, realCode,"");
-    dispatchToSpritesWithListeners(&event);
+    KeyboardEvent event(KeyboardEvent::KEY_UP, keyCode, realCode,"",modifiers);
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_KEY);
 }
 
 void Stage::keyChar(const char *code)
 {
-    KeyboardEvent event(KeyboardEvent::KEY_CHAR, 0, 0, code);
-    dispatchToSpritesWithListeners(&event);
+    KeyboardEvent event(KeyboardEvent::KEY_CHAR, 0, 0, code, -1);
+    dispatchToSpritesWithListeners(&event,SPRITE_EVENTMASK_KEY);
 }
 
 void Stage::populateSpritesWithListeners()
@@ -156,10 +211,14 @@ void Stage::populateSpritesWithListeners()
         Sprite* sprite = stack.top();
         stack.pop();
 
-        if (sprite->hasEventListener(MouseEvent::MOUSE_DOWN)     ||
+        if (sprite->getStopPropagationMask() ||
+        	sprite->hasEventListener(MouseEvent::MOUSE_DOWN)     ||
             sprite->hasEventListener(MouseEvent::MOUSE_MOVE)     ||
             sprite->hasEventListener(MouseEvent::MOUSE_UP)       ||
             sprite->hasEventListener(MouseEvent::MOUSE_WHEEL)    ||
+            sprite->hasEventListener(MouseEvent::MOUSE_HOVER)    ||
+            sprite->hasEventListener(MouseEvent::MOUSE_ENTER)    ||
+            sprite->hasEventListener(MouseEvent::MOUSE_LEAVE)    ||
             sprite->hasEventListener(TouchEvent::TOUCHES_BEGIN)  ||
             sprite->hasEventListener(TouchEvent::TOUCHES_MOVE)   ||
             sprite->hasEventListener(TouchEvent::TOUCHES_END)    ||
@@ -178,7 +237,7 @@ void Stage::populateSpritesWithListeners()
     std::reverse(spritesWithListeners_.begin(), spritesWithListeners_.end());
 }
 
-void Stage::dispatchToSpritesWithListeners(Event *event)
+void Stage::dispatchToSpritesWithListeners(Event *event,int mask)
 {
     void *pool = application_->createAutounrefPool();
 
@@ -200,8 +259,16 @@ void Stage::dispatchToSpritesWithListeners(Event *event)
             break;
 
         spritesWithListeners_[i]->dispatchEvent(event);
+        if ((spritesWithListeners_[i]->visible())&&(spritesWithListeners_[i]->getStopPropagationMask()&mask))
+            break;
     }
 
     application_->deleteAutounrefPool(pool);
+}
+
+void Stage::getDimensions(float& w,float &h)
+{
+    w=application_->getLogicalWidth();
+    h=application_->getLogicalHeight();
 }
 

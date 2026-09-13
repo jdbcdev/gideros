@@ -40,7 +40,6 @@ static CGRect rects[6];
 
 -(void)destroy{
     [self.mngr destroy];
-    [self.mngr release];
     self.mngr = nil;
 }
 
@@ -101,7 +100,7 @@ static CGRect rects[6];
                     if(view_ != nil)
                     {
                         view_.delegate = nil;
-                        [view_ release];
+                        view_=nil;
                     }
                 }];
                 [listener setHide:^(){
@@ -139,6 +138,11 @@ static CGRect rects[6];
 
 -(void)enableTesting{
     [InMobi setLogLevel:IMLogLevelDebug];
+}
+
+-(BOOL)checkConsent:(BOOL) reset forUnderAge:(BOOL) underAge
+{
+	return FALSE;
 }
 
 -(UIView*)getView{

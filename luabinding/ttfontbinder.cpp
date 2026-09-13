@@ -23,29 +23,72 @@ int TTFontBinder::create(lua_State* L)
     Application *application = luaapplication->getApplication();
 
     Binder binder(L);
-    const char *filename = luaL_checkstring(L, 1);
 	lua_Number size = luaL_checknumber(L, 2);
 
     GStatus status;
 
     FontBase *font;
 
+	std::vector<FontBase::FontSpec> filenames;
+	FontBase::FontSpec fspec;
+
+	if (lua_istable(L,1))
+	{
+		int ll=lua_objlen(L,1);
+		for (int i=1;i<=ll;i++)
+		{
+			lua_rawgeti(L,1,i);
+	    	if (lua_istable(L,-1))
+	    	{
+	    		lua_getfield(L,-1,"file");
+	    		fspec.filename=luaL_checkstring(L, -1);
+        		lua_pop(L,1);
+	    		lua_getfield(L,-1,"sizeMult");
+	    		fspec.sizeMult=luaL_optnumber(L,-1,1.0);
+        		lua_pop(L,1);
+	    	}
+	    	else
+	    	{
+	    		fspec.filename=luaL_checkstring(L, -1);
+	    		fspec.sizeMult=1.0f;
+	    	}
+    		filenames.push_back(fspec);
+    		lua_pop(L,1);
+		}
+	}
+	else
+	{
+		fspec.filename=luaL_checkstring(L, 1);
+		fspec.sizeMult=1.0f;
+		filenames.push_back(fspec);
+	}
+
     if (lua_type(L, 3) == LUA_TSTRING)
     {
         const char *chars = luaL_checkstring(L, 3);
-        bool smoothing = lua_toboolean(L, 4);
-        font = new TTBMFont(application, filename, size, chars, smoothing, &status);
+        float smoothing=0;
+        if (lua_isnumber(L,4))
+        	smoothing = lua_tonumber(L, 4);
+        else if (lua_toboolean(L,4))
+        	smoothing=1;
+        float outline=luaL_optnumber(L, 5, 0);
+        font = new TTBMFont(application, filenames, size, chars, smoothing, outline, &status);
     }
     else
     {
-        bool smoothing = lua_toboolean(L, 3);
-        font = new TTFont(application, filename, size, smoothing, &status);
+        float smoothing=0;
+        if (lua_isnumber(L,3))
+        	smoothing = lua_tonumber(L, 3);
+        else if (lua_toboolean(L,3))
+        	smoothing=1;
+        float outline=luaL_optnumber(L, 4, 0);
+        font = new TTFont(application, filenames, size, smoothing, outline, &status);
     }
 
     if (status.error())
     {
         delete font;
-        return luaL_error(L, status.errorString());
+        luaL_error(L, "%s", status.errorString());
     }
 
     binder.pushInstance("TTFont", font);
@@ -53,9 +96,9 @@ int TTFontBinder::create(lua_State* L)
 }
 
 
-int TTFontBinder::destruct(lua_State* L)
+int TTFontBinder::destruct(void *p)
 {
-	void* ptr = *(void**)lua_touserdata(L, 1);
+	void *ptr = GIDEROS_DTOR_UDATA(p);
     FontBase *font = static_cast<FontBase*>(ptr);
     font->unref();
 

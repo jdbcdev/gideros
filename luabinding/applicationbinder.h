@@ -15,15 +15,21 @@ private:
 	static int getLogicalHeight(lua_State* L);
 	static int getDeviceWidth(lua_State* L);
 	static int getDeviceHeight(lua_State* L);
+	static int getNativePath(lua_State* L);
 	static int vibrate(lua_State* L);
 	static int getLocale(lua_State* L);
 	static int getLanguage(lua_State* L);
+	static int getAppId(lua_State* L);
+	static int getDeviceSafeArea(lua_State* L);
 	static int setKeepAwake(lua_State* L);
 	static int setKeyboardVisibility(lua_State* L);
+	static int setTextInput(lua_State* L);
+	static int getKeyboardModifiers(lua_State* L);
 	static int getLogicalTranslateX(lua_State* L);
 	static int getLogicalTranslateY(lua_State* L);
 	static int getLogicalScaleX(lua_State* L);
 	static int getLogicalScaleY(lua_State* L);
+	static int getLogicalBounds(lua_State* L);
 	static int getDeviceInfo(lua_State* L);
 	static int getContentWidth(lua_State* L);
 	static int getContentHeight(lua_State* L);
@@ -48,6 +54,16 @@ private:
     static int getDeviceName(lua_State *L);
     static int set(lua_State *L);
     static int get(lua_State *L);
+    static int requestPermissions(lua_State *L);
+    static int checkPermission(lua_State *L);
+    static int setClipboard(lua_State *L);
+    static int getClipboard(lua_State *L);
+    static int enableDrawInfo(lua_State *L);
+    static int setEventMerging(lua_State* L);
+    static int enableOnDemandDraw(lua_State *L);
+    static int getProjectProperties(lua_State* L);
+    static int applyStyles(lua_State* L);
+    static int getTimeZone(lua_State* L);
 };
 
 #endif

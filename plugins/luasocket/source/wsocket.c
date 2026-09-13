@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "socket.h"
+#include "inet.h"
 
 /* WinSock doesn't have a strerror... */
 static const char *wstrerror(int err);
@@ -313,7 +314,7 @@ void socket_setnonblocking(p_socket ps) {
 * DNS helpers 
 \*-------------------------------------------------------------------------*/
 int socket_gethostbyaddr(const char *addr, socklen_t len, struct hostent **hp) {
-    *hp = gethostbyaddr(addr, len, AF_INET);
+    *hp = gethostbyaddr(addr, len, (len==16)?AF_INET6:AF_INET);
     if (*hp) return IO_DONE;
     else return WSAGetLastError();
 }
@@ -428,7 +429,7 @@ const char *socket_gaistrerror(int err) {
 #ifdef EAI_SYSTEM
         case EAI_SYSTEM: return strerror(errno); 
 #endif
-        default: return gai_strerror(err);
+        default: return tous(gai_strerror(err));
     }
 }
 

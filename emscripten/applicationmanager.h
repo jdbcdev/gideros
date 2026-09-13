@@ -4,33 +4,26 @@
 #include <libnetwork.h>
 #include <string>
 #include <stdlib.h>
+#include "netplayer.h"
 
-struct ProjectProperties {
-	ProjectProperties() {
-		scaleMode = 0;
-		logicalWidth = 320;
-		logicalHeight = 480;
-		orientation = 0;
-		fps = 60;
-		retinaDisplay = 0;
-		autorotation = 0;
-		mouseToTouch = 1;
-		touchToMouse = 1;
-		mouseTouchOrder = 0;
-	}
+#include <exception>
 
-	int scaleMode;
-	int logicalWidth;
-	int logicalHeight;
-	std::vector<std::pair<std::string, float> > imageScales;
-	int orientation;
-	int fps;
-	int retinaDisplay;
-	int autorotation;
-	int mouseToTouch;
-	int touchToMouse;
-	int mouseTouchOrder;
+using namespace std;
+
+class luaException: public exception
+{
+public:
+   luaException(const char *trace) throw()
+         :trace(trace) {}
+     virtual const char* what() const throw()
+     {
+         return trace.c_str();
+     }
+    virtual ~luaException() throw() {}
+private:
+    string trace;
 };
+
 
 class ApplicationManager;
 class NetworkManager {
@@ -49,9 +42,7 @@ public:
 		loadMD5();
 	}
 
-	static void printToServer_s(const char *str, int len, void *data) {
-		static_cast<NetworkManager*>(data)->printToServer(str, len);
-	}
+	static void printToServer_s(const char *str, int len, void *data);
 
 	void printToServer(const char *str, int len) {
 		unsigned int size = 1 + ((len < 0) ? strlen(str) : len) + 1;
@@ -61,7 +52,7 @@ public:
 		memcpy(buffer + 1, str, size - 2);
 		buffer[size - 1] = 0;
 
-		server_->sendData(buffer, size);
+		serverSendData(buffer, size);
 
 		free(buffer);
 	}
@@ -85,7 +76,6 @@ private:
 
 private:
 	ApplicationManager *application_;
-	Server *server_;
 	std::string resourceDirectory_;
 };
 
@@ -99,7 +89,7 @@ public:
 	void surfaceCreated();
 	void surfaceChanged(int width, int height, int rotation);
 	void updateHardwareOrientation();
-	void drawFrame();
+	bool drawFrame();
 
 	void setDirectories(const char *externalDir, const char *internalDir,
 			const char *cacheDir);

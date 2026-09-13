@@ -1,0 +1,18 @@
+[submodule "libgid/external/openal-soft"]
+	path = libgid/external/openal-soft
+	url = https://github.com/gideros/openal-soft.git
+[submodule "lexilla"]
+	path = lexilla
+	url = https://github.com/gideros/lexilla.git
+[submodule "scintilla"]
+	path = scintilla
+	url = https://github.com/gideros/scintilla.git
+[submodule "plugins/harfbuzz/harfbuzz"]
+	path = plugins/harfbuzz/harfbuzz
+	url = https://github.com/gideros/harfbuzz.git
+[submodule "plugins/reactphysics3d/reactphysics3d"]
+	path = plugins/reactphysics3d/reactphysics3d
+	url = https://github.com/gideros/reactphysics3d.git
+[submodule "luau"]
+	path = luau
+	url = https://github.com/gideros/luau.git

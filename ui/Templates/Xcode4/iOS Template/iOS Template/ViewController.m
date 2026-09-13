@@ -11,16 +11,11 @@
 
 #include "giderosapi.h"
 
-@interface ViewController ()
-@property (nonatomic, retain) EAGLContext *context;
-@property (nonatomic, assign) CADisplayLink *displayLink;
-@end
-
 @implementation ViewController
 
 NSMutableArray *tableData;
 
-@synthesize animating, context, displayLink, glView, tableView;
+@synthesize animating, displayLink, glView, tableView;
 
 - (id)init
 {
@@ -30,8 +25,12 @@ NSMutableArray *tableData;
 		animating = FALSE;
 		animationFrameInterval = 1;
 		self.displayLink = nil;		
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(deviceOrientationDidChange:) name:@"UIDeviceOrientationDidChangeNotification" object:nil];
 	}
 	
+    statusBarHidden=TRUE;
+    statusBarStyle=UIStatusBarStyleDefault;
+
 	return self;
 }
 
@@ -50,31 +49,18 @@ NSMutableArray *tableData;
 
 - (void)viewDidLoad
 {
-    EAGLContext *aContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
-
-    if (!aContext)
-        NSLog(@"Failed to create ES context");
-    else if (![EAGLContext setCurrentContext:aContext])
-        NSLog(@"Failed to set ES context current");
-    
-	self.context = aContext;
-	[aContext release];
-	
-    [(EAGLView *)self.glView setContext:context];
-    [(EAGLView *)self.glView setFramebuffer];
+    [self.glView setup];
 }
 
+- (void)dismissViewControllerAnimated:(BOOL)flag 
+                           completion:(void (^)(void))completion
+{
+	[super dismissViewControllerAnimated:flag completion:completion];
+    gdr_touchesReset();
+}
+                           
 - (void)dealloc
 {
-    // Tear down context.
-    if ([EAGLContext currentContext] == context)
-        [EAGLContext setCurrentContext:nil];
-    
-    [context release];
-    
-    [tableData release];
-    
-    [super dealloc];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -82,6 +68,12 @@ NSMutableArray *tableData;
     [self startAnimation];
     
     [super viewWillAppear:animated];
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [self orientationChanged];
+    [super viewDidAppear:animated];
 }
 
 - (void)viewWillDisappear:(BOOL)animated
@@ -95,10 +87,27 @@ NSMutableArray *tableData;
 {
 	[super viewDidUnload];
 
-    // Tear down context.
-    if ([EAGLContext currentContext] == context)
-        [EAGLContext setCurrentContext:nil];
-	self.context = nil;	
+    [self.glView tearDown];
+}
+
+- (void)deviceOrientationDidChange:(NSNotification *)notification
+{
+       [self orientationChanged];
+}
+
+-(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+   if([keyPath isEqualToString:@"effectiveGeometry"]){
+       [self orientationChanged];
+   }
+}
+
+- (void) orientationChanged
+{
+	gdr_willRotateToInterfaceOrientation(UIInterfaceOrientationUnknown);
+	gdr_didRotateFromInterfaceOrientation(UIInterfaceOrientationUnknown);
+    	[self.glView layoutSubviews];
+	resized=TRUE; //Need redraw ASAP
 }
 
 - (NSInteger)animationFrameInterval
@@ -149,7 +158,8 @@ NSMutableArray *tableData;
 
 - (void)drawFrame
 {
-    gdr_drawFrame();
+    gdr_drawFrame(resized);
+    resized=FALSE;
 }
 
 - (void)didReceiveMemoryWarning
@@ -176,6 +186,20 @@ NSMutableArray *tableData;
 	gdr_didRotateFromInterfaceOrientation(fromInterfaceOrientation);
 }
 
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context)
+    {
+        UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
+        // do whatever
+    } completion:^(id<UIViewControllerTransitionCoordinatorContext> context)
+    {
+       [self orientationChanged];
+    }];
+
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+}
+
 - (NSUInteger)supportedInterfaceOrientations
 {
     /*NSArray *supportedOrientations = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"UISupportedInterfaceOrientations"];
@@ -191,8 +215,24 @@ NSMutableArray *tableData;
      return result;
      else
      return UIInterfaceOrientationMaskAll;*/
-    return gdr_supportedInterfaceOrientations();
+    return (NSUInteger)gdr_supportedInterfaceOrientations();
+}
 
+- (BOOL)prefersStatusBarHidden
+{
+    return statusBarHidden;
+}
+
+- (UIStatusBarStyle) preferredStatusBarStyle
+{
+    return statusBarStyle;
+}
+
+- (void) setStatusBar:(BOOL) hidden style:(UIStatusBarStyle) style
+{
+    statusBarHidden=hidden;
+    statusBarStyle=style;
+    [self setNeedsStatusBarAppearanceUpdate];
 }
 
 - (void)initTable{
@@ -217,8 +257,6 @@ NSMutableArray *tableData;
     labelView.font=[labelView.font fontWithSize:25];
     [headerView addSubview:labelView];
     self.tableView.tableHeaderView = headerView;
-    [labelView release];
-    [headerView release];
     [self.tableView reloadData];
     [self.view addSubview:self.tableView];
     [self.tableView setHidden:true];

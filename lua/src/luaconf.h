@@ -51,7 +51,7 @@
 @* Interfaces Extension (XSI).
 ** CHANGE it (define it) if your system is XSI compatible.
 */
-#if defined(LUA_USE_POSIX)
+#if defined(LUA_USE_POSIX) || defined(__CYGWIN__)
 #define LUA_USE_MKSTEMP
 #define LUA_USE_ISATTY
 #define LUA_USE_POPEN
@@ -87,9 +87,12 @@
 */
 #define LUA_LDIR	"!\\lua\\"
 #define LUA_CDIR	"!\\"
+#define LUA_PDIR	".\\_LuaPlugins_\\"
 #define LUA_PATH_DEFAULT  \
-		".\\?.lua;"  LUA_LDIR"?.lua;"  LUA_LDIR"?\\init.lua;" \
-		             LUA_CDIR"?.lua;"  LUA_CDIR"?\\init.lua"
+		".\\?.lua;"  ".\\?\\init.lua;" \
+		LUA_PDIR"?.lua;"  LUA_PDIR"?\\init.lua;" \
+		LUA_LDIR"?.lua;"  LUA_LDIR"?\\init.lua;" \
+		LUA_CDIR"?.lua;"  LUA_CDIR"?\\init.lua"
 #define LUA_CPATH_DEFAULT \
 	".\\?.dll;"  LUA_CDIR"?.dll;" LUA_CDIR"loadall.dll"
 
@@ -97,9 +100,12 @@
 #define LUA_ROOT	"/usr/local/"
 #define LUA_LDIR	LUA_ROOT "share/lua/5.1/"
 #define LUA_CDIR	LUA_ROOT "lib/lua/5.1/"
+#define LUA_PDIR	"./_LuaPlugins_/"
 #define LUA_PATH_DEFAULT  \
-		"./?.lua;"  LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
-		            LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua"
+		"./?.lua;"  "./?/init.lua;" \
+		LUA_PDIR"?.lua;"  LUA_PDIR"?/init.lua;" \
+		LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
+		LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua"
 #define LUA_CPATH_DEFAULT \
 	"./?.so;"  LUA_CDIR"?.so;" LUA_CDIR"loadall.so"
 #endif
@@ -571,6 +577,8 @@ union luai_Cast { double l_d; long l_l; };
 #define luai_nummul(a,b)	((a)*(b))
 #define luai_numdiv(a,b)	((a)/(b))
 #define luai_numintdiv(a,b)	(floor((a)/(b)))
+#define luai_nummax(a,b)	(((a) > (b)) ? (a) : (b))
+#define luai_nummin(a,b)	(((a) < (b)) ? (a) : (b))
 #define luai_nummod(a,b)	((a) - floor((a)/(b))*(b))
 #define luai_numpow(a,b)	(pow(a,b))
 #define luai_numunm(a)		(-(a))
@@ -578,6 +586,8 @@ union luai_Cast { double l_d; long l_l; };
 #define luai_numlt(a,b)		((a)<(b))
 #define luai_numle(a,b)		((a)<=(b))
 #define luai_numisnan(a)	(!luai_numeq((a), (a)))
+#define luai_numdeg(a)		(180.0/3.14159265358979324*a)
+#define luai_numrad(a)		(3.14159265358979324/180.0*a)
 
 #define luai_logor(r, a, b)	{ lua_Integer ai,bi; lua_number2int(ai,a); lua_number2int(bi,b); r = ai|bi; }
 #define luai_logand(r, a,b)	{ lua_Integer ai,bi; lua_number2int(ai,a); lua_number2int(bi,b); r = ai&bi; }
@@ -670,7 +680,9 @@ union luai_Cast { double l_d; long l_l; };
 @* the file streams.
 ** CHANGE it if you have a way to implement it in your system.
 */
-/*
+
+#ifdef DESKTOP_TOOLS
+
 #if defined(LUA_USE_POPEN)
 
 #define lua_popen(L,c,m)	((void)L, fflush(NULL), popen(c,m))
@@ -688,12 +700,14 @@ union luai_Cast { double l_d; long l_l; };
 #define lua_pclose(L,file)		((void)((void)L, file), 0)
 
 #endif
-*/
+
+#else
 
 #define lua_popen(L,c,m)	((void)((void)c, m),  \
 		luaL_error(L, LUA_QL("popen") " not supported"), (FILE*)0)
 #define lua_pclose(L,file)		((void)((void)L, file), 0)
 
+#endif
 
 
 /*

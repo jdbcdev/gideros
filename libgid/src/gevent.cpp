@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <stddef.h>
+#include "gapplication.h"
 
 namespace gevent {
 
@@ -23,7 +24,7 @@ public:
 
     void tick();
 
-    void enqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata);
+    void enqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata, bool merge);
     void removeEventsWithGid(g_id gid);
     void removeEventsWithType(int type);
 
@@ -36,6 +37,7 @@ private:
         void *event;
         int free;
         void *udata;
+        int merge;
     };
 
     template <typename T>
@@ -102,31 +104,52 @@ void EventManager::tick()
 {
     callbackList_.dispatchEvent(GEVENT_PRE_TICK_EVENT, NULL);
 
+    pthread_mutex_lock(&mutex_);
     while (true)
     {
-        pthread_mutex_lock(&mutex_);
 
-        if (eventQueue_.empty())
-        {
-            pthread_mutex_unlock(&mutex_);
-            break;
-        }
+        if (eventQueue_.empty()) break;
 
         EventQueueElement element = eventQueue_.front();
         eventQueue_.pop_front();
 
-        pthread_mutex_unlock(&mutex_);
+    	bool skip=false;
+        if (element.merge&&!eventQueue_.empty())
+        {
+        	size_t qs=eventQueue_.size();
+        	size_t i=0;
+        	while (i<qs) {
+        		if (!eventQueue_[i].merge) break;
+        		if ((eventQueue_[i].gid==element.gid)&&(eventQueue_[i].callback==element.callback)&&(eventQueue_[i].type==element.type))
+        		{
+        			skip=true;
+        			break;
+        		}
+        		i++;
+        	}
+        }
 
-        scope_exit_free f(element.free, element.event);
 
-        if (element.callback)
-            element.callback(element.type, element.event, element.udata);
+    	{
+            scope_exit_free f(element.free, element.event);
+    		if (!skip) {
+    			if (!element.merge)
+    				pthread_mutex_unlock(&mutex_);
+
+				if (element.callback)
+					element.callback(element.type, element.event, element.udata);
+
+    			if (!element.merge)
+    				pthread_mutex_lock(&mutex_);
+    		}
+    	}
     }
+    pthread_mutex_unlock(&mutex_);
 
     callbackList_.dispatchEvent(GEVENT_POST_TICK_EVENT, NULL);
 }
 
-void EventManager::enqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata)
+void EventManager::enqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata, bool merge)
 {
     EventQueueElement element;
     element.gid = gid;
@@ -135,6 +158,7 @@ void EventManager::enqueueEvent(g_id gid, gevent_Callback callback, int type, vo
     element.event = event;
     element.free = free;
     element.udata = udata;
+    element.merge = merge;
 
     pthread_mutex_lock(&mutex_);
     eventQueue_.push_back(element);
@@ -147,13 +171,13 @@ void EventManager::removeEventsWithGid(g_id gid)
 
     std::deque<EventQueueElement>::iterator first = eventQueue_.begin();
     std::deque<EventQueueElement>::iterator last = eventQueue_.end();
-    std::deque<EventQueueElement>::iterator result = std::remove_if(first, last, equal_gid<EventQueueElement>(gid));
+    std::deque<EventQueueElement>::iterator it;
 
-    for (first = result; first != last; ++first)
-        if (first->free)
-            free(first->event);
+    for (it=first; it != last; ++it)
+        if ((it->free)&&(it->gid==gid))
+            free(it->event);
 
-    eventQueue_.erase(result, last);
+    eventQueue_.erase(std::remove_if(first, last, equal_gid<EventQueueElement>(gid)),last);
 
     pthread_mutex_unlock(&mutex_);
 }
@@ -164,13 +188,13 @@ void EventManager::removeEventsWithType(int type)
 
     std::deque<EventQueueElement>::iterator first = eventQueue_.begin();
     std::deque<EventQueueElement>::iterator last = eventQueue_.end();
-    std::deque<EventQueueElement>::iterator result = std::remove_if(first, last, equal_type<EventQueueElement>(type));
-
-    for (first = result; first != last; ++first)
-        if (first->free)
-            free(first->event);
-
-    eventQueue_.erase(result, last);
+    std::deque<EventQueueElement>::iterator it;
+    
+    for (it=first; it != last; ++it)
+        if ((it->free)&&(it->type==type))
+            free(it->event);
+    
+    eventQueue_.erase(std::remove_if(first, last, equal_type<EventQueueElement>(type)),last);
 
     pthread_mutex_unlock(&mutex_);
 }
@@ -199,9 +223,32 @@ void gevent_Tick()
     s_manager->tick();
 }
 
+static void (*_flusher)()=NULL;
+static bool mergeEvents=false;
+void gevent_SetFlusher(void (*flusher)())
+{
+	_flusher=flusher;
+}
+
+void gevent_AllowEventMerge(int allow)
+{
+	mergeEvents=allow;
+}
+
+void gevent_Flush()
+{
+	if (_flusher)
+		_flusher();
+}
+
 void gevent_EnqueueEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata)
 {
-    s_manager->enqueueEvent(gid, callback, type, event, free, udata);
+    s_manager->enqueueEvent(gid, callback, type, event, free, udata, false);
+}
+
+void gevent_MergeEvent(g_id gid, gevent_Callback callback, int type, void *event, int free, void *udata)
+{
+    s_manager->enqueueEvent(gid, callback, type, event, free, udata, mergeEvents);
 }
 
 void gevent_RemoveEventsWithGid(g_id gid)
@@ -355,5 +402,32 @@ void *gevent_CreateEventStruct3(size_t structSize,
     return result;
 }
 
+}
 
+void gevent_EnqueuePermissionsResult(std::map<std::string,int> &perms)
+{
+
+	int pCount=0;
+	int pSize=0;
+
+	for (auto it=perms.begin();it!=perms.end();it++) {
+		pCount++;
+		pSize+=sizeof(char *)+sizeof(int)+it->first.size()+1;
+	}
+	gapplication_PermissionEvent *event = (gapplication_PermissionEvent*)malloc(sizeof(gapplication_PermissionEvent) + pSize);
+	event->count=pCount;
+	event->status=(int *)(((char *)event)+sizeof(gapplication_PermissionEvent));
+	event->perms=(const char **)(((char *)(event->status))+sizeof(int)*pCount);
+	char *data=(((char *)(event->perms))+sizeof(char *)*pCount);
+
+	pCount=0;
+	for (auto it=perms.begin();it!=perms.end();it++) {
+		event->status[pCount]=it->second;
+		event->perms[pCount]=data;
+		strcpy(data,it->first.c_str());
+		data+=it->first.size()+1;
+		pCount++;
+	}
+
+    gapplication_enqueueEvent(GAPPLICATION_PERMISSION_EVENT, event, 1);
 }

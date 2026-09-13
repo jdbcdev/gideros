@@ -773,9 +773,9 @@ static qreal easeOutInBounce(qreal t)
 	return easeOutInBounce(t, a);
 }
 
-static double (*getTweenFunction(TweenType tweenType))(double)
+TweenFunction MovieClip::getTweenFunction(TweenType tweenType)
 {
-	double (*tweenFunction)(double) = easeNone;
+    TweenFunction tweenFunction = easeNone;
 
 	switch (tweenType)
 	{
@@ -924,7 +924,7 @@ Parameter::Parameter(int param, float start, float end, TweenType tweenType) :
 	start(start),
 	end(end)
 {
-	tweenFunction = getTweenFunction(tweenType);
+    tweenFunction = MovieClip::getTweenFunction(tweenType);
 }
 
 Parameter::Parameter(const char* strparam, float start, float end, TweenType tweenType) : 
@@ -933,7 +933,7 @@ Parameter::Parameter(const char* strparam, float start, float end, TweenType twe
 	end(end)
 {
 	strParam=strparam;
-	tweenFunction = getTweenFunction(tweenType);
+    tweenFunction = MovieClip::getTweenFunction(tweenType);
 }
 
 Parameter::Parameter(int param, float start, float end, const char* tweenType) :
@@ -941,7 +941,7 @@ Parameter::Parameter(int param, float start, float end, const char* tweenType) :
 	start(start),
 	end(end)
 {
-	tweenFunction = getTweenFunction((TweenType)StringId::instance().id(tweenType));
+    tweenFunction = MovieClip::getTweenFunction((TweenType)StringId::instance().id(tweenType));
 }
 Parameter::Parameter(const char* strparam, float start, float end, const char* tweenType) :
 	param(StringId::instance().id(strparam)),
@@ -949,12 +949,14 @@ Parameter::Parameter(const char* strparam, float start, float end, const char* t
 	end(end)
 {
 	strParam=strparam;
-	tweenFunction = getTweenFunction((TweenType)StringId::instance().id(tweenType));
+    tweenFunction = MovieClip::getTweenFunction((TweenType)StringId::instance().id(tweenType));
 }
 
-MovieClip::MovieClip(Type type, Application *application) : Sprite(application)
+MovieClip::MovieClip(Type type, Application *application, bool holdWhilePlaying) : Sprite(application)
 {
     type_ = type;
+    playing_ = false;
+    holdWhilePlaying_ = holdWhilePlaying;
 }
 
 MovieClip::~MovieClip()
@@ -1010,7 +1012,7 @@ void MovieClip::addFrame(int start, int end, Sprite* sprite, const std::vector<P
 	frames_.push_back(frame);
 }
 
-void MovieClip::finalize()
+void MovieClip::finalize(bool play)
 {
     switch (type_)
     {
@@ -1021,58 +1023,67 @@ void MovieClip::finalize()
         maxframe_ = 0;
         break;
     }
+    minframe_=maxframe_;
 
     for (std::size_t i = 0; i < frames_.size(); ++i)
 	{
 		allFrames_[frames_[i].start].push_back(&frames_[i]);
+		revFrames_[frames_[i].end].push_back(&frames_[i]);
 		maxframe_ = std::max(maxframe_, frames_[i].end);
 	}
 
-    switch (type_)
-    {
-    case eFrame:
-        gotoAndPlay(1);
-        break;
-    case eTime:
-        gotoAndPlay(0);
-        break;
-    }
+    if (play)
+     	gotoAndPlay(minframe_,false);
+    else
+      	gotoAndStop(minframe_);
 }
 
-void MovieClip::oneFrame()
+bool MovieClip::oneFrame()
 {
     if (!playing_)
     {
-        return;
+        return false;
     }
 
 	if (passoneframe_ == true)
 	{
 		passoneframe_ = false;
-		return;
+		return false;
 	}
 
 	std::map<int, int>::iterator iter2 = actions_.find(frame_);
 	if (iter2 != actions_.end())
 	{
+		bool unref=false;
+		bool quit=false;
         if (iter2->second == -1)
         {
-			stop();
+			unref=stop(false);
             CompleteEvent event(CompleteEvent::COMPLETE);
             dispatchEvent(&event);
+            quit=true;
+        }
+        else if (iter2->second == -2)
+        {
+        	reverse_=!reverse_;
+        	gotoFrame(frame_);
         }
 		else
+		{
 			gotoFrame(iter2->second);
-
-		return;
+			quit=true;
+		}
+        if (quit)
+        	return unref;
 	}
 
-	if (frame_ == maxframe_)
+	if (((!reverse_)&&(frame_ == maxframe_))||
+			((reverse_)&&(frame_ == minframe_)))
 	{
-		stop();
+		bool unref=stop(false);
         CompleteEvent event(CompleteEvent::COMPLETE);
         dispatchEvent(&event);
-        return;
+        return unref;
 	}
 
 	std::map<int, std::vector<Frame*> >::iterator iter;
@@ -1086,20 +1097,38 @@ void MovieClip::oneFrame()
 		activeFrames_.erase(iter);
 	}
 
-	frame_ = frame_ + 1;
-
-	iter = allFrames_.find(frame_);
-	if (iter != allFrames_.end())
+	if (reverse_)
 	{
-		const std::vector<Frame*>& frames = iter->second;
-		for (std::size_t i = 0; i < frames.size(); ++i)
+		frame_ = frame_ - 1;
+		iter = revFrames_.find(frame_);
+		if (iter != revFrames_.end())
 		{
-			activeFrames_[frames[i]->end].push_back(frames[i]);
-			addChild2(frames[i]->sprite);
+			const std::vector<Frame*>& frames = iter->second;
+			for (std::size_t i = 0; i < frames.size(); ++i)
+			{
+				activeFrames_[frames[i]->start].push_back(frames[i]);
+				addChild2(frames[i]->sprite);
+			}
+		}
+	}
+	else
+	{
+		frame_ = frame_ + 1;
+		iter = allFrames_.find(frame_);
+		if (iter != allFrames_.end())
+		{
+			const std::vector<Frame*>& frames = iter->second;
+			for (std::size_t i = 0; i < frames.size(); ++i)
+			{
+				activeFrames_[frames[i]->end].push_back(frames[i]);
+				addChild2(frames[i]->sprite);
+			}
 		}
 	}
 	
 	interpolateParameters();
+
+	return false;
 }
 
 void MovieClip::nextFrame(EnterFrameEvent *)
@@ -1107,7 +1136,8 @@ void MovieClip::nextFrame(EnterFrameEvent *)
     switch (type_)
     {
     case eFrame:
-        oneFrame();
+        if (oneFrame()&&holdWhilePlaying_)
+        	unref();
         break;
     case eTime:
     {
@@ -1118,7 +1148,11 @@ void MovieClip::nextFrame(EnterFrameEvent *)
         delta = std::min(std::max(delta, 0), 1000);
 
         for (int i = 0; i < delta; ++i)
-            oneFrame();
+            if (oneFrame()&&holdWhilePlaying_)
+            {
+            	unref();
+            	return;
+            }
         break;
     }
     }
@@ -1146,7 +1180,7 @@ void MovieClip::gotoFrame(int frame)
 
 		if (start <= frame_ && frame_ <= end)
 		{
-			activeFrames_[end].push_back(&frames_[i]);
+			activeFrames_[reverse_?start:end].push_back(&frames_[i]);
 			addChild2(frames_[i].sprite);
 		}
 	}
@@ -1162,9 +1196,7 @@ void MovieClip::interpolateParameters()
 	{
 		const std::vector<Frame*>& frames = iter->second;
 		for (std::size_t i = 0; i < frames.size(); ++i)
-		{
-			Sprite* sprite = frames[i]->sprite;
-
+		{			
 			int s = frames[i]->start;
 			int e = frames[i]->end;
 
@@ -1196,10 +1228,11 @@ float MovieClip::getField(int frmIndex,Parameter param)
 	return frames_[frmIndex].sprite->get(param.param);
 }
 
-void MovieClip::gotoAndPlay(int frame)
+void MovieClip::gotoAndPlay(int frame, bool reverse)
 {
+	reverse_=reverse;
 	gotoFrame(frame);
-	play();
+	play(reverse);
 }
 
 void MovieClip::gotoAndStop(int frame)
@@ -1208,24 +1241,47 @@ void MovieClip::gotoAndStop(int frame)
 	stop();
 }
 
-void MovieClip::play()
+void MovieClip::play(bool reverse)
 {
 	passoneframe_ = true;
-	playing_ = true;
     prevClock_ = iclock();
-	addEventListener(EnterFrameEvent::ENTER_FRAME, &MovieClip::nextFrame);
+    if (reverse_!=reverse)
+    	gotoFrame(frame_);
+    reverse_=reverse;
+    if (!playing_)
+    {
+    	playing_ = true;
+    	addEventListener(EnterFrameEvent::ENTER_FRAME, &MovieClip::nextFrame);
+    	if (holdWhilePlaying_)
+    		ref();
+    }
 }
 
-void MovieClip::stop()
+bool MovieClip::stop(bool unrefNow)
 {
 	passoneframe_ = false;
-	playing_ = false;
-	removeEventListener(EnterFrameEvent::ENTER_FRAME, &MovieClip::nextFrame);
+	if (playing_)
+	{
+		playing_ = false;
+		removeEventListener(EnterFrameEvent::ENTER_FRAME, &MovieClip::nextFrame);
+		if (unrefNow&&holdWhilePlaying_)
+		{
+			unref();
+			return false;
+		}
+		return true;
+	}
+	return false;
 }
 
 void MovieClip::setStopAction(int frame)
 {
     actions_[frame] = -1;
+}
+
+void MovieClip::setReverseAction(int frame)
+{
+    actions_[frame] = -2;
 }
 
 void MovieClip::setGotoAction(int frame, int destframe)
@@ -1236,6 +1292,16 @@ void MovieClip::setGotoAction(int frame, int destframe)
 void MovieClip::clearAction(int frame)
 {
 	actions_.erase(frame);
+}
+
+int MovieClip::getFrame()
+{
+	return frame_;
+}
+
+bool MovieClip::isPlaying()
+{
+	return playing_;
 }
 
 void MovieClip::addChild2(Sprite* sprite)

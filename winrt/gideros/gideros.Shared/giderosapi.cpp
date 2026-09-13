@@ -10,7 +10,6 @@
 #include <string>
 #include <direct.h>
 #include <binder.h>
-#include <xaudio2.h>
 #include <libnetwork.h>
 #include "ginput-winrt.h"
 #include "luaapplication.h"
@@ -37,6 +36,7 @@
 #include "dxcompat.hpp"
 #include "dxglobals.h"
 #include <windows.ui.xaml.media.dxinterop.h>
+#include "debugging.h"
 
 using namespace Platform;
 using namespace Windows::UI::Core;
@@ -56,6 +56,9 @@ static ULONGLONG next_game_tick;
 #ifdef WINSTORE
 ComPtr<IDXGIDevice3> dxgiDevice;
 #endif
+
+std::wstring utf8_ws(const char *str);
+std::string utf8_us(const wchar_t *str);
 
 int PTW32_CDECL pthread_mutex_init(pthread_mutex_t * mutex,
 	const pthread_mutexattr_t * attr)
@@ -123,14 +126,9 @@ int PTW32_CDECL pthread_join(pthread_t thread,
 	return 0;
 }
 
-IXAudio2 *g_audioengine;
-IXAudio2MasteringVoice *g_masteringvoice;
-IXAudio2SourceVoice* g_source;
-
 static void printFunc(const char *str, int len, void *data)
 {
-	std::string s(str);
-	std::wstring wsTmp(s.begin(), s.end());
+	std::wstring wsTmp=utf8_ws(str);
 	OutputDebugString(wsTmp.c_str());
 }
 
@@ -151,9 +149,8 @@ void InitD3D(bool useXaml, CoreWindow^ Window, Windows::UI::Xaml::Controls::Swap
 		nullptr,
 		D3D_DRIVER_TYPE_HARDWARE,
 		nullptr,
-		0,
-		nullptr,
-		0,
+		0,//D3D11_CREATE_DEVICE_DEBUG,
+		nullptr, 0,
 		D3D11_SDK_VERSION,
 		&dev11,
 		nullptr,
@@ -185,7 +182,7 @@ void InitD3D(bool useXaml, CoreWindow^ Window, Windows::UI::Xaml::Controls::Swap
 	scd.SampleDesc.Quality = 0;
 	scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;      	// how swap chain is to be used    
 	scd.BufferCount = 2;                                    	// one back buffer for WP8 (Windows 8: 2)
-	//scd.Scaling = DXGI_SCALING_STRETCH;                       // WP8 (Windows 8: not set)
+	scd.Scaling = DXGI_SCALING_STRETCH;                       // WP8 (Windows 8: not set)
 	scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;                // WP8 (Windows 8: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL)
 	scd.Flags = 0;
 
@@ -216,29 +213,10 @@ void InitD3D(bool useXaml, CoreWindow^ Window, Windows::UI::Xaml::Controls::Swap
 	D3D11_VIEWPORT viewport;
 	ZeroMemory(&viewport, sizeof(D3D11_VIEWPORT));
 
-	float scaley;
-
-//	if (useXaml){
-//		scaley = 1;
-//	}
-//	else {
-		DisplayInformation ^dinfo = DisplayInformation::GetForCurrentView();
-#if WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-		scaley = dinfo->RawPixelsPerViewPixel; // Windows phone
-#else
-		scaley = ((int)dinfo->ResolutionScale)*0.01f*dinfo->LogicalDpi/ 96.0f;   // Windows 8 PC
-#endif
-//    }
-
-	float basex = 0;
-	float basey = 0;
-	float windoww = width*scaley;
-	float windowh = height*scaley;
-
-	viewport.TopLeftX = basex;
-	viewport.TopLeftY = basey;
-	viewport.Width = windoww;  // Direct3D needs actual pixels
-	viewport.Height = windowh;
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = width;  // Direct3D needs actual pixels
+	viewport.Height = height;
 	viewport.MinDepth = 0;
 	viewport.MaxDepth = 1.0;
 
@@ -256,19 +234,6 @@ void CleanD3D()
 }
 
 
-// ######################################################################
-void InitXAudio2()
-{
-	XAudio2Create(&g_audioengine);
-	HRESULT hr = g_audioengine->CreateMasteringVoice(&g_masteringvoice);
-}
-
-// ######################################################################
-void CleanXAudio2()
-{
-	g_audioengine->Release();
-}
-
 extern "C" {
 	void g_setFps(int);
 	int g_getFps();
@@ -279,36 +244,6 @@ void g_exit();
 
 static volatile const char* licenseKey_ = "9852564f4728e0c11e34ca3eb5fe20b2";
 //-----------------------------------------01234567890123456------------------
-
-struct ProjectProperties
-{
-	ProjectProperties()
-	{
-		scaleMode = 0;
-		logicalWidth = 320;
-		logicalHeight = 480;
-		orientation = 0;
-		fps = 60;
-		retinaDisplay = 0;
-		autorotation = 0;
-		mouseToTouch = 1;
-		touchToMouse = 1;
-		mouseTouchOrder = 0;
-	}
-
-	int scaleMode;
-	int logicalWidth;
-	int logicalHeight;
-	std::vector<std::pair<std::string, float> > imageScales;
-	int orientation;
-	int fps;
-	int retinaDisplay;
-	int autorotation;
-	int mouseToTouch;
-	int touchToMouse;
-	int mouseTouchOrder;
-};
-
 class ApplicationManager;
 
 class NetworkManager
@@ -404,11 +339,15 @@ public:
 	void exitRenderLoop();
 	void foreground();
 	void background();
-	void resize(int width, int height);
+	void resize(int width, int height, int orientation);
+	void scaleChanged(float scale);
 
-	Windows::UI::Xaml::Controls::SwapChainPanel^ getRoot();
+
+	static Windows::UI::Xaml::Controls::SwapChainPanel^ getRoot();
+	static Windows::UI::Core::CoreWindow^ getWindow();
 
 private:
+	void try_tick();
 	void loadProperties();
 	void loadLuaFiles();
 	void drawIPs();
@@ -438,18 +377,24 @@ private:
 
 	int nframe_;
 
-	Platform::WeakReference xamlRoot_;
+	static Platform::WeakReference xamlRoot_;
+	static Platform::WeakReference xamlWindow_;
+	bool xaml;
 };
 
+Platform::WeakReference ApplicationManager::xamlRoot_;
+Platform::WeakReference ApplicationManager::xamlWindow_;
 
 NetworkManager::NetworkManager(ApplicationManager* application)
 {
 	application_ = application;
 	server_ = new Server(15000, ::getDeviceName().c_str());
+	LuaDebugging::studioLink(server_);
 }
 
 NetworkManager::~NetworkManager()
 {
+	LuaDebugging::studioLink(NULL);
 	delete server_;
 }
 
@@ -475,36 +420,37 @@ void NetworkManager::tick()
 		if (event.eventCode == eDataReceived)
 		{
 			const std::vector<char>& data = event.data;
+            LuaDebugging::studioCommand(data);
 
 			switch (data[0])
 			{
-			case 0:
+			case gptMakeDir:
 				createFolder(data);
 				break;
-			case 1:
+			case gptWriteFile:
 				createFile(data);
 				break;
-			case 2:{
+			case gptPlay:{
 				const char* absfilename = g_pathForFile("../luafiles.txt");
 				FILE* fos = fopen(absfilename, "wb");
 				fwrite(&data[0], data.size(), 1, fos);
-				+fclose(fos);
+				fclose(fos);
 				play(data);
 			}
 				   break;
-			case 3:
+			case gptStop:
 				stop();
 				break;
-			case 7:
+			case gptGetFileList:
 				sendFileList();
 				break;
-			case 8:
+			case gptSetProjectName:
 				setProjectName(data);
 				break;
-			case 9:
+			case gptDeleteFile:
 				deleteFile(data);
 				break;
-			case 11:{
+			case gptSetProperties:{
 				const char* absfilename = g_pathForFile("../properties.bin");
 				FILE* fos = fopen(absfilename, "wb");
 				fwrite(&data[0], data.size(), 1, fos);
@@ -644,32 +590,7 @@ void NetworkManager::deleteFile(const std::vector<char> &data)
 void NetworkManager::setProperties(const std::vector<char> &data)
 {
 	ProjectProperties properties;
-
-	ByteBuffer buffer(&data[0], data.size());
-
-	char chr;
-	buffer >> chr;
-
-	buffer >> properties.scaleMode;
-	buffer >> properties.logicalWidth;
-	buffer >> properties.logicalHeight;
-
-	int scaleCount;
-	buffer >> scaleCount;
-	properties.imageScales.resize(scaleCount);
-	for (int i = 0; i < scaleCount; ++i)
-	{
-		buffer >> properties.imageScales[i].first;
-		buffer >> properties.imageScales[i].second;
-	}
-
-	buffer >> properties.orientation;
-	buffer >> properties.fps;
-	buffer >> properties.retinaDisplay;
-	buffer >> properties.autorotation;
-	buffer >> properties.mouseToTouch;
-	buffer >> properties.touchToMouse;
-	buffer >> properties.mouseTouchOrder;
+	properties.load(data, true);
 
 	application_->setProjectProperties(properties);
 }
@@ -730,32 +651,150 @@ void NetworkManager::calculateMD5(const char* file)
 		md5_[file] = md5;
 }
 
+static std::wstring ws(const char* str)
+{
+	if (!str) return std::wstring();
+	int sl = strlen(str);
+	int sz = MultiByteToWideChar(CP_UTF8, 0, str, sl, 0, 0);
+	std::wstring res(sz, 0);
+	MultiByteToWideChar(CP_UTF8, 0, str, sl, &res[0], sz);
+	return res;
+}
+
+#include <ppltasks.h>
+using Windows::Storage::StorageFile;
+using Windows::Storage::FileAccessMode;
+using Windows::Storage::Streams::IRandomAccessStream;
+using Windows::Storage::Streams::InputStreamOptions;
+using Windows::Storage::Streams::Buffer;
+using Windows::Storage::Streams::IBuffer;
+using Windows::Storage::Streams::DataWriterStoreOperation;
+using namespace Windows::Foundation::Collections;
+using namespace Concurrency;
+
+std::vector<IRandomAccessStream^> fdMap;
+int uwpvfs_open(const char* pathname, int flags)
+{
+	std::wstring w = ws(gpath_transform(pathname));
+	int nid = -1;
+	create_task(StorageFile::GetFileFromPathAsync(ref new String(w.c_str()))).
+	then([=](StorageFile^ file)
+	{
+		FileAccessMode am = ((flags & 3) != 0) ? FileAccessMode::ReadWrite : FileAccessMode::Read;
+		return file->OpenAsync(am);
+	}).then([=,&nid](IRandomAccessStream^ stream)
+	{
+		nid = 0;
+		while ((nid < fdMap.size()) && (fdMap[nid] != nullptr)) nid++;
+		if (nid == fdMap.size())
+			fdMap.push_back(stream);
+		else
+			fdMap[nid] = stream;
+	}).wait();
+	return nid;
+}
+
+int uwpvfs_close(int fd)
+{
+	if ((fd<0)||(fd>=fdMap.size())) return -1;
+	fdMap[fd] = nullptr;
+	return 0;
+}
+
+size_t uwpvfs_read(int fd, void* tbuf, size_t count)
+{
+	if ((fd < 0) || (fd >= fdMap.size())) return -1;
+	size_t done = 0;
+	IBuffer^ buf = ref new Buffer(count);
+	create_task(fdMap[fd]->ReadAsync(buf, count, InputStreamOptions::Partial)).then([=,&done](IBuffer^ ibuf)
+	{
+		size_t blen = ibuf->Length;
+		auto reader = Windows::Storage::Streams::DataReader::FromBuffer(ibuf);
+		reader->ReadBytes(
+		::Platform::ArrayReference<BYTE>(
+			(uint8_t *)tbuf, blen));
+		done = blen;
+	}).wait();
+	return done;
+}
+
+size_t uwpvfs_write(int fd, const void* tbuf, size_t count)
+{
+	bool done=false;
+	if ((fd < 0) || (fd >= fdMap.size())) return -1;
+	auto writer = ref new Windows::Storage::Streams::DataWriter(fdMap[fd]);
+	writer->WriteBytes(::Platform::ArrayReference<BYTE>(
+		(uint8_t*)tbuf, count));
+	create_task(writer->StoreAsync()).then([=,&done](unsigned int t) {
+		done = t;
+		return writer->FlushAsync();
+	}).then([=, &done](bool fdone)
+	{
+	}).wait();
+	return done?count:0;
+}
+
+off_t uwpvfs_lseek(int fd, off_t offset, int whence)
+{
+	if ((fd < 0) || (fd >= fdMap.size())) return -1;
+	switch (whence) {
+	case SEEK_SET:
+		break;
+	case SEEK_CUR:
+		offset += fdMap[fd]->Position;
+		break;
+	case SEEK_END:
+		offset += fdMap[fd]->Size;
+		break;
+	}
+	fdMap[fd]->Seek(offset);
+	return offset;
+}
+
+int uwpvfs_lflags(int fd)
+{
+	return 0;
+}
+
+
+static g_Vfs uwp_Vfs = {
+		uwpvfs_open, uwpvfs_close, uwpvfs_read, uwpvfs_write, uwpvfs_lseek, uwpvfs_lflags
+};
 
 ApplicationManager::ApplicationManager(bool useXaml, CoreWindow^ Window, Windows::UI::Xaml::Controls::SwapChainPanel ^swapChainPanel, int width, int height, bool player, const wchar_t* resourcePath, const wchar_t* docsPath, const wchar_t* tempPath)
 {
-	if (swapChainPanel!=nullptr)
+	if (swapChainPanel!=nullptr) {
 		xamlRoot_ = Platform::WeakReference(swapChainPanel);
+		xamlWindow_ = Platform::WeakReference(Window);
+	}
 
-	InitD3D(useXaml, Window, swapChainPanel, width, height);
-	InitXAudio2();
+	xaml = useXaml;
 
-//	if (useXaml)
-//		contentScaleFactor = 1;
-//	else {
+	{
 		DisplayInformation ^dinfo = DisplayInformation::GetForCurrentView();
 #if WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
 		contentScaleFactor = dinfo->RawPixelsPerViewPixel; // Windows phone
 #else
-		contentScaleFactor = ((int)dinfo->ResolutionScale)*0.01f*dinfo->LogicalDpi/96.0f;   // Windows 8 PC
+		contentScaleFactor = /*((int)dinfo->ResolutionScale)*0.01f;// */dinfo->LogicalDpi / 96.0f;   // Windows 8 PC
+		glog_i("Display Scale=%d, Logical DPI=%f, Selected Scale=%f\n", (int)dinfo->ResolutionScale, dinfo->LogicalDpi, contentScaleFactor);
 #endif
-//	}
+	}
 
-	width_ = width;
-	height_ = height;
+	if (xaml) {
+		width_ = width * contentScaleFactor;
+		height_ = height * contentScaleFactor;
+	}
+	else
+	{
+		width_ = width;
+		height_ = height;
+	}
 	player_ = player;
-	resourcePath_ = resourcePath;
-	docsPath_ = docsPath;
-	tempPath_ = tempPath;
+	resourcePath_ =_wcsdup( resourcePath);
+	docsPath_ = _wcsdup(docsPath);
+	tempPath_ = _wcsdup(tempPath);
+
+	InitD3D(useXaml, Window, swapChainPanel, width_, height_);
 
 	// gpath & gvfs
 	gpath_init();
@@ -773,6 +812,7 @@ ApplicationManager::ApplicationManager(bool useXaml, CoreWindow^ Window, Windows
 	gpath_setAbsolutePathFlags(GPATH_RW | GPATH_REAL);
 
 	gpath_setDefaultDrive(0);
+	gpath_setDriveVfs(GPATH_ABSOLUTE, &uwp_Vfs);
 
 	gvfs_init();
 
@@ -816,13 +856,29 @@ ApplicationManager::ApplicationManager(bool useXaml, CoreWindow^ Window, Windows
 
 	application_->enableExceptions();
 	application_->initialize();
-	application_->setResolution(width_* contentScaleFactor, height_* contentScaleFactor);
+	if (xaml)
+		application_->setResolution(width_, height_);
+	else
+		application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
 
 	Binder::disableTypeChecking();
 
+	if (xaml)
+	{
+		if (width_>height_){
+			hardwareOrientation_ = eFixed;
+			deviceOrientation_ = eLandscapeLeft;
+	    }
+		else {
+			hardwareOrientation_ = eFixed;
+			deviceOrientation_ = ePortrait;
+		}
+	}
+	else
+	{
 #if WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-	hardwareOrientation_ = ePortrait;
-	deviceOrientation_ = ePortrait;
+       hardwareOrientation_ = ePortrait;
+       deviceOrientation_ = ePortrait;
 #else
 	if (width_>height_){
 		hardwareOrientation_ = eLandscapeLeft;
@@ -833,6 +889,7 @@ ApplicationManager::ApplicationManager(bool useXaml, CoreWindow^ Window, Windows
 		deviceOrientation_ = ePortrait;
 	}
 #endif
+	}
 
 	running_ = false;
 
@@ -875,9 +932,6 @@ ApplicationManager::ApplicationManager(bool useXaml, CoreWindow^ Window, Windows
 ApplicationManager::~ApplicationManager()
 {
 	CleanD3D();
-	CleanXAudio2();
-
-	gaudio_Cleanup();
 
 	// application
 	application_->deinitialize();
@@ -922,8 +976,24 @@ Windows::UI::Xaml::Controls::SwapChainPanel^ ApplicationManager::getRoot(){
 	return xamlRoot_.Resolve<Windows::UI::Xaml::Controls::SwapChainPanel>();
 }
 
+Windows::UI::Core::CoreWindow^ ApplicationManager::getWindow() {
+	return xamlWindow_.Resolve<Windows::UI::Core::CoreWindow>();
+}
+
+void ApplicationManager::scaleChanged(float s)
+{
+	contentScaleFactor = s;
+}
+
 void ApplicationManager::getStdCoords(float xp, float yp, float &x, float &y)
 {
+	if (xaml)
+	{
+		x = xp*contentScaleFactor;
+		y = yp*contentScaleFactor;
+	}
+	else
+	{
 	xp = xp*contentScaleFactor;
 	yp = yp*contentScaleFactor;
 #if WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
@@ -951,6 +1021,7 @@ void ApplicationManager::getStdCoords(float xp, float yp, float &x, float &y)
 	x = xp;
 	y = yp;
 #endif
+	}
 }
 
 void ApplicationManager::drawFirstFrame()
@@ -985,16 +1056,25 @@ void ApplicationManager::drawFrame(bool useXaml)
 		if (application_->isErrorSet())
 			luaError(application_->getError());
 
-		ShaderEngine::Engine->setFramebuffer(NULL);
-		application_->clearBuffers();
+		bool doDraw = true;
+		if (!application_->onDemandDraw(doDraw))
+			doDraw = true;
 
-		application_->renderScene(1);
-		drawIPs();
+		if (doDraw) {
+			ShaderEngine::Engine->setFramebuffer(NULL);
+			application_->clearBuffers();
+			application_->renderScene(1);
+			drawIPs();
 
-		if (FPS==60)	
-			g_swapchain->Present(1, 0);
-		else if (FPS==30)
-			g_swapchain->Present(2, 0);
+			if (FPS==60)	
+				g_swapchain->Present(1, 0);
+			else if (FPS==30)
+				g_swapchain->Present(2, 0);
+		}
+		else {
+			//SLEEP
+			Sleep(1000 / FPS);
+		}
 	}
 	else {
 
@@ -1023,17 +1103,24 @@ void ApplicationManager::drawFrame(bool useXaml)
 		if (networkManager_)
 			networkManager_->tick();
 
-		//	application_->clearBuffers();  (this would duplicate ClearRenderTargetView above)
-
 		if (application_->isErrorSet())
 			luaError(application_->getError());
 
-		ShaderEngine::Engine->setFramebuffer(NULL);
-		application_->clearBuffers();
-		application_->renderScene(1);
-		drawIPs();
+		bool doDraw = true;
+		if (!application_->onDemandDraw(doDraw))
+			doDraw = true;
 
-		g_swapchain->Present(1, 0);
+		if (doDraw) {
+			ShaderEngine::Engine->setFramebuffer(NULL);
+			application_->clearBuffers();
+			application_->renderScene(1);
+			drawIPs();
+
+			g_swapchain->Present(1, 0);
+		}
+		else {
+			Sleep(SKIP_TICKS);
+		}
 	}
 }
 
@@ -1064,32 +1151,7 @@ void ApplicationManager::openProject(const char* project){
 		fclose(fis_prop);
 
 		ProjectProperties properties;
-
-		ByteBuffer buffer(&buf_prop[0], buf_prop.size());
-
-		char chr;
-		buffer >> chr;
-
-		buffer >> properties.scaleMode;
-		buffer >> properties.logicalWidth;
-		buffer >> properties.logicalHeight;
-
-		int scaleCount;
-		buffer >> scaleCount;
-		properties.imageScales.resize(scaleCount);
-		for (int i = 0; i < scaleCount; ++i)
-		{
-			buffer >> properties.imageScales[i].first;
-			buffer >> properties.imageScales[i].second;
-		}
-
-		buffer >> properties.orientation;
-		buffer >> properties.fps;
-		buffer >> properties.retinaDisplay;
-		buffer >> properties.autorotation;
-		buffer >> properties.mouseToTouch;
-		buffer >> properties.touchToMouse;
-		buffer >> properties.mouseTouchOrder;
+		properties.load(buf_prop, true);
 
 		setProjectProperties(properties);
 
@@ -1108,7 +1170,7 @@ void ApplicationManager::openProject(const char* project){
 		fclose(fis_lua);
 
 		ByteBuffer buffer2(&buf_lua[0], buf_lua.size());
-
+		char chr;
 		buffer2 >> chr;
 
 		while (buffer2.eob() == false)
@@ -1179,6 +1241,7 @@ void ApplicationManager::setProjectProperties(const ProjectProperties &propertie
 	properties_ = properties;
 }
 
+using namespace Platform;
 
 void ApplicationManager::luaError(const char *error)
 {
@@ -1195,7 +1258,10 @@ void ApplicationManager::luaError(const char *error)
 	}
 	else
 	{
-		g_exit();
+		std::wstring wid_str = utf8_ws(error);
+		const wchar_t* w_char = wid_str.c_str();
+		Platform::String^ p_string = ref new Platform::String(w_char);
+		throw Exception::CreateException(0x80004005,p_string);
 	}
 }
 
@@ -1206,8 +1272,9 @@ void ApplicationManager::play(const std::vector<std::string>& luafiles)
 	application_->deinitialize();
 	application_->initialize();
 
-    // First arg to setResolution should be the smaller dimension
-	if (width_ < height_)
+	if (xaml)
+		application_->setResolution(width_, height_);
+	else if (width_ < height_)
 		application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
 	else
 		application_->setResolution(height_ * contentScaleFactor, width_ * contentScaleFactor);
@@ -1282,31 +1349,17 @@ void ApplicationManager::loadProperties()
 	g_fread(&buf[0], 1, len, fis);
 	g_fclose(fis);
 
-	ByteBuffer buffer(&buf[0], buf.size());
+	properties_.load(buf,false);
 
-	buffer >> properties_.scaleMode;
-	buffer >> properties_.logicalWidth;
-	buffer >> properties_.logicalHeight;
+	width_=properties_.windowWidth?properties_.windowWidth:properties_.logicalWidth;
+	height_=properties_.windowHeight?properties_.windowHeight:properties_.logicalHeight;
 
-	int scaleCount;
-	buffer >> scaleCount;
-	properties_.imageScales.resize(scaleCount);
-	for (int i = 0; i < scaleCount; ++i)
-	{
-		buffer >> properties_.imageScales[i].first;
-		buffer >> properties_.imageScales[i].second;
-	}
+	if ((properties_.orientation==eLandscapeRight)||(properties_.orientation==eLandscapeLeft)) //Landscape
+		std::swap(width_,height_);
 
-	buffer >> properties_.orientation;
-	buffer >> properties_.fps;
-	buffer >> properties_.retinaDisplay;
-	buffer >> properties_.autorotation;
-	buffer >> properties_.mouseToTouch;
-	buffer >> properties_.touchToMouse;
-	buffer >> properties_.mouseTouchOrder;
-
-	// the first arg to setResolution should be the smaller dimension
-	if (width_ < height_)
+	if (xaml)
+		application_->setResolution(width_, height_);
+	else if ((width_ < height_))
 		application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
 	else
 		application_->setResolution(height_ * contentScaleFactor, width_ * contentScaleFactor);
@@ -1392,33 +1445,31 @@ void ApplicationManager::didReceiveMemoryWarning()
 		luaError(status.errorString());
 }
 
+void ApplicationManager::try_tick() {
+	if (!gdr_s_coreInput) {
+		GStatus status;
+		application_->tick(&status);
+		if (status.error())
+			luaError(status.errorString());
+	}
+}
+
 void ApplicationManager::foreground()
 {
 	gapplication_enqueueEvent(GAPPLICATION_FOREGROUND_EVENT, NULL, 0);
-
-	GStatus status;
-	application_->tick(&status);
-	if (status.error())
-		luaError(status.errorString());
+	try_tick();
 }
 
 void ApplicationManager::background()
 {
 	gapplication_enqueueEvent(GAPPLICATION_BACKGROUND_EVENT, NULL, 0);
-
-	GStatus status;
-	application_->tick(&status);
-	if (status.error())
-		luaError(status.errorString());
+	try_tick();
 }
 
 void ApplicationManager::suspend()
 {
 	gapplication_enqueueEvent(GAPPLICATION_PAUSE_EVENT, NULL, 0);
-	GStatus status;
-	application_->tick(&status);
-	if (status.error())
-		luaError(status.errorString());
+	try_tick();
 
 	dxgiDevice->Trim();
 }
@@ -1426,10 +1477,7 @@ void ApplicationManager::suspend()
 void ApplicationManager::resume()
 {
 	gapplication_enqueueEvent(GAPPLICATION_RESUME_EVENT, NULL, 0);
-	GStatus status;
-	application_->tick(&status);
-	if (status.error())
-		luaError(status.errorString());
+	try_tick();
 
 	next_game_tick = GetTickCount64();
 }
@@ -1437,37 +1485,44 @@ void ApplicationManager::resume()
 void ApplicationManager::exitRenderLoop()
 {
 	gapplication_enqueueEvent(GAPPLICATION_EXIT_EVENT, NULL, 0);
-
-	GStatus status;
-	application_->tick(&status);
-	if (status.error())
-		luaError(status.errorString());
+	try_tick();
 }
 
-void ApplicationManager::resize(int width, int height)
+void ApplicationManager::resize(int width, int height,int orientation)
 {
 
 	//if (ShaderEngine::Engine) ShaderEngine::Engine->resizeFramebuffer(width, height);
 
-	width_ = width;
-	height_ = height;
+	if (xaml) {
+		width_ = width * contentScaleFactor;
+		height_ = height * contentScaleFactor;
+	}
+	else
+	{ 
+		width_ = width;
+		height_ = height;
+	}
 
-	if (width < height){
-		hardwareOrientation_ = ePortrait;
-		deviceOrientation_ = ePortrait;
-		application_->setResolution(width*contentScaleFactor, height*contentScaleFactor);
-	}
-	else {
-		hardwareOrientation_ = eLandscapeLeft;
-		deviceOrientation_ = eLandscapeLeft;
-		application_->setResolution(height*contentScaleFactor, width*contentScaleFactor);
-	}
+	hardwareOrientation_ = xaml?eFixed:(Orientation) orientation;
+	deviceOrientation_ = (Orientation) orientation;
+
+	if (xaml)
+		application_->setResolution(width_, height_);
+	else if (width_ < height_)
+		application_->setResolution(width_ * contentScaleFactor, height_ * contentScaleFactor);
+	else
+		application_->setResolution(height_ * contentScaleFactor, width_ * contentScaleFactor);
 	application_->setHardwareOrientation(hardwareOrientation_);
 	application_->getApplication()->setDeviceOrientation(deviceOrientation_);
+
+	Event event(Event::APPLICATION_RESIZE);
+	GStatus status;
+	application_->broadcastEvent(&event, &status);
 }
 
 static ApplicationManager *s_manager = NULL;
 static int lastMouseButton_ = 0;
+CoreIndependentInputSource^ gdr_s_coreInput = nullptr;
 
 extern "C" {
 
@@ -1477,7 +1532,10 @@ extern "C" {
 	}
 
 	Windows::UI::Xaml::Controls::SwapChainPanel^ gdr_getRootView(){
-		return s_manager->getRoot();
+		return ApplicationManager::getRoot();
+	}
+	Windows::UI::Core::CoreWindow^ gdr_getRootWindow() {
+		return ApplicationManager::getWindow();
 	}
 
 	void gdr_drawFrame(bool useXaml)
@@ -1504,6 +1562,14 @@ extern "C" {
 		s_manager->resume();
 	}
 
+	void gdr_background() {
+		s_manager->background();
+	}
+
+	void gdr_foreground() {
+		s_manager->foreground();
+	}
+
 	void gdr_deinitialize()
 	{
 		delete s_manager;
@@ -1525,14 +1591,14 @@ extern "C" {
 		return s_manager->isRunning();
 	}
 
-	void gdr_keyDown(int keyCode)
+	void gdr_keyDown(int keyCode,int modifiers)
 	{
-		ginputp_keyDown(keyCode);
+		ginputp_keyDown(keyCode,modifiers);
 	}
 
-	void gdr_keyUp(int keyCode)
+	void gdr_keyUp(int keyCode,int modifiers)
 	{
-		ginputp_keyUp(keyCode);
+		ginputp_keyUp(keyCode,modifiers);
 	}
 
 	void gdr_keyChar(const char *keyChar)
@@ -1540,66 +1606,85 @@ extern "C" {
 		ginputp_keyChar(keyChar);
 	}
 
-	void gdr_mouseDown(int x, int y, int button){
+	void gdr_mouseDown(int x, int y, int button,int mod){
 		lastMouseButton_ = button;
 		float xn, yn;
 		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_mouseDown(xn, yn, button);
+		ginputp_mouseDown(xn, yn, button,mod);
 	}
 
-	void gdr_mouseMove(int x, int y){
+	void gdr_mouseMove(int x, int y, int mod){
 		float xn, yn;
 		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_mouseMove(xn, yn, lastMouseButton_);
+		ginputp_mouseMove(xn, yn, lastMouseButton_,mod);
 	}
 
-	void gdr_mouseHover(int x, int y){
+	void gdr_mouseHover(int x, int y, int mod){
 		float xn, yn;
 		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_mouseHover(xn, yn, 0);
+		ginputp_mouseHover(xn, yn, 0,mod);
 	}
 
-	void gdr_mouseUp(int x, int y, int button){
+	void gdr_mouseUp(int x, int y, int button, int mod){
 		if (lastMouseButton_ == button)
 			lastMouseButton_ = 0;
 		float xn, yn;
 		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_mouseUp(xn, yn, button);
+		ginputp_mouseUp(xn, yn, button,mod);
 	}
 
-	void gdr_mouseWheel(int x, int y, int delta){
+	void gdr_mouseWheel(int x, int y, int delta, int mod){
 		float xn, yn;
 		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_mouseWheel(xn, yn, 0, delta);
+		ginputp_mouseWheel(xn, yn, 0, delta,mod);
 	}
 
-	void gdr_touchBegin(int x, int y, int id){
-		float xn, yn;
-		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_touchBegin(xn, yn, id);
-	}
-
-	void gdr_touchMove(int x, int y, int id){
-		float xn, yn;
-		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_touchMove(xn, yn, id);
-	}
-
-	void gdr_touchEnd(int x, int y, int id){
-		float xn, yn;
-		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_touchEnd(xn, yn, id);
-	}
-
-	void gdr_touchCancel(int x, int y, int id){
-		float xn, yn;
-		s_manager->getStdCoords(x, y, xn, yn);
-		ginputp_touchCancel(xn, yn, id);
-	}
-
-	void gdr_resize(int width, int height)
+	void gdr_mouseEnter(int x, int y, int buttons, int mod)
 	{
-		s_manager->resize(width, height);
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_mouseEnter(xn, yn, buttons, mod);
+	}
+
+	void gdr_mouseLeave(int x, int y, int mod)
+	{
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_mouseLeave(xn, yn, mod);
+	}
+
+	void gdr_touchBegin(int x, int y, int id, int mod){
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_touchBegin(xn, yn, id,mod);
+	}
+
+	void gdr_touchMove(int x, int y, int id, int mod){
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_touchMove(xn, yn, id,mod);
+	}
+
+	void gdr_touchEnd(int x, int y, int id, int mod){
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_touchEnd(xn, yn, id,mod);
+	}
+
+	void gdr_touchCancel(int x, int y, int id, int mod){
+		float xn, yn;
+		s_manager->getStdCoords(x, y, xn, yn);
+		ginputp_touchCancel(xn, yn, id,mod);
+	}
+
+	void gdr_resize(int width, int height, int orientation)
+	{
+		s_manager->resize(width, height, orientation);
+	}
+
+	void gdr_scaleChanged(float scale)
+	{
+		s_manager->scaleChanged(scale);
 	}
 
 }
@@ -1607,7 +1692,7 @@ extern "C" {
 
 #ifdef WINSTORE
 extern "C"{
-	char *getenv(const char *string){ return NULL; }
+//	char *getenv(const char *string){ return NULL; }
 	int system(const char *string){ return 0; }
 }
 #endif

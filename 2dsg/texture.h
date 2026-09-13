@@ -2,18 +2,21 @@
 #define TEXTURE_H
 
 #include "texturebase.h"
+#include <functional>
 
 class Texture : public TextureBase
 {
 public:
+    Texture(Application* application);
 	// can throw GiderosException
 	Texture(Application* application,
-            const char* filename, Filter filter, Wrap wrap, Format format,
-			bool maketransparent = false, unsigned int transparentcolor = 0x00000000);
+            const char* filename, TextureParameters parameters);
 	Texture(Application* application,
-			const unsigned char* pixels, unsigned int width, unsigned int height, Filter filter, Wrap wrap, Format format,
-			bool maketransparent = false, unsigned int transparentcolor = 0x00000000);
+            const unsigned char* pixels, unsigned int width, unsigned int height, TextureParameters parameters, float scale=1, bool raw=false);
 	virtual ~Texture();
+    static void loadAsync(Application* application,
+                    const char* filename, TextureParameters parameters, std::function<void(Texture *,std::exception_ptr)> callback);
+
 };
 
 

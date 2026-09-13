@@ -6,8 +6,10 @@
 #include <OpenAL/al.h>
 #include <OpenAL/alc.h>
 #elif defined(OPENAL_SUBDIR_AL)
+#define AL_ALEXT_PROTOTYPES
 #include <AL/al.h>
 #include <AL/alc.h>
+#include <AL/alext.h>
 #else
 #include <al.h>
 #include <alc.h>
@@ -116,7 +118,7 @@ public:
     	   alListenerfv( AL_ORIENTATION, orient );
     }
 
-    g_id SoundPlay(g_id sound, bool paused)
+    g_id SoundPlay(g_id sound, bool paused, bool streaming)
     {
         std::map<g_id, Sound*>::iterator iter = sounds_.find(sound);
         if (iter == sounds_.end())
@@ -150,6 +152,15 @@ public:
         return gid;
     }
 
+    bool SoundHasEffect(const char *effect)
+    {
+#ifdef AL_EFFECT_TYPE
+    	return (effect&&!strcmp(effect,"equalizer"));
+#else
+    	return false;
+#endif
+    }
+
     void ChannelStop(g_id channel)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
@@ -163,6 +174,12 @@ public:
             alSourceStop(channel2->source);
             alDeleteSources(1, &channel2->source);
         }
+#ifdef AL_EFFECT_TYPE
+        if (channel2->slot)
+            alDeleteAuxiliaryEffectSlots(1,&channel2->slot);
+        if (channel2->effect)
+            alDeleteEffects(1,&channel2->effect);
+#endif
 
         channel2->sound->channels.erase(channel2);
 
@@ -241,7 +258,7 @@ public:
         return channel2->paused;
     }
 
-    bool ChannelIsPlaying(g_id channel)
+    bool ChannelIsPlaying(g_id channel, int *bufferSize, float *bufferSeconds)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
         if (iter == channels_.end())
@@ -260,7 +277,7 @@ public:
         return state == AL_PLAYING;
     }
 
-    void ChannelSetVolume(g_id channel, float volume)
+    void ChannelSetVolume(g_id channel, float volume, float balance)
     {
         std::map<g_id, Channel*>::iterator iter = channels_.find(channel);
         if (iter == channels_.end())
@@ -270,8 +287,12 @@ public:
 
         channel2->volume = volume;
 
-        if (channel2->source != 0)
+        if (channel2->source != 0) {
             alSourcef(channel2->source, AL_GAIN, volume);
+#ifdef AL_BALANCE
+            alSourcef(channel2->source, AL_BALANCE, balance);
+#endif
+        }
     }
 
     float ChannelGetVolume(g_id channel)
@@ -452,6 +473,8 @@ private:
             gid(gid),
             sound(sound),
             source(source),
+			effect(0),
+			slot(0),
             paused(true),
             volume(1.f),
             pitch(1.f),
@@ -464,6 +487,8 @@ private:
         g_id gid;
         Sound *sound;
         ALuint source;
+        ALuint effect;
+        ALuint slot;
         bool paused;
         float volume;
         float pitch;

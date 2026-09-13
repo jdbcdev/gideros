@@ -11,9 +11,24 @@ INCLUDEPATHS_pystring = libpystring
 OBJFILES_pystring = $(addprefix libpystring/,pystring)
 DEFINES_pystring=PYSTRING_LIBRARY
 
+DEFINES_lua=LUA_CORE
+ifeq ($(LUA_ENGINE),luau)
+INCLUDEPATHS_lua=luau/VM/src luau/VM/include luau/Compiler/include luau/CodeGen/include luau/Common/include luau/Ast/include libgvfs
+OBJFILES_lua=$(addprefix luau/VM/src/,lapi laux lbaselib lbitlib lbuffer lbuflib lbuiltins lcorolib ldblib ldebug ldo lfunc lgc lgcdebug linit lint64lib liolib lmathlib lmem lnumprint lobject loslib lperf lstate lstring lstrlib \
+         ltable ltablib ltm ludata lutf8lib lveclib lvmexecute lvmload lvmutils) \
+        $(addprefix luau/Compiler/src/,Builtins BuiltinFolding BytecodeBuilder ConstantFolding Compiler CostModel lcode PseudoCode TableShape Types ValueTracking) \
+        $(addprefix luau/Common/src/,StringUtils TimeTrace) \
+        $(addprefix luau/Ast/src/,Allocator Ast Confusables Cst Lexer Location Parser PrettyPrinter)
+DEFINES_lua+=LUAU_ENABLE_CODEGEN
+OBJFILES_lua +=  $(addprefix luau/CodeGen/src/,BytecodeAnalysis BytecodeSummary CodeAllocator CodeBlockUnwind CodeGen CodeGenAssembly CodeGenContext CodeGenUtils \
+         IrAnalysis IrBuilder IrCallWrapperX64 IrDump IrTranslateBuiltins IrTranslation IrUtils IrValueLocationTracking \
+         lcodegen NativeProtoExecData NativeState OptimizeConstProp OptimizeDeadStore SharedCodeAllocator \
+         AssemblyBuilderX64 OptimizeFinalX64 EmitBuiltinsX64 EmitCommonX64 EmitInstructionX64 CodeGenX64 IrLoweringX64 IrRegAllocX64 UnwindBuilderWin \
+         AssemblyBuilderA64 CodeGenA64 IrLoweringA64 IrRegAllocA64 UnwindBuilderDwarf2)
+else
 INCLUDEPATHS_lua=lua/src libgvfs
 OBJFILES_lua=lua/etc/all_lua
-DEFINES_lua=LUA_BUILD_AS_DLL
+endif
 
 
 XMP_SRC=virtual period player read_event dataio lfo envelope \
@@ -26,12 +41,10 @@ XMP_LOADERS=xm_load s3m_load it_load \
 XMP_LOADERS_HDR=it loader mod s3m xm
 
 INCLUDEPATHS_gid = libgid/external/glew-1.10.0/include \
-	libgid/external/freetype-2.4.12/src \
-	libgid/external/freetype-2.4.12/include \
 	libgid/external/snappy-1.1.0 \
 	libgid/external/libpng-1.6.2 \
 	libgid/external/jpeg-9 \
-	libgid/external/openal-soft-1.13/include/AL \
+	libgid/external/openal-soft/include/AL \
 	libgid/external/zlib-1.2.8 \
 	libgid/external/libxmp-4.3/include \
 	libgid/external/libxmp-4.3/src \
@@ -54,31 +67,41 @@ OBJFILES_gid += $(addprefix libgid/external/libxmp-4.3/src/loaders/,$(XMP_LOADER
 OBJFILES_gid += \
 	libgid/external/libxmp-4.3/lite/src/format \
 	libgid/external/libxmp-4.3/lite/src/loaders/mod_load
+OBJFILES_gid+=$(addprefix libgid/external/zlib-1.2.8/,$(notdir $(basename $(wildcard libgid/external/zlib-1.2.8/*.c))))
+OBJFILES_gid+=$(addprefix libgid/external/libpng-1.6.2/,png pngerror pngget pngmem pngpread pngread pngrio pngrtran pngrutil pngset pngtrans \
+	pngwio pngwrite pngwtran pngwutil)
+OBJFILES_gid+=$(addprefix libgid/external/jpeg-9/,jaricom jdapimin jdapistd jdarith jdatadst jdatasrc jdcoefct jdcolor jddctmgr jdhuff jdinput \
+	jdmainct jdmarker jdmaster jdmerge jdpostct jdsample jdtrans jerror jfdctflt jfdctfst jfdctint \
+	jidctflt jidctfst jidctint jquant1 jquant2 jutils jmemmgr jmemnobs jcomapi \
+	jcapimin jcapistd jcarith jccoefct jccolor jcdctmgr jchuff jcinit jcmainct \
+	jcmarker jcmaster jcparam jcprepct jcsample jctrans)
 
 DEFINES_gid=GIDEROS_LIBRARY _REENTRANT LIBXMP_CORE_PLAYER
 
-INCLUDEPATHS_gideros = libgideros lua/src libpystring libgid/include
+INCLUDEPATHS_gideros = libgideros $(LUA_INCLUDE) $(LUA_INCLUDE_CORE) libpystring libgid/include
 OBJFILES_gideros = $(addprefix libgideros/,binderutil stringid eventdispatcher \
 	event refptr eventvisitor pluginmanager luautil)
 DEFINES_gideros=GIDEROS_LIBRARY
 
 ##PLAYER
-INCLUDEPATHS_player = libgvfs libgideros lua/src libpystring libgid/include \
+FREETYPE_VER=2.7.1
+INCLUDEPATHS_player = libgvfs libgideros $(LUA_INCLUDE) $(LUA_INCLUDE_CORE) libpystring libgid/include \
 	libnetwork libpvrt luabinding \
 	2dsg 2dsg/gfxbackends 2dsg/paths \
-	libgid/external/glew-1.10.0/include \
-	libgid/external/freetype-2.4.12/src \
-	libgid/external/freetype-2.4.12/include \
+	libgid/external/freetype-$(FREETYPE_VER)/src \
+	libgid/external/freetype-$(FREETYPE_VER)/include \
 	libgid/external/mpg123-1.15.3/src \
 	libgid/external/snappy-1.1.0 \
 	libgid/external/libpng-1.6.2 \
 	libgid/external/jpeg-9 \
-	libgid/external/openal-soft-1.13/include/AL \
+	libgid/external/openal-soft/include/AL \
 	libgid/external/mpg123-1.15.3/src/libmpg123 \
 	libgid/external/zlib-1.2.8 \
 	libgid/external/libxmp-4.3/include \
 	external/liquidfun-1.0.0/liquidfun/Box2D \
 	external/glu 
+
+DEFINES_player=FT2_BUILD_LIBRARY DARWIN_NO_CARBON
 	
 OBJFILES_player= $(basename $(wildcard luabinding/*.cpp luabinding/*.c))
 OBJFILES_player+= $(basename $(wildcard libpvrt/*.cpp))
@@ -90,3 +113,31 @@ OBJFILES_player+= $(basename $(wildcard $(addprefix external/liquidfun-1.0.0/liq
 OBJFILES_player+= $(basename $(wildcard external/glu/libtess/*.c))
 OBJFILES_player+= $(addprefix libgid/src/,aes md5 platformutil utf8 drawinfo gtimer)
 OBJFILES_player+= $(addprefix external/minizip-1.1/source/,ioapi unzip)
+OBJFILES_player+= $(addprefix libgid/external/freetype-$(FREETYPE_VER)/src/, \
+	$(addprefix base/,ftbbox ftbitmap ftglyph ftlcdfil ftstroke ftbase ftsystem ftinit ftgasp) \
+	raster/raster sfnt/sfnt smooth/smooth autofit/autofit truetype/truetype cff/cff gzip/ftgzip  \
+	psnames/psnames pshinter/pshinter)
+
+OBJFILES_player+=$(addprefix libgid/external/zlib-1.2.8/,$(notdir $(basename $(wildcard libgid/external/zlib-1.2.8/*.c))))
+
+DEFINES_mp3=OPT_GENERIC REAL_IS_FLOAT HAVE_UNISTD_H _REENTRANT
+INCLUDEPATHS_mp3=\
+	libgid/external/mpg123-1.15.3/src/libmpg123 \
+	libgid/external/mpg123-1.15.3/src
+OBJFILES_mp3+=$(addprefix libgid/external/mpg123-1.15.3/src/libmpg123/,\
+	compat dct64 dither equalizer feature format frame icy icy2utf8 id3 index layer1 layer2 layer3 \
+	libmpg123 ntom optimize parse readers stringbuf synth synth_8bit synth_real synth_s32 tabinit)
+
+DEFINES_openal=AL_ALEXT_PROTOTYPES OPENAL_SUBDIR_AL RESTRICT=__restrict
+INCLUDEPATHS_openal=$(addprefix libgid/external/openal-soft/,. core common alc include)
+OBJFILES_openal+=$(addprefix libgid/external/openal-soft/, \
+			$(addprefix al/,auxeffectslot buffer effect error event extension filter listener source state) \
+			$(addprefix al/effects/,autowah chorus compressor convolution dedicated distortion echo effects equalizer fshifter modulator null pshifter reverb vmorpher) \
+			$(addprefix alc/,alc alconfig alu context device panning) \
+			$(addprefix alc/effects/,autowah chorus compressor convolution dedicated distortion echo equalizer fshifter modulator null pshifter reverb vmorpher) \
+			$(addprefix alc/backends/,base null loopback) \
+			$(addprefix common/,alcomplex alfstream almalloc alstring polyphase_resampler ringbuffer strutils threads) \
+			$(addprefix core/,ambdec ambidefs bformatdec bs2b bsinc_tables buffer_storage context converter cpu_caps devformat device effectslot except fmt_traits fpu_ctrl helpers hrtf logging mastering mixer uhjfilter uiddefs voice) \
+			$(addprefix core/filters/,biquad nfc splitter) \
+			$(addprefix core/mixer/,mixer_c) \
+	)			

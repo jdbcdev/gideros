@@ -13,7 +13,7 @@ TileMap::TileMap(Application* application,
 	texture_ = texture;
 	texture_->ref();
 
-    tileids_.resize(width * height, TileId(EMPTY_TILE, EMPTY_TILE));
+    tileids_.resize(width * height, TileId());
 		
 	width_ = width;
 	height_ = height;
@@ -25,15 +25,47 @@ TileMap::TileMap(Application* application,
 	marginy_ = marginy;
 	displaywidth_ = displaywidth;
 	displayheight_ = displayheight;
+	repeatx_= false;
+	repeaty_ = false;
 }
 
+void TileMap::cloneFrom(TileMap *s)
+{
+    Sprite::cloneFrom(s);
+
+    repeatx_=s->repeatx_;
+    repeaty_=s->repeaty_;
+    tileids_=s->tileids_;
+    vertices=s->vertices;
+    texcoords=s->texcoords;
+    colors=s->colors;
+}
+
+void TileMap::setTexture(TextureBase* texture,
+		int tilewidth, int tileheight,
+		int spacingx, int spacingy,
+		int marginx, int marginy)
+{
+	TextureBase *oldtex=texture_;
+	texture_ = texture;
+	texture_->ref();
+	oldtex->unref();
+
+	tilewidth_ = tilewidth;
+	tileheight_ = tileheight;
+	spacingx_ = spacingx;
+	spacingy_ = spacingy;
+	marginx_ = marginx;
+	marginy_ = marginy;
+	invalidate(INV_GRAPHICS);
+}
 
 TileMap::~TileMap()
 {
 	texture_->unref();
 }
 
-void TileMap::set(int x, int y, int tx, int ty, int flip, GStatus *status/* = NULL*/)
+void TileMap::set(int x, int y, uint16_t tx, uint16_t ty, int flip, uint32_t tint, GStatus *status/* = NULL*/)
 {
 	if (x < 0 || y < 0 || x >= width_ || y >= height_)
 	{
@@ -50,9 +82,11 @@ void TileMap::set(int x, int y, int tx, int ty, int flip, GStatus *status/* = NU
     tileids_[index].x = tx;
     tileids_[index].y = ty;
     tileids_[index].flip = flip;
+    tileids_[index].tint = tint;
+	invalidate(INV_GRAPHICS);
 }
 
-void TileMap::get(int x, int y, int* tx, int* ty, int *flip, GStatus *status/* = NULL*/) const
+void TileMap::get(int x, int y, uint16_t* tx, uint16_t* ty, int *flip, uint32_t *tint, GStatus *status/* = NULL*/) const
 {
 	if (x < 0 || y < 0 || x >= width_ || y >= height_)
 	{
@@ -70,10 +104,13 @@ void TileMap::get(int x, int y, int* tx, int* ty, int *flip, GStatus *status/* =
         *ty = tileids_[index].y;
     if (flip)
         *flip = tileids_[index].flip;
+    if (tint)
+        *tint = tileids_[index].tint;
 }
 
 void TileMap::shift(int dx, int dy)
 {
+	invalidate(INV_GRAPHICS);
 	while (dx < 0)
 	{
 		shiftleft();
@@ -111,7 +148,7 @@ void TileMap::shiftleft()
 		{
 			int index = (width_ - 1) + y * width_;
 
-            tileids_[index] = TileId(EMPTY_TILE, EMPTY_TILE);
+            tileids_[index] = TileId();
 		}
 	}
 }
@@ -131,7 +168,7 @@ void TileMap::shiftright()
 		{
 			int index = 0 + y * width_;
 
-            tileids_[index] = TileId(EMPTY_TILE, EMPTY_TILE);
+            tileids_[index] = TileId();
 		}
 	}
 }
@@ -151,7 +188,7 @@ void TileMap::shiftup()
 		{
 			int index = x + (height_ - 1) * width_;
 
-            tileids_[index] = TileId(EMPTY_TILE, EMPTY_TILE);
+            tileids_[index] = TileId();
 		}
 	}
 }
@@ -171,7 +208,7 @@ void TileMap::shiftdown()
 		{
 			int index = x + 0 * width_;
 
-            tileids_[index] = TileId(EMPTY_TILE, EMPTY_TILE);
+            tileids_[index] = TileId();
 		}
 	}
 }
@@ -219,23 +256,32 @@ void TileMap::doDraw(const CurrentTransform& transform, float hsx, float hsy, fl
         ex++;
         ey++;
 
-        sx = std::max(sx, 0);
-        sy = std::max(sy, 0);
-        ex = std::min(ex, width_);
-        ey = std::min(ey, height_);
+        if (!repeatx_)
+        {
+            sx = std::max(sx, 0);
+            ex = std::min(ex, width_);
+        }
+        if (!repeaty_)
+        {
+            sy = std::max(sy, 0);
+            ey = std::min(ey, height_);
+        }
 	}
 
 	int tileCount = 0;
+	uint32_t hasTint=0xFFFFFFFF;
 	for (int y = sy; y < ey; ++y)
 		for (int x = sx; x < ex; ++x)
 		{
-			int index = x + y * width_;
+			int rx=repeatx_?((x%width_)+width_)%width_:x;
+			int ry=repeaty_?((y%height_)+height_)%height_:y;
+			int index = rx + ry * width_;
 
-            int tx = tileids_[index].x;
-            int ty = tileids_[index].y;
-
-			if (!isEmpty(tx, ty))
+			if (!(tileids_[index].flip&FLIP_EMPTY))
+			{
 				tileCount++;
+				hasTint&=tileids_[index].tint;
+			}
 		}
 
 	if (tileCount == 0)
@@ -243,19 +289,25 @@ void TileMap::doDraw(const CurrentTransform& transform, float hsx, float hsy, fl
 
 	vertices.resize(tileCount * 12);
 	texcoords.resize(tileCount * 12);
+	if (hasTint!=0xFFFFFFFF)
+		colors.resize(tileCount*24);
 
 	int pos = 0;
+	float textureMargin=((texture_->data->parameters.filter==eNearest)||
+			(spacingx_!=0)||(spacingy_!=0))?0.1f:0.5f;
 
 	for (int y = sy; y < ey; ++y)
 		for (int x = sx; x < ex; ++x)
 		{
-			int index = x + y * width_;
+			int rx=repeatx_?((x%width_)+width_)%width_:x;
+			int ry=repeaty_?((y%height_)+height_)%height_:y;
+			int index = rx + ry * width_;
 
             int tx = tileids_[index].x;
             int ty = tileids_[index].y;
             int flip = tileids_[index].flip;
 
-			if (!isEmpty(tx, ty))
+			if (!(tileids_[index].flip&FLIP_EMPTY))
 			{
                 bool flip_horizontal = (flip & FLIP_HORIZONTAL);
                 bool flip_vertical = (flip & FLIP_VERTICAL);
@@ -290,15 +342,15 @@ void TileMap::doDraw(const CurrentTransform& transform, float hsx, float hsy, fl
 				int u1 = marginx_ + tx * (tilewidth_ + spacingx_) + tilewidth_;
 				int v1 = marginy_ + ty * (tileheight_ + spacingy_) + tileheight_;
 
-                float fu0 = (float)u0 / (float)texture_->data->exwidth;
-                float fv0 = (float)v0 / (float)texture_->data->exheight;
-                float fu1 = (float)u1 / (float)texture_->data->exwidth;
-                float fv1 = (float)v1 / (float)texture_->data->exheight;
+                float fu0 = (textureMargin+u0*texture_->data->scale) / (float)texture_->data->exwidth;
+                float fv0 = (textureMargin+v0*texture_->data->scale) / (float)texture_->data->exheight;
+                float fu1 = (-textureMargin+u1*texture_->data->scale) / (float)texture_->data->exwidth;
+                float fv1 = (-textureMargin+v1*texture_->data->scale) / (float)texture_->data->exheight;
 
-                fu0 *= texture_->uvscalex;
+               /* fu0 *= texture_->uvscalex;
                 fv0 *= texture_->uvscaley;
                 fu1 *= texture_->uvscalex;
-                fv1 *= texture_->uvscaley;
+                fv1 *= texture_->uvscaley;*/
 
                 if (flip_horizontal)
                     std::swap(fu0, fu1);
@@ -311,11 +363,6 @@ void TileMap::doDraw(const CurrentTransform& transform, float hsx, float hsy, fl
                     std::swap(fu0, fu1);
                     std::swap(fv0, fv1);
                 }
-
-                fu0 += 0.0001f;
-                fv0 += 0.0001f;
-                fu1 -= 0.0001f;
-                fv1 -= 0.0001f;
 
                 if (!flip_diagonal)
                 {
@@ -336,14 +383,36 @@ void TileMap::doDraw(const CurrentTransform& transform, float hsx, float hsy, fl
                     texcoords[pos + 10] = fu1; texcoords[pos + 11] = fv0;
                 }
 
+            	if (hasTint!=0xFFFFFFFF)
+            	{
+            		int cpos=pos*2;
+            		unsigned int color = tileids_[index].tint&0xFFFFFF;
+                    float alpha = (1.0/255)*(tileids_[index].tint>>24);
+
+                    alpha = std::min(std::max(alpha, 0.f), 1.f);
+
+                    unsigned int r = ((color >> 16) & 0xff) * alpha;
+                    unsigned int g = ((color >> 8) & 0xff) * alpha;
+                    unsigned int b = (color & 0xff) * alpha;
+                    unsigned int a = tileids_[index].tint>>24;
+
+            		for (int k=0;k<6;k++)
+            		{
+            			colors[cpos++]=r; colors[cpos++]=g; colors[cpos++]=b; colors[cpos++]=a;
+            		}
+            	}
+
+
 				pos += 12;
 			}
 		}
 
 	ShaderEngine::Engine->bindTexture(0,texture_->data->id());
-	ShaderProgram *shd=shader_?shader_:ShaderProgram::stdTexture;
+	ShaderProgram *shd=getShader(((hasTint!=0xFFFFFFFF)?ShaderEngine::STDP_TEXTURECOLOR:ShaderEngine::STDP_TEXTURE));
     shd->setData(ShaderProgram::DataVertex,ShaderProgram::DFLOAT,2,&vertices[0],vertices.size()/2,true,NULL);
     shd->setData(ShaderProgram::DataTexture,ShaderProgram::DFLOAT,2,&texcoords[0],texcoords.size()/2,true,NULL);
+	if (hasTint!=0xFFFFFFFF)
+        shd->setData(ShaderProgram::DataColor,ShaderProgram::DUBYTE,4,&colors[0],colors.size()/4,true,NULL);
     shd->drawArrays(ShaderProgram::Triangles,0,tileCount * 6);
 }
 
